@@ -8,16 +8,16 @@ Turborepo によるモノレポ構成で、1つのリポジトリから Web・�
 
 ## Tech Stack
 
-| カテゴリ | 技術 | 用途 |
-|---------|------|------|
-| モノレポ管理 | Turborepo | ワークスペース間のビルド・キャッシュ管理 |
-| Web | Next.js 15 (App Router) | SSR 対応の Web アプリ |
-| Mobile | Expo SDK 52 (Expo Router) | iOS / Android アプリ |
-| 言語 | TypeScript | 全パッケージ共通 |
-| Backend | Firebase (Auth / Firestore / Functions / Hosting) | 認証・DB・API・ホスティング |
-| スタイル | Tailwind CSS v4 (Web) / NativeWind v4 + Tailwind v3 (Mobile) | ユーティリティ CSS |
-| コード品質 | ESLint + Prettier | リント・フォーマット |
-| CI | GitHub Actions | 型チェック・リント・ビルドの自動実行 |
+| カテゴリ     | 技術                                                         | 用途                                     |
+| ------------ | ------------------------------------------------------------ | ---------------------------------------- |
+| モノレポ管理 | Turborepo                                                    | ワークスペース間のビルド・キャッシュ管理 |
+| Web          | Next.js 15 (App Router)                                      | SSR 対応の Web アプリ                    |
+| Mobile       | Expo SDK 52 (Expo Router)                                    | iOS / Android アプリ                     |
+| 言語         | TypeScript                                                   | 全パッケージ共通                         |
+| Backend      | Firebase (Auth / Firestore / Functions / Hosting)            | 認証・DB・API・ホスティング              |
+| スタイル     | Tailwind CSS v4 (Web) / NativeWind v4 + Tailwind v3 (Mobile) | ユーティリティ CSS                       |
+| コード品質   | ESLint + Prettier                                            | リント・フォーマット                     |
+| CI           | GitHub Actions                                               | 型チェック・リント・ビルドの自動実行     |
 
 ---
 
@@ -77,11 +77,11 @@ project-starter/
 
 ## 前提条件
 
-| ツール | バージョン | 確認コマンド |
-|--------|-----------|-------------|
-| Node.js | 20 以上 | `node -v` |
-| yarn | 1.x | `yarn -v` |
-| Firebase CLI | 最新 | `firebase --version` |
+| ツール       | バージョン | 確認コマンド         |
+| ------------ | ---------- | -------------------- |
+| Node.js      | 20 以上    | `node -v`            |
+| yarn         | 1.x        | `yarn -v`            |
+| Firebase CLI | 最新       | `firebase --version` |
 
 Node.js のバージョンは `.nvmrc` で管理している。nvm を使っている場合は `nvm use` で切り替え可能。
 
@@ -100,6 +100,7 @@ yarn setup
 ```
 
 これで以下が自動的に行われる:
+
 - `.env.local` の作成（`.env.example` からコピー）
 - `.firebaserc` の Firebase Project ID 設定
 - Node.js / yarn のバージョンチェック
@@ -147,24 +148,24 @@ yarn firebase:emulators
 
 ## Scripts
 
-| コマンド | 説明 |
-|---|---|
-| `yarn setup` | 初回セットアップ（対話式） |
-| `yarn dev` | 全アプリの開発サーバー起動 |
-| `yarn dev:web` | Web のみ起動 |
-| `yarn dev:mobile` | Mobile のみ起動 |
-| `yarn dev:functions` | Functions の watch ビルド |
-| `yarn build` | 全アプリのビルド |
-| `yarn build:functions` | Functions のみビルド |
-| `yarn test` | 全テスト実行 |
-| `yarn lint` | 全アプリの ESLint 実行 |
-| `yarn format` | Prettier でフォーマット |
-| `yarn format:check` | フォーマットのチェックのみ |
-| `yarn type-check` | 全パッケージの型チェック |
-| `yarn firebase:emulators` | Firebase エミュレーター起動 |
-| `yarn firebase:deploy` | Firebase 全体をデプロイ |
-| `yarn firebase:deploy:functions` | Functions のみデプロイ |
-| `yarn firebase:deploy:hosting` | Hosting のみデプロイ |
+| コマンド                         | 説明                        |
+| -------------------------------- | --------------------------- |
+| `yarn setup`                     | 初回セットアップ（対話式）  |
+| `yarn dev`                       | 全アプリの開発サーバー起動  |
+| `yarn dev:web`                   | Web のみ起動                |
+| `yarn dev:mobile`                | Mobile のみ起動             |
+| `yarn dev:functions`             | Functions の watch ビルド   |
+| `yarn build`                     | 全アプリのビルド            |
+| `yarn build:functions`           | Functions のみビルド        |
+| `yarn test`                      | 全テスト実行                |
+| `yarn lint`                      | 全アプリの ESLint 実行      |
+| `yarn format`                    | Prettier でフォーマット     |
+| `yarn format:check`              | フォーマットのチェックのみ  |
+| `yarn type-check`                | 全パッケージの型チェック    |
+| `yarn firebase:emulators`        | Firebase エミュレーター起動 |
+| `yarn firebase:deploy`           | Firebase 全体をデプロイ     |
+| `yarn firebase:deploy:functions` | Functions のみデプロイ      |
+| `yarn firebase:deploy:hosting`   | Hosting のみデプロイ        |
 
 ---
 
@@ -188,15 +189,15 @@ yarn firebase:emulators
 `packages/shared` のコードはどのアプリからでもインポートできる:
 
 ```typescript
-import { formatDate } from '@geckou/shared';
-import type { User } from '@geckou/shared';
+import { formatDate } from '@geckou/shared'
+import type { User } from '@geckou/shared'
 ```
 
 Firebase クライアント SDK を含めたくない場合（Functions 等）は個別にインポート:
 
 ```typescript
-import type { User } from '@geckou/shared/types';
-import { formatDate } from '@geckou/shared/utils';
+import type { User } from '@geckou/shared/types'
+import { formatDate } from '@geckou/shared/utils'
 ```
 
 ### アプリやパッケージの追加
@@ -215,21 +216,21 @@ Turborepo が自動的に認識するので、設定ファイルの追加は不�
 Next.js はサーバーサイド（SSR / API Route / Server Actions）とクライアントサイドが混在する。
 Firebase SDK はそれぞれ別のモジュールを使う。
 
-| 実行環境 | ファイル | SDK | 用途 |
-|---------|---------|-----|------|
-| クライアント | `apps/web/src/lib/firebase.ts` | `firebase` (クライアント SDK) | ログイン UI、リアルタイム更新 |
-| サーバー | `apps/web/src/lib/firebase-admin.ts` | `firebase-admin` (Admin SDK) | SSR でのデータ取得、認証トークン検証 |
+| 実行環境     | ファイル                             | SDK                           | 用途                                 |
+| ------------ | ------------------------------------ | ----------------------------- | ------------------------------------ |
+| クライアント | `apps/web/src/lib/firebase.ts`       | `firebase` (クライアント SDK) | ログイン UI、リアルタイム更新        |
+| サーバー     | `apps/web/src/lib/firebase-admin.ts` | `firebase-admin` (Admin SDK)  | SSR でのデータ取得、認証トークン検証 |
 
 `firebase-admin.ts` は `server-only` パッケージで保護されており、
 クライアントコンポーネントから誤って import するとビルドエラーになる。
 
 ### 環境変数
 
-| 変数 | 用途 | 公開範囲 |
-|------|------|---------|
-| `NEXT_PUBLIC_FIREBASE_*` | Web クライアント用 | ブラウザに露出する（公開前提） |
-| `FIREBASE_*` | Mobile (Expo) 用 | `app.json` の `extra` 経由で参照 |
-| `FIREBASE_SERVICE_ACCOUNT_KEY` | Web サーバー用 (Admin SDK) | サーバーのみ。絶対に公開しない |
+| 変数                           | 用途                       | 公開範囲                         |
+| ------------------------------ | -------------------------- | -------------------------------- |
+| `NEXT_PUBLIC_FIREBASE_*`       | Web クライアント用         | ブラウザに露出する（公開前提）   |
+| `FIREBASE_*`                   | Mobile (Expo) 用           | `app.json` の `extra` 経由で参照 |
+| `FIREBASE_SERVICE_ACCOUNT_KEY` | Web サーバー用 (Admin SDK) | サーバーのみ。絶対に公開しない   |
 
 ---
 
@@ -239,20 +240,20 @@ Web・Mobile の両方で RevenueCat を使った課金に対応している。
 
 ### 構成
 
-| プラットフォーム | ファイル | SDK | 用途 |
-|----------------|---------|-----|------|
-| Mobile | `apps/mobile/src/lib/revenuecat.ts` | `react-native-purchases` | アプリ内課金（iOS / Android） |
-| Web | `apps/web/src/lib/revenuecat.ts` | `@revenuecat/purchases-js` | Web 課金（`"use client"`） |
-| Functions | `apps/functions/src/revenuecat-webhook.ts` | なし（Express で受信） | Webhook で Firestore のサブスクリプション状態を同期 |
+| プラットフォーム | ファイル                                   | SDK                        | 用途                                                |
+| ---------------- | ------------------------------------------ | -------------------------- | --------------------------------------------------- |
+| Mobile           | `apps/mobile/src/lib/revenuecat.ts`        | `react-native-purchases`   | アプリ内課金（iOS / Android）                       |
+| Web              | `apps/web/src/lib/revenuecat.ts`           | `@revenuecat/purchases-js` | Web 課金（`"use client"`）                          |
+| Functions        | `apps/functions/src/revenuecat-webhook.ts` | なし（Express で受信）     | Webhook で Firestore のサブスクリプション状態を同期 |
 
 ### 環境変数
 
-| 変数 | 用途 | 設定場所 |
-|------|------|---------|
-| `NEXT_PUBLIC_REVENUECAT_API_KEY` | Web SDK 用 | `.env.local` |
-| `REVENUECAT_API_KEY_APPLE` | iOS 用 | `.env.local`（app.json の extra 経由） |
-| `REVENUECAT_API_KEY_GOOGLE` | Android 用 | `.env.local`（app.json の extra 経由） |
-| `REVENUECAT_WEBHOOK_SECRET` | Webhook 署名検証 | `apps/functions/.env` |
+| 変数                             | 用途             | 設定場所                               |
+| -------------------------------- | ---------------- | -------------------------------------- |
+| `NEXT_PUBLIC_REVENUECAT_API_KEY` | Web SDK 用       | `.env.local`                           |
+| `REVENUECAT_API_KEY_APPLE`       | iOS 用           | `.env.local`（app.json の extra 経由） |
+| `REVENUECAT_API_KEY_GOOGLE`      | Android 用       | `.env.local`（app.json の extra 経由） |
+| `REVENUECAT_WEBHOOK_SECRET`      | Webhook 署名検証 | `apps/functions/.env`                  |
 
 全て RevenueCat Dashboard > API Keys から取得。
 

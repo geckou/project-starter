@@ -1,9 +1,9 @@
-import { initializeApp } from 'firebase-admin/app';
+import { initializeApp } from 'firebase-admin/app'
 
-initializeApp();
+initializeApp()
 
 // --- HTTP 関数 ---
-export { api } from './api';
+export { api } from './api'
 
 // --- スケジュール関数 ---
 // export { dailyCleanup } from './scheduled';

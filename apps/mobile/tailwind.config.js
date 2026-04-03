@@ -1,4 +1,4 @@
-const { colors, fontFamily, borderRadius } = require('@geckou/shared/theme');
+const { colors, fontFamily, borderRadius } = require('@geckou/shared/theme')
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -12,4 +12,4 @@ module.exports = {
     },
   },
   plugins: [],
-};
+}

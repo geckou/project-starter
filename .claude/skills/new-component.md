@@ -19,32 +19,28 @@ description: React コンポーネントを作成する
 ## テンプレート
 
 ### Server Component
+
 ```tsx
 type Props = {
   // props
-};
+}
 
-export function ComponentName({ }: Props) {
-  return (
-    <div>
-    </div>
-  );
+export function ComponentName({}: Props) {
+  return <div></div>
 }
 ```
 
 ### Client Component
+
 ```tsx
-'use client';
+'use client'
 
 type Props = {
   // props
-};
+}
 
-export function ComponentName({ }: Props) {
-  return (
-    <div>
-    </div>
-  );
+export function ComponentName({}: Props) {
+  return <div></div>
 }
 ```
 

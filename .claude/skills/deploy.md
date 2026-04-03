@@ -9,15 +9,15 @@ description: Firebase / Vercel へのデプロイ手順をガイドする
 
 ## デプロイ先一覧
 
-| アプリ | デプロイ先 | コマンド |
-|--------|-----------|---------|
-| Web (Next.js) | Vercel | Vercel ダッシュボードまたは `vercel deploy` |
-| Web (Next.js) | Firebase Hosting | `yarn firebase:deploy:hosting` |
-| Functions | Firebase | `yarn firebase:deploy:functions` |
-| Mobile | App Store / Google Play | `eas build` + `eas submit` |
-| Firestore Rules | Firebase | `firebase deploy --only firestore:rules` |
-| Firestore Indexes | Firebase | `firebase deploy --only firestore:indexes` |
-| 全部 (Firebase) | Firebase | `yarn firebase:deploy` |
+| アプリ            | デプロイ先              | コマンド                                    |
+| ----------------- | ----------------------- | ------------------------------------------- |
+| Web (Next.js)     | Vercel                  | Vercel ダッシュボードまたは `vercel deploy` |
+| Web (Next.js)     | Firebase Hosting        | `yarn firebase:deploy:hosting`              |
+| Functions         | Firebase                | `yarn firebase:deploy:functions`            |
+| Mobile            | App Store / Google Play | `eas build` + `eas submit`                  |
+| Firestore Rules   | Firebase                | `firebase deploy --only firestore:rules`    |
+| Firestore Indexes | Firebase                | `firebase deploy --only firestore:indexes`  |
+| 全部 (Firebase)   | Firebase                | `yarn firebase:deploy`                      |
 
 ## 手順
 
@@ -33,6 +33,7 @@ description: Firebase / Vercel へのデプロイ手順をガイドする
 ## デプロイ前チェック
 
 ### Firebase 全般
+
 ```bash
 # .firebaserc のプロジェクト ID が正しいか確認
 cat .firebaserc
@@ -42,6 +43,7 @@ firebase login:list
 ```
 
 ### Functions
+
 ```bash
 # ビルドが通るか確認
 yarn build:functions
@@ -51,6 +53,7 @@ yarn build:functions
 ```
 
 ### Firestore Rules
+
 ```bash
 # ルールのデプロイ（データには影響しない）
 firebase deploy --only firestore:rules
@@ -60,6 +63,7 @@ firebase deploy --only firestore:indexes
 ```
 
 ### Web (Vercel)
+
 ```bash
 # Vercel CLI でデプロイ
 vercel deploy
@@ -69,6 +73,7 @@ vercel deploy --prod
 ```
 
 ### Web (Firebase Hosting)
+
 ```bash
 # ビルド
 yarn build --filter=@geckou/web
@@ -78,6 +83,7 @@ yarn firebase:deploy:hosting
 ```
 
 ### Mobile (Expo / EAS)
+
 ```bash
 # iOS ビルド
 eas build --platform ios

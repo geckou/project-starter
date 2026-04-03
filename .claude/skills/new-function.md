@@ -19,43 +19,49 @@ description: Firebase Cloud Function を追加する
 ## テンプレート
 
 ### HTTP エンドポイント（api.ts に追加）
+
 ```typescript
 // apps/functions/src/api.ts に追加
 app.post('/endpoint-name', async (req, res) => {
   // 認証チェック
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  const token = req.headers.authorization?.replace('Bearer ', '')
+  if (!token) return res.status(401).json({ error: 'Unauthorized' })
 
-  const decoded = await getAuth().verifyIdToken(token);
+  const decoded = await getAuth().verifyIdToken(token)
 
   // ロジック
-  res.json({ success: true });
-});
+  res.json({ success: true })
+})
 ```
 
 ### スケジュール関数（新規ファイル）
+
 ```typescript
 // apps/functions/src/scheduled.ts
-import { onSchedule } from 'firebase-functions/v2/scheduler';
-import { getFirestore } from 'firebase-admin/firestore';
+import { onSchedule } from 'firebase-functions/v2/scheduler'
+import { getFirestore } from 'firebase-admin/firestore'
 
 export const dailyCleanup = onSchedule('every day 03:00', async () => {
-  const db = getFirestore();
+  const db = getFirestore()
   // クリーンアップ処理
-});
+})
 ```
 
 ### Firestore トリガー（新規ファイル）
+
 ```typescript
 // apps/functions/src/triggers.ts
-import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore'
 
-export const onUserCreate = onDocumentCreated('users/{userId}', async (event) => {
-  const snapshot = event.data;
-  if (!snapshot) return;
-  const data = snapshot.data();
-  // 新規ユーザー作成時の処理
-});
+export const onUserCreate = onDocumentCreated(
+  'users/{userId}',
+  async (event) => {
+    const snapshot = event.data
+    if (!snapshot) return
+    const data = snapshot.data()
+    // 新規ユーザー作成時の処理
+  }
+)
 ```
 
 ## ルール

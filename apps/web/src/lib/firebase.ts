@@ -1,6 +1,6 @@
-'use client';
+'use client'
 
-import { initFirebase } from '@geckou/shared';
+import { initFirebase } from '@geckou/shared'
 
 const { app, auth, db } = initFirebase({
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? '',
@@ -9,6 +9,6 @@ const { app, auth, db } = initFirebase({
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ?? '',
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? '',
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? '',
-});
+})
 
-export { app, auth, db };
+export { app, auth, db }

@@ -1,29 +1,38 @@
 module.exports = {
-  root         : true,
-  extends      : ['expo', 'prettier'],
+  root: true,
+  extends: ['expo', 'prettier'],
   parserOptions: {
-    parser      : '@typescript-eslint/parser',
-    ecmaVersion : 2020,
-    sourceType  : 'module',
+    parser: '@typescript-eslint/parser',
+    ecmaVersion: 2020,
+    sourceType: 'module',
     ecmaFeatures: {
       impliedStrict: true,
-      jsx          : true,
+      jsx: true,
     },
   },
   rules: {
-    'arrow-parens'    : ['error', 'as-needed'],
-    curly             : ['error', 'multi-line'],
-    'comma-dangle'    : ['error', 'always-multiline'],
-    'key-spacing'     : ['error', {
-      align: 'colon',
-    }],
-    'no-multi-spaces' : ['error', {
-      exceptions: { VariableDeclarator: true },
-    }],
-    'no-floating-decimal'        : 'off',
+    'arrow-parens': ['error', 'as-needed'],
+    curly: ['error', 'multi-line'],
+    'comma-dangle': ['error', 'always-multiline'],
+    'key-spacing': [
+      'error',
+      {
+        align: 'colon',
+      },
+    ],
+    'no-multi-spaces': [
+      'error',
+      {
+        exceptions: { VariableDeclarator: true },
+      },
+    ],
+    'no-floating-decimal': 'off',
     'space-before-function-paren': ['error', 'always'],
-    '@typescript-eslint/no-unused-vars': ['warn', {
-      argsIgnorePattern: '^_',
-    }],
+    '@typescript-eslint/no-unused-vars': [
+      'warn',
+      {
+        argsIgnorePattern: '^_',
+      },
+    ],
   },
 }

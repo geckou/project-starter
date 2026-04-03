@@ -1,11 +1,11 @@
-'use client';
+'use client'
 
 export default function Error({
   error,
   reset,
 }: {
-  error: Error & { digest?: string };
-  reset: () => void;
+  error: Error & { digest?: string }
+  reset: () => void
 }) {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4">
@@ -13,10 +13,10 @@ export default function Error({
       <p className="text-gray-500">{error.message}</p>
       <button
         onClick={() => reset()}
-        className="rounded bg-primary-600 px-4 py-2 text-white hover:bg-primary-700"
+        className="bg-primary-600 hover:bg-primary-700 rounded px-4 py-2 text-white"
       >
         Try again
       </button>
     </main>
-  );
+  )
 }

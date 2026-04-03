@@ -1,26 +1,26 @@
-import cors from 'cors';
-import express from 'express';
-import { onRequest } from 'firebase-functions/v2/https';
+import cors from 'cors'
+import express from 'express'
+import { onRequest } from 'firebase-functions/v2/https'
 
-import { handleRevenueCatWebhook } from './revenuecat-webhook';
+import { handleRevenueCatWebhook } from './revenuecat-webhook'
 
-const app = express();
+const app = express()
 
-app.use(cors({ origin: true }));
+app.use(cors({ origin: true }))
 
 // Webhook は raw body で署名検証するため、json パースの前に定義
 app.post(
   '/webhooks/revenuecat',
   express.raw({ type: 'application/json' }),
-  handleRevenueCatWebhook,
-);
+  handleRevenueCatWebhook
+)
 
 // その他のエンドポイントは JSON パース
-app.use(express.json());
+app.use(express.json())
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+  res.json({ status: 'ok' })
+})
 
 // 例: 認証付きエンドポイント
 // app.post('/users', async (req, res) => {
@@ -30,4 +30,4 @@ app.get('/health', (req, res) => {
 //   res.json({ uid: decoded.uid });
 // });
 
-export const api = onRequest(app);
+export const api = onRequest(app)

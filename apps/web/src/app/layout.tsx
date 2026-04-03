@@ -1,17 +1,20 @@
-import type { Metadata } from 'next';
+import type { Metadata } from 'next'
 
-import { GoogleTagManager, GoogleTagManagerNoscript } from '@/components/GoogleTagManager';
-import '@/styles/globals.css';
+import {
+  GoogleTagManager,
+  GoogleTagManagerNoscript,
+} from '@/components/GoogleTagManager'
+import '@/styles/globals.css'
 
 export const metadata: Metadata = {
   title: 'Geckou App',
   description: 'Built by 合同会社Geckou',
-};
+}
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
   return (
     <html lang="ja">
@@ -23,5 +26,5 @@ export default function RootLayout({
         {children}
       </body>
     </html>
-  );
+  )
 }

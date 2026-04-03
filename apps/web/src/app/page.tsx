@@ -1,4 +1,4 @@
-import { formatDate } from '@geckou/shared';
+import { formatDate } from '@geckou/shared'
 
 export default function Home() {
   return (
@@ -11,5 +11,5 @@ export default function Home() {
         Today: {formatDate(new Date())}
       </p>
     </main>
-  );
+  )
 }

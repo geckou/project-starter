@@ -18,40 +18,43 @@ description: packages/shared に共有の型定義を追加する
 ## テンプレート
 
 ### 基本的な型
+
 ```typescript
 export type EntityName = {
-  id: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
+  id: string
+  createdAt: Date
+  updatedAt: Date
+}
 ```
 
 ### Firestore ドキュメント型
+
 ```typescript
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from 'firebase/firestore'
 
 // Firestore に保存される形式
 export type EntityNameDoc = {
-  id: string;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-};
+  id: string
+  createdAt: Timestamp
+  updatedAt: Timestamp
+}
 
 // アプリ内で使う形式（Date に変換済み）
 export type EntityName = {
-  id: string;
-  createdAt: Date;
-  updatedAt: Date;
-};
+  id: string
+  createdAt: Date
+  updatedAt: Date
+}
 ```
 
 ### API レスポンス型
+
 ```typescript
 // 既存の ApiResponse<T> を活用する
-import type { ApiResponse } from './index';
+import type { ApiResponse } from './index'
 
 // 例: ユーザー一覧の API レスポンス
-type UsersResponse = ApiResponse<User[]>;
+type UsersResponse = ApiResponse<User[]>
 ```
 
 ## ルール

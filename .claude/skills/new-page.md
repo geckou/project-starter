@@ -22,53 +22,57 @@ Next.js App Router のページを `apps/web/src/app/` 配下に作成する。
 ## テンプレート
 
 ### page.tsx（Server Component）
+
 ```tsx
 export default async function PageName() {
   return (
     <main>
       <h1>Page Title</h1>
     </main>
-  );
+  )
 }
 ```
 
 ### page.tsx（Client Component）
+
 ```tsx
-'use client';
+'use client'
 
 export default function PageName() {
   return (
     <main>
       <h1>Page Title</h1>
     </main>
-  );
+  )
 }
 ```
 
 ### loading.tsx
+
 ```tsx
 export default function Loading() {
-  return <div>Loading...</div>;
+  return <div>Loading...</div>
 }
 ```
 
 ### error.tsx
+
 ```tsx
-'use client';
+'use client'
 
 export default function Error({
   error,
   reset,
 }: {
-  error: Error & { digest?: string };
-  reset: () => void;
+  error: Error & { digest?: string }
+  reset: () => void
 }) {
   return (
     <div>
       <h2>Something went wrong</h2>
       <button onClick={() => reset()}>Try again</button>
     </div>
-  );
+  )
 }
 ```
 

@@ -18,7 +18,7 @@ description: プロジェクト固有の Claude Code スキル（スラッシュ
 
 ## テンプレート
 
-```markdown
+````markdown
 ---
 name: <skill-name>
 description: <スキルの説明（1行）>
@@ -37,6 +37,7 @@ description: <スキルの説明（1行）>
 ## テンプレート（コード生成する場合）
 
 ### <パターン名>
+
 \```typescript
 // コードテンプレート
 \```
@@ -45,7 +46,7 @@ description: <スキルの説明（1行）>
 
 - <このスキル固有のルール>
 - CLAUDE.md のコーディング規約に従う
-```
+````
 
 ## スキル名の規約
 
@@ -55,13 +56,13 @@ description: <スキルの説明（1行）>
 
 ## よくあるスキルの種類
 
-| 種類 | 例 | 用途 |
-|------|-----|------|
-| スキャフォールド | `new-page`, `new-component` | ファイル・コードの雛形を生成 |
-| チェック | `check-deps`, `check-security` | コードやプロジェクトの状態を検査 |
-| 生成 | `generate-api-client`, `generate-mock` | 既存コードから別のコードを生成 |
-| 操作 | `deploy`, `migrate-db` | 操作手順をガイド |
-| 分析 | `review`, `analyze-bundle` | コードを分析してレポート |
+| 種類             | 例                                     | 用途                             |
+| ---------------- | -------------------------------------- | -------------------------------- |
+| スキャフォールド | `new-page`, `new-component`            | ファイル・コードの雛形を生成     |
+| チェック         | `check-deps`, `check-security`         | コードやプロジェクトの状態を検査 |
+| 生成             | `generate-api-client`, `generate-mock` | 既存コードから別のコードを生成   |
+| 操作             | `deploy`, `migrate-db`                 | 操作手順をガイド                 |
+| 分析             | `review`, `analyze-bundle`             | コードを分析してレポート         |
 
 ## ルール
 

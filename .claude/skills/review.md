@@ -10,24 +10,28 @@ description: このプロジェクト構成を前提としたコードレビュ�
 ## レビュー観点
 
 ### 1. プロジェクト構成の整合性
+
 - `"use client"` の適切な使用（Firebase クライアント SDK はクライアントのみ）
 - `firebase-admin` がクライアントコンポーネントに漏れていないか
 - `@geckou/shared` の型・ユーティリティが活用されているか
 - 共通化できるコードが `packages/shared` に入っているか
 
 ### 2. Firebase
+
 - Firestore のセキュリティルール（`firestore.rules`）が更新されているか
 - 環境変数が `.env.example` に記載されているか
 - `NEXT_PUBLIC_` プレフィックスの適切な使用（サーバー用の値に付けていないか）
 - `firebase-admin` は `server-only` で保護されているか
 
 ### 3. Next.js (SSR)
+
 - Server Component と Client Component の使い分け
 - データ取得は Server Component で行っているか
 - 不要な `"use client"` がないか
 - `loading.tsx` / `error.tsx` が用意されているか
 
 ### 4. コード品質
+
 - シングルクォートが使われているか
 - Tailwind CSS のクラスでスタイリングされているか
 - セマンティックな HTML が使われているか
@@ -39,6 +43,7 @@ description: このプロジェクト構成を前提としたコードレビュ�
 - エラーハンドリングが適切か
 
 ### 5. セキュリティ
+
 - API キーやシークレットがハードコードされていないか
 - ユーザー入力のバリデーション
 - Firebase Security Rules が適切か

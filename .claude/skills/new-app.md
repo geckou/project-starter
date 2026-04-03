@@ -28,6 +28,7 @@ cp -r apps/web apps/admin
 ## コピー後に変更するファイル
 
 ### package.json
+
 ```json
 {
   "name": "@geckou/<app-name>",
@@ -37,9 +38,11 @@ cp -r apps/web apps/admin
 ```
 
 ### src/app/layout.tsx
+
 - `metadata` の `title` と `description` をアプリに合わせて変更
 
 ### src/app/page.tsx
+
 - 最小限の内容に置き換え
 
 ## ルール
