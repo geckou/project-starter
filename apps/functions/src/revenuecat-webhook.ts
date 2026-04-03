@@ -28,17 +28,29 @@ export async function handleRevenueCatWebhook(
 ): Promise<void> {
   const secret = process.env.REVENUECAT_WEBHOOK_SECRET;
   if (!secret) {
+    console.error('REVENUECAT_WEBHOOK_SECRET not configured');
     res.status(500).json({ error: 'Webhook secret not configured' });
     return;
   }
 
+  // raw body（Buffer）を文字列化して署名検証
+  const rawBody = typeof req.body === 'string'
+    ? req.body
+    : Buffer.isBuffer(req.body)
+      ? req.body.toString('utf-8')
+      : JSON.stringify(req.body);
+
   const signature = req.headers['x-revenuecat-signature'] as string;
-  if (!verifySignature(JSON.stringify(req.body), signature, secret)) {
+  if (!verifySignature(rawBody, signature, secret)) {
+    console.error('Invalid RevenueCat webhook signature');
     res.status(401).json({ error: 'Invalid signature' });
     return;
   }
 
-  const { type, app_user_id: userId } = (req.body as WebhookEvent).event;
+  const parsed: WebhookEvent = typeof req.body === 'string' || Buffer.isBuffer(req.body)
+    ? JSON.parse(rawBody)
+    : req.body;
+  const { type, app_user_id: userId } = parsed.event;
   const db = getFirestore();
   const now = new Date();
 

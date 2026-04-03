@@ -7,16 +7,20 @@ import { handleRevenueCatWebhook } from './revenuecat-webhook';
 const app = express();
 
 app.use(cors({ origin: true }));
+
+// Webhook は raw body で署名検証するため、json パースの前に定義
+app.post(
+  '/webhooks/revenuecat',
+  express.raw({ type: 'application/json' }),
+  handleRevenueCatWebhook,
+);
+
+// その他のエンドポイントは JSON パース
 app.use(express.json());
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
-
-// RevenueCat Webhook
-// RevenueCat Dashboard > Integrations > Webhooks にこの URL を設定:
-// https://<region>-<project-id>.cloudfunctions.net/api/webhooks/revenuecat
-app.post('/webhooks/revenuecat', handleRevenueCatWebhook);
 
 // 例: 認証付きエンドポイント
 // app.post('/users', async (req, res) => {
