@@ -2,7 +2,7 @@
  * 日付を YYYY-MM-DD 形式にフォーマット
  */
 export function formatDate(date: Date): string {
-  return date.toISOString().split("T")[0];
+  return date.toISOString().split('T')[0];
 }
 
 /**

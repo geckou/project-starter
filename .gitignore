@@ -20,6 +20,8 @@ build
 
 # debug
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # env
 .env
@@ -35,6 +37,18 @@ next-env.d.ts
 # firebase
 .firebase/
 firebase-debug.log
+firebase-emulator-data/
+**/service-account*.json
 
 # turbo
 .turbo
+
+# claude
+.claude/settings.json
+
+# functions build
+apps/functions/dist/
+
+# google credentials
+**/google*.json
+!**/google*.json.example

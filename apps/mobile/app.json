@@ -27,6 +27,16 @@
     "plugins": ["expo-router"],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "firebaseApiKey": "${FIREBASE_API_KEY}",
+      "firebaseAuthDomain": "${FIREBASE_AUTH_DOMAIN}",
+      "firebaseProjectId": "${FIREBASE_PROJECT_ID}",
+      "firebaseStorageBucket": "${FIREBASE_STORAGE_BUCKET}",
+      "firebaseMessagingSenderId": "${FIREBASE_MESSAGING_SENDER_ID}",
+      "firebaseAppId": "${FIREBASE_APP_ID}",
+      "revenuecatApiKeyApple": "${REVENUECAT_API_KEY_APPLE}",
+      "revenuecatApiKeyGoogle": "${REVENUECAT_API_KEY_GOOGLE}"
     }
   }
 }

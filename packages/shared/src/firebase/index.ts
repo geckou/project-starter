@@ -1,6 +1,8 @@
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+'use client';
+
+import { initializeApp, getApps } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 // 環境変数の取得方法は web / mobile で異なるので、
 // config を外部から受け取る形にする

@@ -1,20 +1,29 @@
 {
   "name": "geckou-monorepo",
   "private": true,
+  "packageManager": "yarn@1.22.22",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
+    "setup": "bash scripts/setup.sh",
     "dev": "turbo dev",
     "dev:web": "turbo dev --filter=@geckou/web",
     "dev:mobile": "turbo dev --filter=@geckou/mobile",
+    "dev:functions": "turbo dev --filter=@geckou/functions",
     "build": "turbo build",
+    "build:functions": "turbo build --filter=@geckou/functions",
     "lint": "turbo lint",
     "lint:fix": "turbo lint:fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "type-check": "turbo type-check"
+    "type-check": "turbo type-check",
+    "test": "turbo test",
+    "firebase:emulators": "firebase emulators:start",
+    "firebase:deploy": "firebase deploy",
+    "firebase:deploy:functions": "firebase deploy --only functions",
+    "firebase:deploy:hosting": "firebase deploy --only hosting"
   },
   "devDependencies": {
     "prettier": "^3.0.0",

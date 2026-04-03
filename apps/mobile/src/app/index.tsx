@@ -1,5 +1,5 @@
-import { View, Text } from "react-native";
-import { formatDate } from "@geckou/shared";
+import { View, Text } from 'react-native';
+import { formatDate } from '@geckou/shared';
 
 export default function HomeScreen() {
   return (

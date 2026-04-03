@@ -1,4 +1,4 @@
-import { formatDate } from "@geckou/shared";
+import { formatDate } from '@geckou/shared';
 
 export default function Home() {
   return (
