@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 
+import { AuthProvider } from '@/components/auth/AuthProvider'
 import {
   GoogleTagManager,
   GoogleTagManagerNoscript,
@@ -23,7 +24,7 @@ export default function RootLayout({
       </head>
       <body>
         <GoogleTagManagerNoscript />
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   )

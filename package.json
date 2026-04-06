@@ -20,10 +20,16 @@
     "format:check": "prettier --check .",
     "type-check": "turbo type-check",
     "test": "turbo test",
+    "env:develop": "bash scripts/use-env.sh develop",
+    "env:staging": "bash scripts/use-env.sh staging",
+    "env:production": "bash scripts/use-env.sh production",
     "firebase:emulators": "firebase emulators:start",
     "firebase:deploy": "firebase deploy",
     "firebase:deploy:functions": "firebase deploy --only functions",
-    "firebase:deploy:hosting": "firebase deploy --only hosting"
+    "firebase:deploy:hosting": "firebase deploy --only hosting",
+    "deploy:develop": "bash scripts/deploy.sh develop",
+    "deploy:staging": "bash scripts/deploy.sh staging",
+    "deploy:production": "bash scripts/deploy.sh production"
   },
   "devDependencies": {
     "prettier": "^3.0.0",

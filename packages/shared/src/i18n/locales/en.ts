@@ -1,0 +1,32 @@
+export const en = {
+  common: {
+    loading: 'Loading...',
+    error: 'An error occurred',
+    retry: 'Retry',
+    save: 'Save',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    edit: 'Edit',
+    confirm: 'Confirm',
+    back: 'Back',
+    next: 'Next',
+    done: 'Done',
+    search: 'Search',
+    noResults: 'No results found',
+  },
+  auth: {
+    login: 'Log in',
+    logout: 'Log out',
+    signUp: 'Sign up',
+    email: 'Email',
+    password: 'Password',
+    forgotPassword: 'Forgot password?',
+    loginFailed: 'Login failed',
+  },
+  navigation: {
+    home: 'Home',
+    dashboard: 'Dashboard',
+    settings: 'Settings',
+    profile: 'Profile',
+  },
+} satisfies Record<string, Record<string, string>>

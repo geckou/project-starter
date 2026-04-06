@@ -1,0 +1,62 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - production       # → production 環境
+      - 'release/**'     # → staging 環境
+      - 'hotfix/**'      # → staging 環境
+      - 'feat/**'        # → develop 環境
+      - 'fix/**'         # → develop 環境
+      - 'refactor/**'    # → develop 環境
+      - 'test/**'        # → develop 環境
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'yarn'
+
+      - run: yarn install --frozen-lockfile
+
+      # ブランチからデプロイ先の環境を決定
+      - name: Set environment
+        id: env
+        run: |
+          REF="${{ github.ref_name }}"
+          if [ "$REF" = "production" ]; then
+            echo "name=production" >> $GITHUB_OUTPUT
+          elif [[ "$REF" == release/* ]] || [[ "$REF" == hotfix/* ]]; then
+            echo "name=staging" >> $GITHUB_OUTPUT
+          else
+            echo "name=develop" >> $GITHUB_OUTPUT
+          fi
+
+      # 環境別の .env をシークレットから生成
+      - name: Create .env.local
+        run: echo "${{ secrets[format('ENV_{0}', steps.env.outputs.name)] }}" > .env.local
+
+      - name: Type Check
+        run: yarn type-check
+
+      - name: Test
+        run: yarn test
+
+      - name: Build
+        run: yarn build
+
+      - name: Deploy to Firebase
+        run: |
+          npx firebase-tools use ${{ steps.env.outputs.name }}
+          npx firebase-tools deploy --force
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

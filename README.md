@@ -323,6 +323,104 @@ yarn dev:web
 
 ---
 
+## 命名規則
+
+| 対象                         | ケース             | 例                        |
+| ---------------------------- | ------------------ | ------------------------- |
+| ファイル名（通常）           | ケバブケース       | `user-profile.ts`         |
+| ファイル名（コンポーネント） | パスカルケース     | `UserProfile.tsx`         |
+| 変数・関数                   | キャメルケース     | `userName`, `fetchData`   |
+| 定数                         | コンスタントケース | `MAX_RETRY_COUNT`         |
+| 型名                         | パスカルケース     | `ChatRoom`, `ApiResponse` |
+| CSS クラス名                 | スネークケース     | `user_icon`               |
+
+略語は避け、誰が見ても意味が明確な命名にする:
+
+```
+// Good
+button, message, notification
+
+// Bad
+btn, msg, noti
+```
+
+---
+
+## Git ブランチ運用
+
+### デフォルトブランチ
+
+`production`（`main` ではない）。全てのブランチは `production` から切る。
+
+### ブランチ命名規則
+
+| 種類       | パターン               | 例                      | 切る元       | デプロイ先 |
+| ---------- | ---------------------- | ----------------------- | ------------ | ---------- |
+| 機能開発   | `feat/<名前>`          | `feat/user-profile`     | `production` | develop    |
+| リリース   | `release/<バージョン>` | `release/1.0.0`         | `production` | staging    |
+| 緊急修正   | `hotfix/<バージョン>`  | `hotfix/1.0.1`          | `production` | staging    |
+| リファクタ | `refactor/<名前>`      | `refactor/api-client`   | `production` | develop    |
+| バグ修正   | `fix/<名前>`           | `fix/login-error`       | `production` | develop    |
+| ドキュメント | `docs/<名前>`        | `docs/api-spec`         | `production` | -          |
+| テスト     | `test/<名前>`          | `test/webhook`          | `production` | develop    |
+
+### ブランチ名のルール
+
+- **ケバブケースで書く**（`feat/user-profile`、`feat/UserProfile` は NG）
+- **短く、何をするか分かる名前にする**（`feat/update` は NG）
+- **チケット番号があれば先頭に付ける**（`feat/123-user-profile`）
+
+### コミットメッセージ規約
+
+```
+<type>: <description>
+```
+
+| type       | 用途                             |
+| ---------- | -------------------------------- |
+| `feat`     | 新機能                           |
+| `fix`      | バグ修正                         |
+| `refactor` | リファクタリング（機能変更なし） |
+| `style`    | コードスタイル修正（動作変更なし） |
+| `docs`     | ドキュメントのみ                 |
+| `test`     | テスト追加・修正                 |
+| `chore`    | ビルド・設定変更                 |
+
+### マージルール
+
+- `production` への直接 push は禁止（PR 必須）
+- `release/*` → `production` は PR + レビュー必須
+- `hotfix/*` → `production` は PR 必須（緊急時はセルフマージ可）
+- `feat/*` → `release/*` へのマージは自由
+- `feat/*` 同士のマージは禁止（依存関係を作らない）
+
+### リリースフロー
+
+```bash
+# 1. 機能開発
+git checkout production
+git checkout -b feat/user-profile
+# ... 開発・push → develop で動作確認 ...
+
+# 2. リリース準備（出したい機能だけ選ぶ）
+git checkout production
+git checkout -b release/1.0.0
+git merge feat/user-profile
+git merge feat/posts
+git push origin release/1.0.0  # → staging で QA
+
+# 3. リリース
+gh pr create --base production
+# QA OK → merge → production に自動デプロイ
+git tag v1.0.0
+
+# 4. 緊急修正
+git checkout -b hotfix/1.0.1 production
+# ... 修正 → staging で確認 → production に merge ...
+```
+
+---
+
 ## プロジェクトに合わせたカスタマイズ
 
 ### ディレクトリ名・パッケージ名の変更

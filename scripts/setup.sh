@@ -4,36 +4,59 @@ set -e
 echo "=== Geckou Project Starter - Setup ==="
 echo ""
 
-# .env.local の作成
-if [ -f .env.local ]; then
-  echo "[skip] .env.local は既に存在します"
+# .firebaserc の確認
+if grep -q "your-project-develop" .firebaserc 2>/dev/null; then
+  echo "[todo] Firebase プロジェクト ID を設定してください"
+  echo ""
+  echo "  3つの Firebase プロジェクトを作成してください:"
+  echo "  - develop:    開発環境（日常の開発）"
+  echo "  - staging:    ステージング環境（リリース前テスト）"
+  echo "  - production: 本番環境"
+  echo ""
+
+  read -p "develop の Project ID (後で設定する場合は Enter): " DEV_ID
+  read -p "staging の Project ID (後で設定する場合は Enter): " STG_ID
+  read -p "production の Project ID (後で設定する場合は Enter): " PROD_ID
+
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    [ -n "$DEV_ID" ] && sed -i '' "s/your-project-develop/$DEV_ID/g" .firebaserc
+    [ -n "$STG_ID" ] && sed -i '' "s/your-project-staging/$STG_ID/g" .firebaserc
+    [ -n "$PROD_ID" ] && sed -i '' "s/your-project-production/$PROD_ID/g" .firebaserc
+  else
+    [ -n "$DEV_ID" ] && sed -i "s/your-project-develop/$DEV_ID/g" .firebaserc
+    [ -n "$STG_ID" ] && sed -i "s/your-project-staging/$STG_ID/g" .firebaserc
+    [ -n "$PROD_ID" ] && sed -i "s/your-project-production/$PROD_ID/g" .firebaserc
+  fi
+
+  echo "[done] .firebaserc を更新しました"
 else
-  cp .env.example .env.local
-  echo "[done] .env.local を作成しました"
-  echo "  → Firebase の設定値を .env.local に入力してください"
-  echo "  → Firebase Console: https://console.firebase.google.com"
+  echo "[skip] .firebaserc は設定済みです"
 fi
 
 echo ""
 
-# .firebaserc の確認
-if grep -q "your-firebase-project-id" .firebaserc 2>/dev/null; then
-  echo "[todo] .firebaserc の project ID を設定してください"
-  echo "  → Firebase Console > Project Settings > Project ID"
-  echo ""
-  read -p "Firebase Project ID を入力（後で設定する場合は Enter）: " PROJECT_ID
-  if [ -n "$PROJECT_ID" ]; then
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i '' "s/your-firebase-project-id/$PROJECT_ID/" .firebaserc
-    else
-      sed -i "s/your-firebase-project-id/$PROJECT_ID/" .firebaserc
-    fi
-    echo "[done] .firebaserc を更新しました: $PROJECT_ID"
+# 環境別 .env ファイルの作成
+for ENV in develop staging production; do
+  if [ -f ".env.${ENV}" ]; then
+    echo "[skip] .env.${ENV} は既に存在します"
   else
-    echo "[skip] 後で .firebaserc を手動で編集してください"
+    cp .env.example ".env.${ENV}"
+    echo "[done] .env.${ENV} を作成しました"
   fi
+done
+
+echo ""
+echo "  → 各 .env.{環境名} に Firebase の設定値を入力してください"
+echo "  → Firebase Console: https://console.firebase.google.com"
+
+echo ""
+
+# デフォルト環境の設定
+if [ ! -f .env.local ]; then
+  cp .env.develop .env.local 2>/dev/null || cp .env.example .env.local
+  echo "[done] .env.local を作成しました（develop 環境）"
 else
-  echo "[skip] .firebaserc は設定済みです"
+  echo "[skip] .env.local は既に存在します"
 fi
 
 echo ""
@@ -59,6 +82,14 @@ else
   echo "  → npm install -g yarn"
 fi
 
+# Firebase CLI チェック
+if command -v firebase &> /dev/null; then
+  echo "[ok] firebase $(firebase --version)"
+else
+  echo "[warn] Firebase CLI がインストールされていません"
+  echo "  → npm install -g firebase-tools"
+fi
+
 echo ""
 
 # 依存インストール
@@ -73,7 +104,18 @@ echo ""
 echo "=== セットアップ完了 ==="
 echo ""
 echo "次のステップ:"
-echo "  1. .env.local に Firebase の設定値を入力"
-echo "  2. yarn dev:web で Web 開発サーバーを起動"
-echo "  3. yarn firebase:emulators で Firebase エミュレーターを起動"
+echo "  1. .env.develop に Firebase (develop) の設定値を入力"
+echo "  2. yarn env:develop で develop 環境に切り替え"
+echo "  3. yarn dev:web で Web 開発サーバーを起動"
+echo "  4. yarn firebase:emulators で Firebase エミュレーターを起動"
+echo ""
+echo "環境の切り替え:"
+echo "  yarn env:develop     → 開発環境"
+echo "  yarn env:staging     → ステージング環境"
+echo "  yarn env:production  → 本番環境"
+echo ""
+echo "デプロイ:"
+echo "  yarn deploy:develop     → develop にデプロイ"
+echo "  yarn deploy:staging     → staging にデプロイ"
+echo "  yarn deploy:production  → production にデプロイ"
 echo ""

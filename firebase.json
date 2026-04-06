@@ -9,20 +9,11 @@
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
-    "public": "apps/web/out",
+    "source": "apps/web",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "headers": [
-      {
-        "source": "/index.html",
-        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
-      }
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
+    "frameworksBackend": {
+      "region": "asia-northeast1"
+    }
   },
   "emulators": {
     "functions": { "port": 5001 },

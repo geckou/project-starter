@@ -1,0 +1,32 @@
+export const ja = {
+  common: {
+    loading: '読み込み中...',
+    error: 'エラーが発生しました',
+    retry: '再試行',
+    save: '保存',
+    cancel: 'キャンセル',
+    delete: '削除',
+    edit: '編集',
+    confirm: '確認',
+    back: '戻る',
+    next: '次へ',
+    done: '完了',
+    search: '検索',
+    noResults: '結果がありません',
+  },
+  auth: {
+    login: 'ログイン',
+    logout: 'ログアウト',
+    signUp: '新規登録',
+    email: 'メールアドレス',
+    password: 'パスワード',
+    forgotPassword: 'パスワードを忘れた方',
+    loginFailed: 'ログインに失敗しました',
+  },
+  navigation: {
+    home: 'ホーム',
+    dashboard: 'ダッシュボード',
+    settings: '設定',
+    profile: 'プロフィール',
+  },
+} satisfies Record<string, Record<string, string>>

@@ -9,16 +9,24 @@
     "./types": "./src/types/index.ts",
     "./utils": "./src/utils/index.ts",
     "./firebase": "./src/firebase/index.ts",
-    "./theme": "./src/theme/index.ts"
+    "./firestore": "./src/firestore/index.ts",
+    "./theme": "./src/theme/index.ts",
+    "./stores": "./src/stores/index.ts",
+    "./storage": "./src/storage/index.ts",
+    "./i18n": "./src/i18n/index.ts"
   },
   "scripts": {
     "type-check": "tsc --noEmit",
-    "lint": "echo 'no lint configured'"
+    "lint": "echo 'no lint configured'",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
-    "firebase": "^11.0.0"
+    "firebase": "^11.0.0",
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
   }
 }
