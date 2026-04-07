@@ -23,10 +23,19 @@ export default [
     },
     rules: {
       // フォーマット系ルールは Prettier に委譲
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_' },
+      ],
       'import/no-unresolved': [
         'error',
-        { ignore: ['^expo-notifications$', '^expo-device$', '^@sentry/react-native$'] },
+        {
+          ignore: [
+            '^expo-notifications$',
+            '^expo-device$',
+            '^@sentry/react-native$',
+          ],
+        },
       ],
     },
   },

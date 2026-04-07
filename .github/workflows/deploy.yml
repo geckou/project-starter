@@ -3,13 +3,13 @@ name: Deploy
 on:
   push:
     branches:
-      - production       # → production 環境
-      - 'release/**'     # → staging 環境
-      - 'hotfix/**'      # → staging 環境
-      - 'feat/**'        # → develop 環境
-      - 'fix/**'         # → develop 環境
-      - 'refactor/**'    # → develop 環境
-      - 'test/**'        # → develop 環境
+      - production # → production 環境
+      - 'release/**' # → staging 環境
+      - 'hotfix/**' # → staging 環境
+      - 'feat/**' # → develop 環境
+      - 'fix/**' # → develop 環境
+      - 'refactor/**' # → develop 環境
+      - 'test/**' # → develop 環境
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
