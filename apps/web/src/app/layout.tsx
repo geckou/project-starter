@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
 
-import { AuthProvider } from '@/components/auth/AuthProvider'
 import {
   GoogleTagManager,
   GoogleTagManagerNoscript,
 } from '@/components/GoogleTagManager'
+import { AuthProvider } from '@/components/auth/AuthProvider'
 import '@/styles/globals.css'
 
 export const metadata: Metadata = {

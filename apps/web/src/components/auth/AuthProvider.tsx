@@ -1,8 +1,9 @@
 'use client'
 
+import { useAuthStore } from '@geckou/shared/stores'
 import { onAuthStateChanged } from 'firebase/auth'
 import { useEffect } from 'react'
-import { useAuthStore } from '@geckou/shared/stores'
+
 import { auth } from '@/lib/firebase'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

@@ -1,4 +1,5 @@
-// @ts-nocheck -- @sentry/nextjs をインストール後にこの行を削除
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore -- @sentry/nextjs をインストール後にこの行と上の行を削除
 import * as Sentry from '@sentry/nextjs'
 
 export function initSentry() {
