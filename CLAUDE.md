@@ -150,10 +150,25 @@ btn, msg, noti
 
 ### React / Next.js
 
+- コンポーネントの export は `export default function Name()` で統一する（アロー関数や変数代入は使わない）
 - Server Component をデフォルトとし、必要な場合のみ `'use client'` を付ける
 - 同じ要素を繰り返し使う場合はコンポーネントに切り分ける
 - アイコンは `components/icons/` にコンポーネントとして作成する
 - 定数は `lib/constants/` にコンスタントケースで作成する
+
+```typescript
+// Good
+export default function UserProfile() {
+  return <div>...</div>
+}
+
+// Bad
+const UserProfile = () => { return <div>...</div> }
+export default UserProfile
+
+// Bad
+export default () => <div>...</div>
+```
 
 ### ESLint
 
