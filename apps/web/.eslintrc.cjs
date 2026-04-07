@@ -11,23 +11,7 @@ module.exports = {
     },
   },
   rules: {
-    'arrow-parens': ['error', 'as-needed'],
-    curly: ['error', 'multi-line'],
-    'comma-dangle': ['error', 'always-multiline'],
-    'key-spacing': [
-      'error',
-      {
-        align: 'colon',
-      },
-    ],
-    'no-multi-spaces': [
-      'error',
-      {
-        exceptions: { VariableDeclarator: true },
-      },
-    ],
-    'no-floating-decimal': 'off',
-    'space-before-function-paren': ['error', 'always'],
+    // フォーマット系ルールは Prettier に委譲（eslint-config-prettier で無効化済み）
     '@typescript-eslint/no-unused-vars': [
       'warn',
       {

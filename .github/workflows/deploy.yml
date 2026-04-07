@@ -56,7 +56,8 @@ jobs:
 
       - name: Deploy to Firebase
         run: |
+          npx firebase-tools experiments:enable webframeworks
           npx firebase-tools use ${{ steps.env.outputs.name }}
-          npx firebase-tools deploy --force
+          npx firebase-tools deploy --only hosting --force
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}

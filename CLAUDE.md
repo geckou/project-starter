@@ -92,7 +92,7 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 - 文字コードは UTF-8
 - シングルクォートを使う（Prettier で強制）
 - 末尾のセミコロンは省略する（Prettier で強制）
-- `key-spacing: align: 'colon'` のスタイルに従う
+- フォーマット系ルールは Prettier に委譲する（ESLint では設定しない）
 
 ### 空白行
 
@@ -379,6 +379,30 @@ yarn deploy:production
 ```
 
 CI/CD: `.github/workflows/deploy.yml` でブランチ push 時に自動デプロイ。
+
+#### GCP API の初回有効化
+
+新規 Firebase プロジェクトでは以下の GCP API がデフォルトで無効。初回デプロイ前に有効化が必要:
+
+```bash
+gcloud services enable cloudfunctions.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  run.googleapis.com \
+  eventarc.googleapis.com \
+  --project=your-project-id
+```
+
+| API | 用途 |
+|---|---|
+| Cloud Functions API | Cloud Functions のデプロイ |
+| Cloud Build API | Functions / Hosting のビルド |
+| Artifact Registry API | ビルド成果物の保存 |
+| Cloud Run API | Functions (v2) の実行基盤 |
+| Eventarc API | Functions (v2) のイベントトリガー |
+
+自動有効化される場合もあるが反映に時間がかかるため、事前に有効化しておくのが確実。
+[Google Cloud Console](https://console.cloud.google.com/apis/library) からも有効化可能。
 
 ### 状態管理（Zustand）
 

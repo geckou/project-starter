@@ -106,7 +106,32 @@ yarn setup
 - Node.js / yarn のバージョンチェック
 - `yarn install`（依存関係のインストール）
 
-### 3. 環境変数の設定
+### 3. GCP API の有効化（初回のみ）
+
+新規 Firebase プロジェクトでは以下の GCP API がデフォルトで無効になっている。
+初回デプロイ前に [Google Cloud Console](https://console.cloud.google.com/apis/library) で有効化する:
+
+```bash
+# gcloud CLI で一括有効化する場合
+gcloud services enable cloudfunctions.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  run.googleapis.com \
+  eventarc.googleapis.com \
+  --project=your-project-id
+```
+
+| API | 用途 |
+|---|---|
+| Cloud Functions API | Cloud Functions のデプロイ |
+| Cloud Build API | Functions / Hosting のビルド |
+| Artifact Registry API | ビルド成果物の保存 |
+| Cloud Run API | Functions (v2) の実行基盤 |
+| Eventarc API | Functions (v2) のイベントトリガー |
+
+> Cloud Build / Artifact Registry / Cloud Run / Eventarc は Functions デプロイ時に自動有効化される場合もあるが、反映に時間がかかるため事前に有効化しておくのが確実。
+
+### 4. 環境変数の設定
 
 `.env.local` を開き、Firebase の設定値を入力する。
 
@@ -128,7 +153,7 @@ NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789:web:abc123
 GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
 ```
 
-### 4. 開発
+### 5. 開発
 
 ```bash
 # Web のみ起動（最もよく使う）
