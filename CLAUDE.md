@@ -556,6 +556,20 @@ getTranslation(ja, 'common.loading') // → '読み込み中...'
 | Web              | `apps/web/src/lib/revenuecat.ts`           | Web 課金（`'use client'`） |
 | Functions        | `apps/functions/src/revenuecat-webhook.ts` | Webhook → Firestore 同期   |
 
+### Tailwind CSS / デザイントークン
+
+デザイントークン（色・フォント・角丸等）は `packages/shared/src/theme/index.ts` に集約し、Web・Mobile の両方の Tailwind 設定から参照している。
+
+| 項目 | Web | Mobile |
+|---|---|---|
+| Tailwind バージョン | v4 (`@tailwindcss/postcss`) | v3 (NativeWind v4 が v3 に依存) |
+| 設定ファイル | `apps/web/tailwind.config.ts` | `apps/mobile/tailwind.config.js` |
+| 共有テーマ | `@geckou/shared/theme` を import | `@geckou/shared/theme` を require |
+
+**バージョンが異なるのは意図的。** NativeWind v4 は Tailwind v4 に未対応のため v3 を使う。共有テーマを JS オブジェクトで定義することで、どちらの config 形式にも対応できている。
+
+新しいトークン（spacing、shadow 等）を追加する場合は `packages/shared/src/theme/index.ts` に追加すれば両方に反映される。
+
 ### コンポーネントの整理方針
 
 ```
