@@ -1,4 +1,7 @@
 // 参考実装: SSR での Firestore データ取得パターン
+// ビルド時の静的生成をスキップし、リクエスト時に SSR で実行する
+export const dynamic = 'force-dynamic'
+
 import { adminDb } from '@/lib/firebase-admin'
 
 export default async function DashboardPage() {

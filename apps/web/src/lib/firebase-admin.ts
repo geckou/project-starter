@@ -25,7 +25,12 @@ function getAdminApp() {
   return initializeApp()
 }
 
-const adminApp = getAdminApp()
+// 環境変数が未設定の場合（テンプレート初期状態）はビルドを通すためスキップ
+const isConfigured =
+  process.env.FIREBASE_SERVICE_ACCOUNT_KEY ||
+  process.env.GOOGLE_APPLICATION_CREDENTIALS
 
-export const adminAuth = getAuth(adminApp)
-export const adminDb = getFirestore(adminApp)
+const adminApp = isConfigured ? getAdminApp() : null
+
+export const adminAuth = adminApp ? getAuth(adminApp) : (null as never)
+export const adminDb = adminApp ? getFirestore(adminApp) : (null as never)

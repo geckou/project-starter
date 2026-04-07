@@ -11,6 +11,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setLoading = useAuthStore((state) => state.setLoading)
 
   useEffect(() => {
+    // Firebase 未設定の場合（テンプレート初期状態）はスキップ
+    if (!auth) {
+      setLoading(false)
+      return
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         setUser({

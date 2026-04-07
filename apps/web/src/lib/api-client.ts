@@ -28,7 +28,7 @@ export async function apiClient<T>(
     'Content-Type': 'application/json',
   }
 
-  if (authenticated) {
+  if (authenticated && auth) {
     const user = auth.currentUser
 
     if (user) {
