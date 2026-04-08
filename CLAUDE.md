@@ -142,6 +142,7 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 ### マージルール
 
+- **`production` へマージできるのは `release/*` と `hotfix/*` のみ**（それ以外のブランチからの PR・マージは禁止）
 - `production` への直接 push は禁止（PR 必須）
 - `release/*` → `production` は PR + レビュー必須
 - `hotfix/*` → `production` は PR 必須（緊急時はセルフマージ可）
