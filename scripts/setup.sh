@@ -92,6 +92,94 @@ fi
 
 echo ""
 
+# GitHub ブランチ保護ルール設定
+setup_branch_protection() {
+  # gh CLI の存在チェック
+  if ! command -v gh &> /dev/null; then
+    echo "[skip] GitHub CLI (gh) がインストールされていません"
+    echo "  → brew install gh でインストール後、手動でブランチ保護を設定してください"
+    echo "  → https://docs.github.com/ja/repositories/configuring-branches-and-merges-in-your-repository/managing-a-branch-rule/managing-a-branch-protection-rule"
+    return
+  fi
+
+  # gh の認証チェック
+  if ! gh auth status &> /dev/null; then
+    echo "[skip] GitHub CLI が未認証です"
+    echo "  → gh auth login で認証後、再度 yarn setup を実行してください"
+    return
+  fi
+
+  # リモートURLからリポジトリを検出
+  REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
+  if [ -z "$REMOTE_URL" ]; then
+    echo "[skip] git remote origin が設定されていません"
+    return
+  fi
+
+  # owner/repo を抽出
+  REPO=$(echo "$REMOTE_URL" | sed -E 's#.*github\.com[:/](.+/.+?)(\.git)?$#\1#')
+  if [ -z "$REPO" ]; then
+    echo "[skip] GitHub リポジトリを検出できませんでした"
+    return
+  fi
+
+  echo "リポジトリ: $REPO"
+
+  # production ブランチの存在チェック
+  if ! gh api "repos/$REPO/branches/production" &> /dev/null; then
+    echo "[skip] production ブランチがまだ存在しません"
+    echo "  → production ブランチを作成後、再度 yarn setup を実行してください"
+    return
+  fi
+
+  # 既存の保護ルールチェック
+  if gh api "repos/$REPO/branches/production/protection" &> /dev/null 2>&1; then
+    echo "[skip] production ブランチの保護ルールは設定済みです"
+    return
+  fi
+
+  read -p "production ブランチに保護ルールを設定しますか？ (Y/n): " PROTECT
+  if [ "$PROTECT" = "n" ] || [ "$PROTECT" = "N" ]; then
+    echo "[skip] ブランチ保護の設定をスキップしました"
+    return
+  fi
+
+  # ブランチ保護ルールを設定
+  gh api "repos/$REPO/branches/production/protection" \
+    --method PUT \
+    --input - <<'JSON' > /dev/null
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["ci"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1
+  },
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+JSON
+
+  if [ $? -eq 0 ]; then
+    echo "[done] production ブランチに保護ルールを設定しました"
+    echo "  - CI (ci ジョブ) パス必須 (strict: true)"
+    echo "  - PR 必須 + 1名以上のレビュー承認"
+    echo "  - 直接 push 禁止"
+    echo "  - force push 禁止"
+    echo "  - ブランチ削除禁止"
+  else
+    echo "[error] ブランチ保護の設定に失敗しました"
+    echo "  → リポジトリの Admin 権限があるか確認してください"
+  fi
+}
+
+setup_branch_protection
+
+echo ""
+
 # 依存インストール
 read -p "yarn install を実行しますか？ (Y/n): " INSTALL
 if [ "$INSTALL" != "n" ] && [ "$INSTALL" != "N" ]; then
