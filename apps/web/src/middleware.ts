@@ -1,22 +1,59 @@
-// 参考実装: 認証によるルート保護パターン
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+
+// Authorization ヘッダーの Base64 部分の最大長（過大な値による例外を防ぐ）
+const MAX_BASIC_AUTH_HEADER_LENGTH = 1024
+
+// Basic 認証チェック（BASIC_AUTH_CREDENTIALS が設定されている環境のみ有効）
+function checkBasicAuth(request: NextRequest): NextResponse | null {
+  const credentials = process.env.BASIC_AUTH_CREDENTIALS
+
+  if (!credentials) return null
+
+  const authHeader = request.headers.get('authorization')
+
+  if (authHeader) {
+    const [scheme, encoded] = authHeader.split(' ')
+
+    if (
+      scheme === 'Basic' &&
+      encoded &&
+      encoded.length <= MAX_BASIC_AUTH_HEADER_LENGTH
+    ) {
+      try {
+        const decoded = atob(encoded)
+        const [user, ...passwordParts] = decoded.split(':')
+        const password = passwordParts.join(':')
+
+        if (`${user}:${password}` === credentials) return null
+      } catch {
+        // 不正な Base64 は未認証扱い
+      }
+    }
+  }
+
+  return new NextResponse('Unauthorized', {
+    status: 401,
+    headers: { 'WWW-Authenticate': 'Basic realm="Restricted"' },
+  })
+}
 
 // 認証が必要なパス
 const PROTECTED_PATHS = ['/dashboard']
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  // Basic 認証（dev/stg 環境のみ）
+  const basicAuthResponse = checkBasicAuth(request)
 
-  // 保護されたパスかチェック
+  if (basicAuthResponse) return basicAuthResponse
+
+  // ルート保護
+  const { pathname } = request.nextUrl
   const isProtected = PROTECTED_PATHS.some((path) => pathname.startsWith(path))
 
   if (!isProtected) return NextResponse.next()
 
   // Cookie からセッショントークンを取得
-  // ※ Firebase Auth のトークンは通常クライアントで管理するため、
-  //   実プロジェクトではセッション Cookie を使うか、
-  //   クライアントコンポーネントで onAuthStateChanged を使う
   const session = request.cookies.get('session')
 
   if (!session) {
@@ -29,5 +66,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }

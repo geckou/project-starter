@@ -41,7 +41,20 @@
       "Bash(/usr/local/bin/gh repo:*)",
       "Read(//Users/shogo/Desktop/Work/geckou/**)",
       "Bash(git -C /Users/shogo/Desktop/Work/geckou/corp-site-v2 branch -a)",
-      "Bash(find . -type f \\\\\\(-name .eslintrc.cjs -o -name eslint.config.mjs -o -name .prettierignore -o -name next.config.* -o -name deploy.yml -o -name package.json -o -name CLAUDE.md \\\\\\))"
+      "Bash(find . -type f \\\\\\(-name .eslintrc.cjs -o -name eslint.config.mjs -o -name .prettierignore -o -name next.config.* -o -name deploy.yml -o -name package.json -o -name CLAUDE.md \\\\\\))",
+      "Bash(yarn lint:*)",
+      "Read(//Users/shogo/Desktop/Work/geckou/project-starter/$HOME/.nvm/versions/node/*/bin/**)",
+      "Read(//usr/local/lib/node_modules/yarn/bin/**)",
+      "Bash(export PATH=\"/Users/shogo/.nvm/versions/node/v20.19.0/bin:$PATH\")",
+      "Bash(yarn prettier:*)",
+      "Bash(yarn format:check)",
+      "Bash(yarn build:*)",
+      "Bash(yarn format:check -- .github/workflows/deploy.yml)",
+      "Bash(grep -r '\"vite\"' package.json apps/*/package.json packages/*/package.json)",
+      "Bash(yarn why:*)",
+      "Bash(yarn upgrade:*)",
+      "WebFetch(domain:zenn.dev)",
+      "Bash(git -C /Users/shogo/Desktop/Work/geckou/project-starter config core.hooksPath)"
     ]
   }
 }
