@@ -14,13 +14,10 @@ function checkBasicAuth(request: NextRequest): NextResponse | null {
   const authHeader = request.headers.get('authorization')
 
   if (authHeader) {
-    const [scheme, encoded] = authHeader.split(' ')
+    const basicAuthMatch = authHeader.trim().match(/^Basic\s+(\S+)$/i)
+    const encoded = basicAuthMatch?.[1]
 
-    if (
-      scheme === 'Basic' &&
-      encoded &&
-      encoded.length <= MAX_BASIC_AUTH_HEADER_LENGTH
-    ) {
+    if (encoded && encoded.length <= MAX_BASIC_AUTH_HEADER_LENGTH) {
       try {
         const decoded = atob(encoded)
         const [user, ...passwordParts] = decoded.split(':')
