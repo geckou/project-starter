@@ -185,6 +185,27 @@ yarn env:<環境名>        # 環境切り替え（develop / staging / productio
 yarn deploy:<環境名>     # デプロイ（develop / staging / production）
 ```
 
+## 進化的メモリシステム
+
+フィードバックの記録・昇格は `memory/evolution.md` のプロトコルに従うこと。
+
+### 必須ルール
+
+- フィードバックを記録する前に、必ず `memory/short-term/` と `memory/long-term/` の既存ファイルを確認する
+- 同じ趣旨のフィードバックが既にあれば、新規ファイルを作成せず `pain_count` を +1 する
+- `pain_count >= 3` に達したフィードバックは、エッセンスを 1-2 行に蒸留して CLAUDE.md のルールに昇格させる
+- 昇格時はユーザーに通知する
+
+### メモリ階層
+
+| 階層 | 場所 | 昇格条件 |
+|---|---|---|
+| daily | `memory/daily/` | - |
+| short-term | `memory/short-term/` | pain_count >= 2 → long-term |
+| long-term | `memory/long-term/` | pain_count >= 3 → CLAUDE.md |
+
+詳細は `memory/evolution.md` を参照。
+
 ## 詳細リファレンス
 
 必要に応じて以下を参照:

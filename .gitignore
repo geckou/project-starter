@@ -48,6 +48,7 @@ firebase-emulator-data/
 
 # claude
 .claude/settings.json
+.claude/settings.local.json
 
 # functions build
 apps/functions/dist/
