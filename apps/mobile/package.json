@@ -7,8 +7,8 @@
     "dev": "expo start",
     "build:ios": "eas build --platform ios",
     "build:android": "eas build --platform android",
-    "lint": "expo lint",
-    "lint:fix": "expo lint --fix",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -29,7 +29,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.0",
     "@types/react": "~18.3.0",
-    "eslint": "^8.57.0",
+    "eslint": "^9.0.0",
     "eslint-config-expo": "~8.0.0",
     "eslint-config-prettier": "^9.0.0",
     "tailwindcss": "^3.4.0",

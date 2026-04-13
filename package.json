@@ -46,6 +46,7 @@
     "turbo": "^2.0.0"
   },
   "lint-staged": {
-    "**/*": "prettier --write --ignore-unknown"
+    "**/*": "prettier --write --ignore-unknown",
+    "*.{ts,tsx}": "eslint --max-warnings 0"
   }
 }
