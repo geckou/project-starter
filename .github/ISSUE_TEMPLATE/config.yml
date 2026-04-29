@@ -1,5 +1,1 @@
 blank_issues_enabled: false
-contact_links:
-  - name: プロジェクト固有の問題
-    url: https://github.com/geckou/project-starter#readme
-    about: このテンプレートから作ったプロジェクト側の不具合は、このリポジトリではなく自分のプロジェクトの Issue に登録してください。テンプレート自体（スキャフォールド・CI・共通設定・ドキュメント等）に起因する問題のみここで受け付けます。
