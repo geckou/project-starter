@@ -32,7 +32,7 @@ body:
         - CI / GitHub Actions
         - Husky / lint-staged
         - Turborepo / yarn workspaces
-        - スキャフォールド (.claude/ skills)
+        - スキャフォールド (.claude/skills)
         - ドキュメント (README / CLAUDE.md)
         - その他
     validations:
