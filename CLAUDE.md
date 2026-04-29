@@ -185,6 +185,37 @@ yarn env:<環境名>        # 環境切り替え（develop / staging / productio
 yarn deploy:<環境名>     # デプロイ（develop / staging / production）
 ```
 
+## テンプレート起因の問題を親リポジトリに報告
+
+このテンプレート（[`geckou/project-starter`](https://github.com/geckou/project-starter)）から作成した派生プロジェクトでは、作業中につまづいた問題が **派生プロジェクト固有のコードではなくテンプレート側に原因がある** と判断した場合、親リポジトリに Issue を立てて還元する。
+派生プロジェクト固有の不具合はそれぞれのプロジェクト内で扱えばよく、別途 Issue 化する必要はない。
+
+### 対象になる問題（例）
+
+- スキャフォールド（`.claude/skills/` のスラッシュコマンド）の生成結果がそのままでは動かない
+- ルートの設定ファイル（`turbo.json`, `firebase.json`, `firestore.rules`, `.husky/`, ESLint/Prettier 設定等）に不備がある
+- CI ワークフロー（`.github/workflows/`）が壊れている / 不足している
+- `README.md` / `CLAUDE.md` / `.claude/docs/` の記述が誤っている・古い
+- `packages/shared` の共通ユーティリティ・型定義の問題
+
+### 対象外
+
+- 派生プロジェクトのドメインロジック・画面・API の不具合
+- 派生プロジェクトで追加した依存・設定変更による問題
+
+### 立て方
+
+判断したらユーザーに「親リポジトリに Issue を立てますか？」と確認してから、以下のように `gh` で作成する:
+
+```bash
+gh issue create \
+  -R geckou/project-starter \
+  --template bug_report.yml          # 改善提案なら improvement.yml
+```
+
+`bug_report.yml` には「テンプレートのバージョン / コミット」欄があるので、`git log` で派生元のコミットを把握して記入する。
+重複を避けるため、作成前に必ず `gh issue list -R geckou/project-starter --search "<キーワード>"` で既存 Issue を確認する。
+
 ## 進化的メモリシステム
 
 フィードバックの記録・昇格は `memory/evolution.md` のプロトコルに従うこと。
