@@ -25,11 +25,14 @@ const { app, auth, db } = firebase
 if (
   typeof window !== 'undefined' &&
   process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true' &&
-  auth && db
+  auth &&
+  db
 ) {
   const w = window as { __firebaseEmulatorConnected?: boolean }
   if (!w.__firebaseEmulatorConnected) {
-    connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true })
+    connectAuthEmulator(auth, 'http://localhost:9099', {
+      disableWarnings: true,
+    })
     connectFirestoreEmulator(db, 'localhost', 8080)
     w.__firebaseEmulatorConnected = true
   }
