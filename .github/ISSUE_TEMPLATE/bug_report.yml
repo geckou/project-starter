@@ -1,0 +1,105 @@
+name: バグ報告（テンプレート起因）
+description: このテンプレートから作ったプロジェクトでつまづいた、プロジェクト固有でない問題を報告する
+title: '[Bug] '
+labels: ['bug', 'from-downstream']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        テンプレート由来の問題（スキャフォールド・CI・共通設定・スクリプト・ドキュメント・Husky・Turborepo 設定など）を報告するためのテンプレートです。
+        プロジェクト固有のコードに起因する問題は、自分のプロジェクトの Issue に登録してください。
+
+  - type: checkboxes
+    id: not-project-specific
+    attributes:
+      label: 確認事項
+      options:
+        - label: この問題は派生プロジェクト固有のコードではなく、テンプレート側に原因があると考えられる
+          required: true
+        - label: 既存の Issue に同じ内容がないことを確認した
+          required: true
+
+  - type: input
+    id: template-version
+    attributes:
+      label: テンプレートのバージョン / コミット
+      description: 派生元のコミットハッシュ・タグ・ブランチなど
+      placeholder: 例) production @ a1b2c3d
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 影響範囲
+      multiple: true
+      options:
+        - apps/web (Next.js)
+        - apps/mobile (Expo)
+        - apps/functions (Cloud Functions)
+        - packages/shared
+        - Firebase 設定 (firestore.rules / firebase.json 等)
+        - CI / GitHub Actions
+        - Husky / lint-staged
+        - Turborepo / yarn workspaces
+        - スキャフォールド (.claude/skills)
+        - ドキュメント (README / CLAUDE.md)
+        - その他
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 問題の概要
+      description: 何が起きているかを簡潔に
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 再現手順
+      description: 可能なら最小再現手順を書く
+      placeholder: |
+        1. `npx degit geckou/project-starter my-app`
+        2. `cd my-app && yarn setup`
+        3. `yarn dev:web`
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する挙動
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の挙動 / エラーログ
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境
+      value: |
+        - OS:
+        - Node:
+        - Yarn:
+        - 該当する場合: Xcode / Android Studio / Firebase CLI のバージョン
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 補足
+      description: スクリーンショット・関連リンク・回避策など
+    validations:
+      required: false

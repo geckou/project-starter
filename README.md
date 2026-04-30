@@ -449,12 +449,11 @@ git checkout -b hotfix/1.0.1 production
 ## Basic 認証（develop / staging のみ）
 
 `apps/web/src/middleware.ts` で Basic 認証を実装している。
-`BASIC_AUTH_USER` と `BASIC_AUTH_PASSWORD` の両方が設定されている環境でのみ有効になる。
+`BASIC_AUTH_CREDENTIALS` が設定されている環境でのみ有効になる。
 
 ```bash
 # .env.develop / .env.staging
-BASIC_AUTH_USER=admin
-BASIC_AUTH_PASSWORD=secret
+BASIC_AUTH_CREDENTIALS=admin:secret
 
 # .env.production は未設定のまま → 自動的に無効
 ```

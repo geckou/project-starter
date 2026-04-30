@@ -29,7 +29,8 @@
     "firebase:deploy:hosting": "firebase deploy --only hosting",
     "deploy:develop": "bash scripts/deploy.sh develop",
     "deploy:staging": "bash scripts/deploy.sh staging",
-    "deploy:production": "bash scripts/deploy.sh production"
+    "deploy:production": "bash scripts/deploy.sh production",
+    "prepare": "husky"
   },
   "resolutions": {
     "tar": ">=7.5.11",
@@ -38,6 +39,8 @@
     "vite": "~7.3.2"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.0.0",
     "prettier-plugin-tailwindcss": "^0.6.0",
     "turbo": "^2.0.0"

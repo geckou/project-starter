@@ -1,0 +1,69 @@
+name: 改善提案（テンプレートへのフィードバック）
+description: 派生プロジェクトでの作業中に感じた、テンプレート側で改善できそうな点を提案する
+title: '[Improvement] '
+labels: ['enhancement', 'from-downstream']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        派生プロジェクトで何度も書き直した・つまづいた箇所など、テンプレートに取り込めば全プロジェクトの体験が良くなりそうな提案を歓迎します。
+
+  - type: checkboxes
+    id: not-project-specific
+    attributes:
+      label: 確認事項
+      options:
+        - label: この改善は特定プロジェクトでなく、テンプレート全体に有益である
+          required: true
+        - label: 既存の Issue に同じ内容がないことを確認した
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 対象領域
+      multiple: true
+      options:
+        - apps/web (Next.js)
+        - apps/mobile (Expo)
+        - apps/functions (Cloud Functions)
+        - packages/shared
+        - Firebase 設定
+        - CI / GitHub Actions
+        - Husky / lint-staged
+        - Turborepo / yarn workspaces
+        - スキャフォールド (.claude/skills)
+        - ドキュメント (README / CLAUDE.md)
+        - その他
+    validations:
+      required: true
+
+  - type: textarea
+    id: pain
+    attributes:
+      label: 派生プロジェクトで困った内容
+      description: どのような状況で、何回くらい同じ作業を繰り返したか
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案する変更
+      description: テンプレート側でどう変えたいか（コード例・設定例があると助かる）
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 代替案 / 検討した選択肢
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: 補足
+    validations:
+      required: false
