@@ -1,6 +1,8 @@
 'use client'
 
 import { initFirebase } from '@geckou/shared'
+import { connectAuthEmulator } from 'firebase/auth'
+import { connectFirestoreEmulator } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? '',
@@ -19,5 +21,18 @@ const firebase = isConfigured
   : { app: null, auth: null, db: null }
 
 const { app, auth, db } = firebase
+
+if (
+  typeof window !== 'undefined' &&
+  process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true' &&
+  auth && db
+) {
+  const w = window as { __firebaseEmulatorConnected?: boolean }
+  if (!w.__firebaseEmulatorConnected) {
+    connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true })
+    connectFirestoreEmulator(db, 'localhost', 8080)
+    w.__firebaseEmulatorConnected = true
+  }
+}
 
 export { app, auth, db }

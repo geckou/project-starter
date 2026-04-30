@@ -16,6 +16,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // 1プロジェクト相乗り時は環境ごとに明示的に match を書く
+    // ワイルドカード /{prefix}users はセグメント内マッチ不可
+    // match /stg_users/{userId} { ... }
+    // match /dev_users/{userId} { ... }
+
     // 例: 公開コレクション（認証済みユーザーのみ読み取り可）
     // match /posts/{postId} {
     //   allow read: if request.auth != null;
