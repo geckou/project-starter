@@ -14,4 +14,9 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, 'node_modules'),
 ]
 
+// package.json の "exports" フィールドを Metro に honor させる。
+// これにより @geckou/shared の conditional exports（types→src / default→dist）
+// が tsconfig の paths を介さず一貫した解決経路で扱われる。
+config.resolver.unstable_enablePackageExports = true
+
 module.exports = withNativeWind(config, { input: './src/global.css' })
