@@ -186,6 +186,11 @@ if [ "$INSTALL" != "n" ] && [ "$INSTALL" != "N" ]; then
   yarn install
   echo ""
   echo "[done] 依存関係をインストールしました"
+
+  # packages/shared の dist を生成（tailwind.config.js などの Node ランタイム
+  # から `require('@geckou/shared/theme')` を解決可能にするため）
+  yarn workspace @geckou/shared build
+  echo "[done] packages/shared をビルドしました"
 fi
 
 echo ""
