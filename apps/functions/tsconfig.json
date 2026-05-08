@@ -5,16 +5,16 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "outDir": "./dist",
-    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "declaration": true,
+    "types": ["node"],
     "paths": {
-      "@geckou/shared": ["../../packages/shared/dist"],
-      "@geckou/shared/*": ["../../packages/shared/dist/*"]
+      "@geckou/shared": ["../../packages/shared/src"],
+      "@geckou/shared/*": ["../../packages/shared/src/*"]
     }
   },
   "include": ["src/**/*.ts"],

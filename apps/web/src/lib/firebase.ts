@@ -1,6 +1,6 @@
 'use client'
 
-import { initFirebase } from '@geckou/shared'
+import { initFirebase } from '@geckou/shared/firebase'
 import { connectAuthEmulator } from 'firebase/auth'
 import { connectFirestoreEmulator } from 'firebase/firestore'
 

@@ -1,4 +1,4 @@
-import { initFirebase } from '@geckou/shared'
+import { initFirebase } from '@geckou/shared/firebase'
 import Constants from 'expo-constants'
 
 const extra = Constants.expoConfig?.extra ?? {}
