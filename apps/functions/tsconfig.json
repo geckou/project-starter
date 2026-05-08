@@ -2,8 +2,8 @@
   "compilerOptions": {
     "target": "ES2021",
     "lib": ["ES2021"],
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
+    "module": "commonjs",
+    "moduleResolution": "node",
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
@@ -13,7 +13,8 @@
     "isolatedModules": true,
     "declaration": true,
     "paths": {
-      "@geckou/shared": ["../../packages/shared/src"]
+      "@geckou/shared": ["../../packages/shared/dist"],
+      "@geckou/shared/*": ["../../packages/shared/dist/*"]
     }
   },
   "include": ["src/**/*.ts"],

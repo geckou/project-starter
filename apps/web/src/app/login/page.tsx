@@ -2,11 +2,13 @@
 'use client'
 
 import { getAuth, signInWithEmailAndPassword } from 'firebase/auth'
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense, useState } from 'react'
 
-export default function LoginPage() {
+function LoginInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get('redirect') ?? '/'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -18,7 +20,7 @@ export default function LoginPage() {
     try {
       const auth = getAuth()
       await signInWithEmailAndPassword(auth, email, password)
-      router.push('/')
+      router.push(redirectTo)
     } catch {
       setError('メールアドレスまたはパスワードが正しくありません')
     }
@@ -55,5 +57,19 @@ export default function LoginPage() {
         </button>
       </form>
     </main>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          読み込み中...
+        </div>
+      }
+    >
+      <LoginInner />
+    </Suspense>
   )
 }

@@ -6,7 +6,8 @@
     "moduleResolution": "bundler",
     "paths": {
       "@/*": ["./src/*"],
-      "@geckou/shared": ["../../packages/shared/src"]
+      "@geckou/shared": ["../../packages/shared/dist"],
+      "@geckou/shared/*": ["../../packages/shared/dist/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]

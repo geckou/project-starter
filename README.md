@@ -446,6 +446,54 @@ git checkout -b hotfix/1.0.1 production
 
 ---
 
+## Basic 認証（develop / staging のみ）
+
+`apps/web/src/middleware.ts` で Basic 認証を実装している。
+`BASIC_AUTH_CREDENTIALS` が設定されている環境でのみ有効になる。
+
+```bash
+# .env.develop / .env.staging
+BASIC_AUTH_CREDENTIALS=admin:secret
+
+# .env.production は未設定のまま → 自動的に無効
+```
+
+production では env を設定しなければ middleware が即座に通過するので、
+分岐ロジックを書く必要はない。
+
+---
+
+## トラブルシューティング
+
+### Firebase Emulator が起動しない（Java がない）
+
+Firestore Emulator は Java Runtime が必要。macOS にはデフォルトで入っていない。
+
+```bash
+brew install openjdk
+echo 'export PATH="/usr/local/opt/openjdk/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+java -version  # 確認
+```
+
+### GCP 請求先アカウントのプロジェクト数制限
+
+Blaze プランに上げようとして「割り当て上限に達しました」と出る場合:
+
+1. 不要なプロジェクトの請求先リンクを外す（最速）
+2. [割り当て引き上げ申請](https://console.cloud.google.com/billing)をする（数日かかる）
+3. 新しい請求先アカウントを作る
+
+デフォルトは請求先 1 つにつき 5 プロジェクトまで。
+
+### iOS バンドル ID は後から変更不可
+
+Firebase Console で iOS アプリ登録時の**バンドル ID は変更できない**。
+最初から `com.geckou.<プロジェクト名>` 形式で登録すること。
+間違えた場合は iOS アプリを削除→再登録が必要。
+
+---
+
 ## プロジェクトに合わせたカスタマイズ
 
 ### ディレクトリ名・パッケージ名の変更

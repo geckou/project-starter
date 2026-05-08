@@ -20,7 +20,8 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@geckou/shared": ["../../packages/shared/src"]
+      "@geckou/shared": ["../../packages/shared/dist"],
+      "@geckou/shared/*": ["../../packages/shared/dist/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", "next-env.d.ts", ".next/types/**/*.ts"],
