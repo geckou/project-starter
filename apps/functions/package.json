@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --outfile=dist/index.js --external:firebase-admin --external:firebase-functions --external:express --external:cors",
-    "dev": "tsc --watch",
+    "dev": "tsc --noEmit --watch",
     "type-check": "tsc --noEmit",
     "lint": "echo 'no lint configured'",
     "test": "vitest run",
