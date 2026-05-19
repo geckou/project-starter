@@ -54,9 +54,9 @@ node -e "
 echo "[deploy] Firebase にデプロイ中..."
 
 if [ -n "$ONLY_FLAG" ]; then
-  firebase deploy ${ONLY_FLAG}
+  firebase deploy ${ONLY_FLAG} --force
 else
-  firebase deploy
+  firebase deploy --force
 fi
 
 echo ""
