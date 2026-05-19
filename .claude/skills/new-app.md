@@ -56,3 +56,34 @@ cp -r apps/web apps/admin
   ```json
   "dev:<app-name>": "turbo dev --filter=@geckou/<app-name>"
   ```
+
+## Web アプリ（Next.js）を複数置く場合
+
+`next` / `react` / `react-dom` / `@types/react` / `@types/react-dom` はルートの
+`devDependencies` に集約済み。全 web アプリが同一バージョン範囲を宣言するため、
+yarn がルートの単一コピーに dedupe する。これにより:
+
+- `node_modules/.bin/next` がルートの単一 next を指す
+- firebase-tools の framework デプロイが別 web アプリの next を誤用しない
+- React ランタイムと `react-dom` が同一コピーで解決される
+
+新しい web アプリを追加しても、コピー元（`apps/web`）と同じ react エコシステムの
+バージョン範囲を保てば追加設定は不要。範囲を変えると重複コピーが生じるため変えない。
+
+mobile（React Native / react@18 系）はルートの `package.json` の
+`workspaces.nohoist`（`@geckou/mobile-*/**`）で隔離済み。web の react@19 系と干渉しない。
+
+### Firebase Hosting に追加 web アプリを載せる場合
+
+`firebase.json` の `hosting` を配列にし、各アプリに `target` を割り当てる:
+
+```jsonc
+"hosting": [
+  { "target": "web",   "source": "apps/web",   "frameworksBackend": { "region": "asia-northeast1" } },
+  { "target": "admin", "source": "apps/admin", "frameworksBackend": { "region": "asia-northeast1" } }
+]
+```
+
+`.firebaserc` の `targets` で `target` と Hosting サイト ID を紐付ける。
+`scripts/deploy.sh` は framework Hosting ターゲットを 1 つずつ `firebase deploy` する
+（複数同梱は Next アダプタがハングするため）。`target` を設定すれば自動で個別デプロイされる。

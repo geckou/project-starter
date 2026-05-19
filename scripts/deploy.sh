@@ -4,10 +4,10 @@ set -e
 # 使い方: bash scripts/deploy.sh [develop|staging|production] [--only functions|hosting]
 
 ENV=${1:-develop}
-ONLY_FLAG=""
+DEPLOY_ONLY=""
 
 if [ "$2" = "--only" ] && [ -n "$3" ]; then
-  ONLY_FLAG="--only $3"
+  DEPLOY_ONLY="$3"
 fi
 
 echo "=== デプロイ: ${ENV} 環境 ==="
@@ -53,11 +53,42 @@ node -e "
 
 echo "[deploy] Firebase にデプロイ中..."
 
-if [ -n "$ONLY_FLAG" ]; then
-  firebase deploy ${ONLY_FLAG} --force
-else
-  firebase deploy --force
-fi
+# framework hosting ターゲットを 1 つずつデプロイする。
+# 複数の framework-backed Hosting ターゲットを 1 回の firebase deploy に
+# 同梱すると Next アダプタが next build で停止（ハング）するため。
+deploy_hosting_per_target() {
+  local targets
+  targets=$(node -e "
+    const h = require('./firebase.json').hosting;
+    if (!h) process.exit(0);
+    const arr = Array.isArray(h) ? h : [h];
+    process.stdout.write(arr.map((x) => x.target || x.site || '').filter(Boolean).join(' '));
+  ")
+
+  if [ -z "$targets" ]; then
+    # hosting が単一・target/site 未設定（テンプレート既定）
+    firebase deploy --only hosting --force
+  else
+    for t in $targets; do
+      echo "[deploy] hosting:${t}..."
+      firebase deploy --only "hosting:${t}" --force
+    done
+  fi
+}
+
+case "$DEPLOY_ONLY" in
+  hosting)
+    deploy_hosting_per_target
+    ;;
+  "")
+    # 全体デプロイ: hosting 以外を先に、hosting はターゲットごとに
+    firebase deploy --only functions,firestore --force
+    deploy_hosting_per_target
+    ;;
+  *)
+    firebase deploy --only "$DEPLOY_ONLY" --force
+    ;;
+esac
 
 echo ""
 echo "=== デプロイ完了: ${ENV} ==="

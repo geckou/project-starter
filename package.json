@@ -2,10 +2,16 @@
   "name": "geckou-monorepo",
   "private": true,
   "packageManager": "yarn@1.22.22",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ],
+    "nohoist": [
+      "@geckou/mobile/**",
+      "@geckou/mobile-*/**"
+    ]
+  },
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "dev": "turbo dev",
@@ -39,10 +45,15 @@
     "vite": "~7.3.2"
   },
   "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "next": "^15.0.0",
     "prettier": "^3.0.0",
     "prettier-plugin-tailwindcss": "^0.6.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "turbo": "^2.0.0"
   }
 }

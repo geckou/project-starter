@@ -43,5 +43,9 @@ apps/
 3. `yarn install` を実行
 4. `yarn dev --filter=@geckou/<app-name>` で起動できるようになる
 
-ルートの `package.json` に `"workspaces": ["apps/*"]` と定義されているため、
+ルートの `package.json` の `workspaces.packages` に `apps/*` が定義されているため、
 `apps/` 配下に置くだけで Turborepo が自動的に認識する。設定の追加は不要。
+
+web アプリ（Next.js）を複数置く場合は `next` / `react` / `react-dom` をルートの
+`devDependencies` に集約済みなので、各 web アプリは同じバージョン範囲を保つこと。
+詳細は `/new-app` スキルを参照。
