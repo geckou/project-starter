@@ -14,11 +14,13 @@ const NO_STORE_CACHE_CONTROL = 'private, no-store'
 // - disabled:     BASIC_AUTH_CREDENTIALS 未設定（認証無効）
 type BasicAuthResult = 'allow' | 'unauthorized' | 'disabled'
 
-// Basic 認証を評価する純粋関数（BASIC_AUTH_CREDENTIALS が設定されている場合のみ有効）
-// production では環境変数を設定しないことで無効化する
-function evaluateBasicAuth(request: NextRequest): BasicAuthResult {
-  const credentials = process.env.BASIC_AUTH_CREDENTIALS
-
+// Basic 認証を評価する純粋関数
+// credentials が未設定（undefined / 空文字）なら認証無効。
+// production では BASIC_AUTH_CREDENTIALS を設定しないことで無効化する
+function evaluateBasicAuth(
+  request: NextRequest,
+  credentials: string | undefined
+): BasicAuthResult {
   if (!credentials) return 'disabled'
 
   const authHeader = request.headers.get('authorization')
@@ -48,7 +50,10 @@ const PROTECTED_PATHS = ['/dashboard']
 
 export function middleware(request: NextRequest) {
   // Basic 認証（BASIC_AUTH_CREDENTIALS が設定されている環境のみ）
-  const basicAuth = evaluateBasicAuth(request)
+  const basicAuth = evaluateBasicAuth(
+    request,
+    process.env.BASIC_AUTH_CREDENTIALS
+  )
 
   if (basicAuth === 'unauthorized') {
     return new NextResponse('Unauthorized', {
