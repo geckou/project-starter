@@ -142,6 +142,10 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 ### マージルール
 
+> **このリポジトリ（`geckou/project-starter` 本体）は以下のマージルールに従わない。**
+> 本リポジトリはテンプレートそのものであり、リリースフローを持たない。テンプレート自身の修正は `fix/*` 等から直接 `production` へ PR・マージしてよい。
+> 以下のルールは、このテンプレートから scaffold した**派生プロジェクト**に適用する。
+
 - **`production` へマージできるのは `release/*` と `hotfix/*` のみ**（それ以外のブランチからの PR・マージは禁止）
 - `production` への直接 push は禁止（PR 必須）
 - `release/*` → `production` は PR + レビュー必須

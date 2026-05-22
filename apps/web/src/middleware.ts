@@ -4,12 +4,22 @@ import type { NextRequest } from 'next/server'
 // Authorization ヘッダーの Base64 部分の最大長（過大な値による例外を防ぐ）
 const MAX_BASIC_AUTH_HEADER_LENGTH = 1024
 
-// Basic 認証チェック（BASIC_AUTH_CREDENTIALS が設定されている場合のみ有効）
+// 共有 CDN に認証済み応答をキャッシュさせないためのヘッダー値
+// （Firebase Hosting の framework-backed CDN による Basic 認証貫通を防ぐ）
+const NO_STORE_CACHE_CONTROL = 'private, no-store'
+
+// Basic 認証の評価結果
+// - allow:        認証成功、または認証情報が一致
+// - unauthorized: 認証失敗（401 を返す）
+// - disabled:     BASIC_AUTH_CREDENTIALS 未設定（認証無効）
+type BasicAuthResult = 'allow' | 'unauthorized' | 'disabled'
+
+// Basic 認証を評価する純粋関数（BASIC_AUTH_CREDENTIALS が設定されている場合のみ有効）
 // production では環境変数を設定しないことで無効化する
-function checkBasicAuth(request: NextRequest): NextResponse | null {
+function evaluateBasicAuth(request: NextRequest): BasicAuthResult {
   const credentials = process.env.BASIC_AUTH_CREDENTIALS
 
-  if (!credentials) return null
+  if (!credentials) return 'disabled'
 
   const authHeader = request.headers.get('authorization')
 
@@ -23,17 +33,14 @@ function checkBasicAuth(request: NextRequest): NextResponse | null {
         const [user, ...passwordParts] = decoded.split(':')
         const password = passwordParts.join(':')
 
-        if (`${user}:${password}` === credentials) return null
+        if (`${user}:${password}` === credentials) return 'allow'
       } catch {
         // 不正な Base64 は未認証扱い
       }
     }
   }
 
-  return new NextResponse('Unauthorized', {
-    status: 401,
-    headers: { 'WWW-Authenticate': 'Basic realm="Restricted"' },
-  })
+  return 'unauthorized'
 }
 
 // 認証が必要なパス
@@ -41,15 +48,36 @@ const PROTECTED_PATHS = ['/dashboard']
 
 export function middleware(request: NextRequest) {
   // Basic 認証（BASIC_AUTH_CREDENTIALS が設定されている環境のみ）
-  const basicAuthResponse = checkBasicAuth(request)
+  const basicAuth = evaluateBasicAuth(request)
 
-  if (basicAuthResponse) return basicAuthResponse
+  if (basicAuth === 'unauthorized') {
+    return new NextResponse('Unauthorized', {
+      status: 401,
+      headers: {
+        'WWW-Authenticate': 'Basic realm="Restricted"',
+        // 401 を共有 CDN にキャッシュさせない
+        'Cache-Control': NO_STORE_CACHE_CONTROL,
+      },
+    })
+  }
+
+  // Basic 認証が有効な環境では、認証済み応答を共有 CDN にキャッシュさせない
+  // （キャッシュ済み 200 が未認証アクセスへ配信され Basic 認証が貫通するのを防ぐ）
+  const authEnabled = basicAuth !== 'disabled'
+
+  const withNoStore = (response: NextResponse) => {
+    if (authEnabled) {
+      response.headers.set('Cache-Control', NO_STORE_CACHE_CONTROL)
+    }
+
+    return response
+  }
 
   // ルート保護
   const { pathname } = request.nextUrl
   const isProtected = PROTECTED_PATHS.some((path) => pathname.startsWith(path))
 
-  if (!isProtected) return NextResponse.next()
+  if (!isProtected) return withNoStore(NextResponse.next())
 
   // Cookie からセッショントークンを取得
   const session = request.cookies.get('session')
@@ -57,10 +85,10 @@ export function middleware(request: NextRequest) {
   if (!session) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('redirect', pathname)
-    return NextResponse.redirect(loginUrl)
+    return withNoStore(NextResponse.redirect(loginUrl))
   }
 
-  return NextResponse.next()
+  return withNoStore(NextResponse.next())
 }
 
 export const config = {
