@@ -7,6 +7,7 @@ ENV=${1:-develop}
 
 if [ ! -f ".env.${ENV}" ]; then
   echo "[error] .env.${ENV} が見つかりません"
+  echo "  作成: cp .env.example .env.${ENV} で作成し、値を入力してください"
   echo "  使い方: bash scripts/use-env.sh [develop|staging|production]"
   exit 1
 fi

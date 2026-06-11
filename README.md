@@ -153,6 +153,54 @@ NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789:web:abc123
 GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
 ```
 
+#### 環境別 env ファイルの作成（develop / staging / production）
+
+`yarn env:<環境名>` / `yarn deploy:<環境名>` は環境別の env ファイルを前提にする。
+ファイルが無いと [`scripts/use-env.sh`](scripts/use-env.sh) が `exit 1` で止まり、型チェック・デプロイに到達しない。
+
+`.env.example` を各環境用にコピーして作成する（冒頭コメントに手順あり）:
+
+```bash
+cp .env.example .env.develop
+cp .env.example .env.staging
+cp .env.example .env.production
+```
+
+環境ごとに書き換える主な値:
+
+| 変数 | 環境差分 |
+| --- | --- |
+| `BASIC_AUTH_CREDENTIALS` | develop / staging のみ設定。production は未設定 |
+| `NEXT_PUBLIC_API_BASE_URL` / `EXPO_PUBLIC_API_BASE_URL` | 環境ごとの API エンドポイント |
+| `NEXT_PUBLIC_GTM_ID` | 本番のみ設定する等 |
+| `NEXT_PUBLIC_SENTRY_DSN` / `SENTRY_DSN` / `EXPO_PUBLIC_SENTRY_DSN` | 環境ごとの DSN |
+| Firebase 設定値（`NEXT_PUBLIC_FIREBASE_*` 等） | Firebase プロジェクトを分けている場合 |
+
+作成後、使う環境に切り替える:
+
+```bash
+yarn env:develop      # .env.develop → .env.local にコピー + firebase use develop
+yarn env:staging
+yarn env:production
+```
+
+#### CI 自動デプロイ用の GitHub Secrets 登録
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) はデプロイ時に環境別の env をシークレットから `.env.local` に書き出す。
+未登録のまま push すると `.env.local` が空のままビルドされ失敗する。
+リポジトリに以下を登録する（値は対応する env ファイルの全文）:
+
+| Secret 名 | 中身 | 登録コマンド |
+| --- | --- | --- |
+| `ENV_DEVELOP` | `.env.develop` の全文 | `gh secret set ENV_DEVELOP < .env.develop` |
+| `ENV_STAGING` | `.env.staging` の全文 | `gh secret set ENV_STAGING < .env.staging` |
+| `FIREBASE_TOKEN` | `firebase login:ci` で取得したトークン | `firebase login:ci` → `gh secret set FIREBASE_TOKEN` |
+
+- `production` ブランチへの push は `ENV_PRODUCTION` を参照する（必要なら同様に登録）。
+- `FIREBASE_TOKEN` 未設定の場合、`deploy` ジョブはスキップされチェックのみ実行される。
+
+詳細は [.claude/docs/git-workflow.md](.claude/docs/git-workflow.md) を参照。
+
 ### 5. 開発
 
 ```bash

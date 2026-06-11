@@ -7,19 +7,19 @@
 Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Functions。
 共有コードは `packages/shared` に集約。
 
-## プロジェクトドキュメント（Notion）
+## プロジェクトドキュメント
 
-プロダクトの「何を作るか」「どう作るか」は Notion で管理する。
+プロダクトの「何を作るか」「どう作るか」はローカルの `.claude/docs/` で管理する。
 実装時はまずこれらを読み、全体像を把握してから作業を始めること。
 
-| ドキュメント | URL | 内容 |
+| ドキュメント | パス | 内容 |
 |---|---|---|
-| 企画書 | `<Notion URL>` | プロダクト概要・ターゲット・用語集・機能一覧 |
-| 仕様書 | `<Notion URL>` | 画面一覧・データモデル・API・セキュリティ |
-| ロードマップ | `<Notion URL>` | 機能ごとのステータス・優先度・担当 |
+| 企画書 | `.claude/docs/planning.md` | プロダクト背景・ターゲット・ペルソナ・用語集・機能一覧 |
+| 仕様書 | `.claude/docs/spec.md` | 画面一覧・データモデル・API・セキュリティ（**最新・正**） |
+| ロードマップ | `.claude/docs/roadmap.md` | 残タスク・進捗・セッション引き継ぎ履歴 |
 | Figma | `<Figma URL>` | デザインカンプ |
 
-※ Notion MCP で直接読み取れる。URL を最新に保つこと。
+仕様書を正とする。企画書はプロダクト背景・ターゲットの参考として使う。
 
 ## プロジェクト進行ルール
 
@@ -59,9 +59,9 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 ## 機能実装フロー
 
 ```
-1. ロードマップで対象機能を「実装中」に更新
-2. 企画書の用語集でドメイン用語を確認（→ 変数名・コレクション名に使う）
-3. 仕様書のデータモデルを確認 → /new-collection でスキーマ・型・API・テストを生成
+1. ロードマップ（.claude/docs/roadmap.md）で対象機能を「実装中」に更新
+2. 企画書（.claude/docs/planning.md）の用語集でドメイン用語を確認（→ 変数名・コレクション名に使う）
+3. 仕様書（.claude/docs/spec.md）のデータモデルを確認 → /new-collection でスキーマ・型・API・テストを生成
 4. 仕様書の API を確認 → /new-function でエンドポイントを生成
 5. 仕様書の画面一覧 + Figma を確認 → /new-page でページを生成
 6. 必要に応じて /new-component, /new-form, /new-store を使う
@@ -143,6 +143,10 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 ### マージルール
 
+> **このリポジトリ（`geckou/project-starter` 本体）は以下のマージルールに従わない。**
+> 本リポジトリはテンプレートそのものであり、リリースフローを持たない。テンプレート自身の修正は `fix/*` 等から直接 `production` へ PR・マージしてよい。
+> 以下のルールは、このテンプレートから scaffold した**派生プロジェクト**に適用する。
+
 - **`production` へマージできるのは `release/*` と `hotfix/*` のみ**（それ以外のブランチからの PR・マージは禁止）
 - `production` への直接 push は禁止（PR 必須）
 - `release/*` → `production` は PR + レビュー必須
@@ -166,7 +170,7 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 | `/new-type` | shared に型定義追加 |
 | `/new-app` | モノレポに新しいアプリ追加 |
 | `/new-skill` | 新しいスキル（スラッシュコマンド）を作成 |
-| `/migrate` | 既存リポジトリの移植 + Notion ドキュメント自動生成 |
+| `/migrate` | 既存リポジトリの移植 + ドキュメント自動生成 |
 | `/review` | プロジェクト構成を前提としたコードレビュー |
 | `/deploy` | デプロイ手順ガイド |
 | `/troubleshoot` | ビルドエラー・型エラーの診断と修正 |
@@ -242,6 +246,9 @@ gh issue create \
 
 必要に応じて以下を参照:
 
+- `.claude/docs/planning.md` — 企画書（プロダクト背景・ターゲット・ペルソナ・用語集・機能一覧）
+- `.claude/docs/spec.md` — 仕様書（画面一覧・データモデル・API・セキュリティ）
+- `.claude/docs/roadmap.md` — ロードマップ（残タスク・進捗・セッション引き継ぎ履歴）
 - `.claude/docs/architecture.md` — API方針、Firebase使い分け、認証、データ取得、環境変数、Zustand、Storage、FCM、Sentry、i18n、RevenueCat、Tailwind、コンポーネント整理
 - `.claude/docs/nuxt-nextjs.md` — Nuxt.js → Next.js の対応表（Server Component、ルーティング等）
 - `.claude/docs/git-workflow.md` — リリースフロー詳細、マルチ環境構成、GCP API 有効化

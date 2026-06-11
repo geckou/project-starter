@@ -87,6 +87,32 @@ yarn deploy:production
 
 CI/CD: `.github/workflows/deploy.yml` でブランチ push 時に自動デプロイ。
 
+### CI 用 GitHub Secrets の登録
+
+`deploy.yml` はデプロイ時に環境別の env をシークレットから `.env.local` に書き出す（`secrets[format('ENV_{0}', name)]`）。
+シークレット未登録のまま push すると `.env.local` が空のままビルドされ失敗するため、事前に登録する。
+
+| Secret 名 | 中身 | 参照されるブランチ |
+| --- | --- | --- |
+| `ENV_DEVELOP` | `.env.develop` の全文 | `feat/*` 等（develop 環境）|
+| `ENV_STAGING` | `.env.staging` の全文 | `release/*` / `hotfix/*`（staging 環境）|
+| `ENV_PRODUCTION` | `.env.production` の全文 | `production`（本番）|
+| `FIREBASE_TOKEN` | デプロイ用トークン | 全環境共通 |
+
+```bash
+# 環境別 env の全文をそのまま登録（ローカルにファイルがある前提）
+gh secret set ENV_DEVELOP < .env.develop
+gh secret set ENV_STAGING < .env.staging
+gh secret set ENV_PRODUCTION < .env.production
+
+# Firebase デプロイ用トークンを取得して登録
+firebase login:ci                       # 出力されたトークンをコピー
+gh secret set FIREBASE_TOKEN            # プロンプトに貼り付け
+```
+
+- `FIREBASE_TOKEN` が未設定なら `deploy` ジョブはスキップされ、チェック（型・lint・テスト・ビルド）のみ実行される。
+- env ファイルを更新したら、対応する `ENV_*` シークレットも登録し直す。
+
 ### GCP API の初回有効化
 
 新規 Firebase プロジェクトでは以下の GCP API がデフォルトで無効。初回デプロイ前に有効化が必要:
