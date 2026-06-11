@@ -45,11 +45,29 @@ export async function handleRevenueCatWebhook(
     return
   }
 
-  const parsed: WebhookEvent =
-    typeof req.body === 'string' || Buffer.isBuffer(req.body)
-      ? JSON.parse(req.body.toString('utf-8'))
-      : req.body
-  const { type, app_user_id: userId } = parsed.event
+  // 外部入力のため、パース失敗・想定外の形は 400 で返す
+  let parsed: WebhookEvent
+  try {
+    parsed =
+      typeof req.body === 'string' || Buffer.isBuffer(req.body)
+        ? JSON.parse(req.body.toString('utf-8'))
+        : req.body
+  } catch {
+    res.status(400).json({ error: 'Invalid JSON' })
+    return
+  }
+
+  const event = parsed?.event
+  if (
+    typeof event?.type !== 'string' ||
+    typeof event?.app_user_id !== 'string' ||
+    event.app_user_id === ''
+  ) {
+    res.status(400).json({ error: 'Invalid payload' })
+    return
+  }
+
+  const { type, app_user_id: userId } = event
   const db = getFirestore()
   const now = new Date()
 

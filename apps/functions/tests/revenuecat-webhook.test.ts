@@ -203,6 +203,33 @@ describe('RevenueCat Webhook', () => {
     expect(res.body).toEqual({ error: 'Internal error' })
   })
 
+  it('不正な JSON の body で 400 を返す', async () => {
+    const req = createMockRequest({
+      body: 'not-a-json',
+      headers: { authorization: AUTH_HEADER } as Record<string, string>,
+    })
+    const res = createMockResponse()
+
+    await handleRevenueCatWebhook(req, res as unknown as Response)
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body).toEqual({ error: 'Invalid JSON' })
+  })
+
+  it('event の形が想定外の payload で 400 を返す', async () => {
+    const req = createMockRequest({
+      body: { event: { type: 'INITIAL_PURCHASE' } }, // app_user_id なし
+      headers: { authorization: AUTH_HEADER } as Record<string, string>,
+    })
+    const res = createMockResponse()
+
+    await handleRevenueCatWebhook(req, res as unknown as Response)
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body).toEqual({ error: 'Invalid payload' })
+    expect(mockSet).not.toHaveBeenCalled()
+  })
+
   it('文字列 body も正しく処理する', async () => {
     const req = createMockRequest({
       body: JSON.stringify(createEventBody('INITIAL_PURCHASE', 'user-7')),

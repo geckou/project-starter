@@ -90,13 +90,16 @@ jobs:
       # （deploy.sh → use-env.sh が .env.local と apps/web/.env.local に配布する）
       - name: Create .env.${{ steps.env.outputs.name }}
         if: steps.env.outputs.deploy == 'true'
-        run: echo "${{ secrets[format('ENV_FILE_{0}', steps.env.outputs.name)] }}" > .env.${{ steps.env.outputs.name }}
+        env:
+          ENV_FILE: ${{ secrets[format('ENV_FILE_{0}', steps.env.outputs.name)] }}
+        # echo は -n 始まりの値や改行の扱いで内容が変わりうるため printf でそのまま書き出す
+        run: printf '%s\n' "$ENV_FILE" > .env.${{ steps.env.outputs.name }}
 
       # サービスアカウントで認証（FIREBASE_TOKEN は firebase-tools v13+ で非推奨）
       - name: Authenticate to Firebase
         if: steps.env.outputs.deploy == 'true'
         run: |
-          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> $GITHUB_ENV
 
       - name: Install Firebase CLI

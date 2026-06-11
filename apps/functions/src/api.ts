@@ -8,9 +8,12 @@ import { handleRevenueCatWebhook } from './revenuecat-webhook'
 const app = express()
 
 // 本番では ALLOWED_ORIGINS（カンマ区切り）で許可オリジンを絞る。
-// 未設定時は全オリジン許可（開発用）
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',')
-app.use(cors({ origin: allowedOrigins ?? true }))
+// 未設定・空の場合は全オリジン許可（開発用）
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter((origin) => origin !== '')
+app.use(cors({ origin: allowedOrigins.length > 0 ? allowedOrigins : true }))
 
 app.use(express.json())
 

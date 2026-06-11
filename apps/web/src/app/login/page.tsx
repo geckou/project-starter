@@ -38,6 +38,9 @@ function LoginInner() {
       })
 
       if (!response.ok) {
+        // cookie なしでサインイン済みの中途半端な状態を残さない
+        // （middleware は cookie を見るため、残すとリダイレクトループの原因になる）
+        await auth.signOut()
         setError('セッションの作成に失敗しました')
         return
       }

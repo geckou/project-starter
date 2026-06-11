@@ -12,7 +12,7 @@ export async function requireAuth(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const token = req.headers.authorization?.replace('Bearer ', '')
+  const token = req.headers.authorization?.match(/^Bearer\s+(\S+)$/i)?.[1]
 
   if (!token) {
     res.status(401).json({ error: 'Unauthorized' })

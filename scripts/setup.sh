@@ -116,8 +116,8 @@ setup_branch_protection() {
     return
   fi
 
-  # owner/repo を抽出（BSD sed は非貪欲量指定子 .+? を解釈できないため2段置換）
-  REPO=$(echo "$REMOTE_URL" | sed -E 's#.*github\.com[:/]##; s#\.git$##')
+  # owner/repo を抽出（BSD sed は非貪欲量指定子 .+? を解釈できないため多段置換。末尾の / と .git も除去）
+  REPO=$(echo "$REMOTE_URL" | sed -E 's#.*github\.com[:/]##; s#/$##; s#\.git$##')
   if [ -z "$REPO" ]; then
     echo "[skip] GitHub リポジトリを検出できませんでした"
     return
