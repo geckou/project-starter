@@ -6,6 +6,10 @@ on:
       - production # → production 環境
       - 'release/**' # → staging 環境
       - 'hotfix/**' # → staging 環境
+      - 'feat/**' # → develop 環境
+      - 'fix/**' # → develop 環境
+      - 'refactor/**' # → develop 環境
+      - 'test/**' # → develop 環境
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -40,23 +44,17 @@ jobs:
       - name: Build
         run: yarn build
 
-  # デプロイ（FIREBASE_TOKEN が設定されている場合のみ）
+  # デプロイ（FIREBASE_SERVICE_ACCOUNT が設定されている場合のみ）
+  # 注: secrets コンテキストは job レベルの if では参照できないため、
+  # job の env に展開して step レベルで判定する
   deploy:
     runs-on: ubuntu-latest
     needs: check
-    if: ${{ secrets.FIREBASE_TOKEN != '' }}
+    env:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'yarn'
-
-      - run: yarn install --frozen-lockfile
-
-      # ブランチからデプロイ先の環境を決定
+      # ブランチからデプロイ先の環境を決定し、シークレットの有無を判定
       - name: Set environment
         id: env
         run: |
@@ -69,20 +67,44 @@ jobs:
             echo "name=develop" >> $GITHUB_OUTPUT
           fi
 
-      # 環境別の .env をシークレットから生成
-      - name: Create .env.local
-        run: echo "${{ secrets[format('ENV_{0}', steps.env.outputs.name)] }}" > .env.local
+          if [ -n "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "deploy=false" >> $GITHUB_OUTPUT
+            echo "FIREBASE_SERVICE_ACCOUNT が未設定のためデプロイをスキップします"
+          fi
 
-      - name: Build
-        run: yarn build
+      - uses: actions/checkout@v4
+        if: steps.env.outputs.deploy == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.env.outputs.deploy == 'true'
+        with:
+          node-version: 20
+          cache: 'yarn'
+
+      - run: yarn install --frozen-lockfile
+        if: steps.env.outputs.deploy == 'true'
+
+      # 環境別の .env をシークレットから生成
+      # （deploy.sh → use-env.sh が .env.local と apps/web/.env.local に配布する）
+      - name: Create .env.${{ steps.env.outputs.name }}
+        if: steps.env.outputs.deploy == 'true'
+        run: echo "${{ secrets[format('ENV_FILE_{0}', steps.env.outputs.name)] }}" > .env.${{ steps.env.outputs.name }}
+
+      # サービスアカウントで認証（FIREBASE_TOKEN は firebase-tools v13+ で非推奨）
+      - name: Authenticate to Firebase
+        if: steps.env.outputs.deploy == 'true'
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> $GITHUB_ENV
 
       - name: Install Firebase CLI
+        if: steps.env.outputs.deploy == 'true'
         run: npm install -g firebase-tools
 
+      # ローカルと同じ deploy.sh を使う（workspace 依存の一時削除・
+      # hosting ターゲット個別デプロイなどの回避策を共有するため）
       - name: Deploy to Firebase
-        run: |
-          firebase experiments:enable webframeworks
-          firebase use ${{ steps.env.outputs.name }}
-          firebase deploy --force
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        if: steps.env.outputs.deploy == 'true'
+        run: bash scripts/deploy.sh ${{ steps.env.outputs.name }}

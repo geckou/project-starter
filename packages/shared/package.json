@@ -40,22 +40,26 @@
     "./i18n": {
       "types": "./src/i18n/index.ts",
       "default": "./dist/i18n/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "type-check": "tsc --noEmit",
-    "lint": "echo 'no lint configured'",
+    "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "lint:fix": "eslint . --fix"
   },
   "dependencies": {
     "firebase": "^11.0.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "eslint": "^9.0.0",
     "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0",
     "vitest": "^3.0.0"
   }
 }

@@ -1,7 +1,11 @@
 import { auth } from '@/lib/firebase'
 
+// 未設定時は Functions エミュレーターを指す。
+// <project-id> 部分は .firebaserc の develop プロジェクト ID。
+// Android エミュレーターからは localhost ではなく 10.0.2.2 を指定すること
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:5001'
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  'http://localhost:5001/your-project-develop/asia-northeast1/api'
 
 type ApiOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'

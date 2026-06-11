@@ -74,7 +74,7 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 | 対象 | テスト内容 | 必須度 |
 |---|---|---|
 | API エンドポイント | 正常系 + 認証エラーの最低2ケース | 必須 |
-| Firestore ルール | 許可 / 拒否の各パターン | 必須 |
+| Firestore ルール | 許可 / 拒否の各パターン（`yarn test:rules` で実行） | 必須 |
 | 共有ユーティリティ | 入力バリエーション | 必須 |
 | Zustand Store | 状態変更の基本動作 | 推奨 |
 | UI コンポーネント | テスト不要（Figma + 目視確認） | - |
@@ -112,7 +112,8 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 ### React / Next.js
 
-- `export default function Name()` で統一（アロー関数は使わない）
+- 関数宣言（`function Name()`）で統一（アロー関数のコンポーネントは使わない）
+- default export は Next.js の規約ファイル（`page.tsx`, `layout.tsx` 等）のみ。コンポーネントは named export
 - Server Component をデフォルト、必要時のみ `'use client'`
 - アイコンは `components/icons/`、定数は `lib/constants/`
 - セマンティック HTML + Tailwind CSS でスタイリング
