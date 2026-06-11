@@ -192,12 +192,12 @@ yarn env:production
 
 | Secret 名 | 中身 | 登録コマンド |
 | --- | --- | --- |
-| `ENV_DEVELOP` | `.env.develop` の全文 | `gh secret set ENV_DEVELOP < .env.develop` |
-| `ENV_STAGING` | `.env.staging` の全文 | `gh secret set ENV_STAGING < .env.staging` |
-| `FIREBASE_TOKEN` | `firebase login:ci` で取得したトークン | `firebase login:ci` → `gh secret set FIREBASE_TOKEN` |
+| `ENV_FILE_DEVELOP` | `.env.develop` の全文 | `gh secret set ENV_FILE_DEVELOP < .env.develop` |
+| `ENV_FILE_STAGING` | `.env.staging` の全文 | `gh secret set ENV_FILE_STAGING < .env.staging` |
+| `FIREBASE_SERVICE_ACCOUNT` | サービスアカウント鍵 JSON の全文 | `gh secret set FIREBASE_SERVICE_ACCOUNT < service-account.json` |
 
-- `production` ブランチへの push は `ENV_PRODUCTION` を参照する（必要なら同様に登録）。
-- `FIREBASE_TOKEN` 未設定の場合、`deploy` ジョブはスキップされチェックのみ実行される。
+- `production` ブランチへの push は `ENV_FILE_PRODUCTION` を参照する（必要なら同様に登録）。
+- `FIREBASE_SERVICE_ACCOUNT` 未設定の場合、`deploy` ジョブはスキップされチェックのみ実行される。
 
 詳細は [.claude/docs/git-workflow.md](.claude/docs/git-workflow.md) を参照。
 

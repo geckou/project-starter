@@ -89,29 +89,30 @@ CI/CD: `.github/workflows/deploy.yml` でブランチ push 時に自動デプロ
 
 ### CI 用 GitHub Secrets の登録
 
-`deploy.yml` はデプロイ時に環境別の env をシークレットから `.env.local` に書き出す（`secrets[format('ENV_{0}', name)]`）。
-シークレット未登録のまま push すると `.env.local` が空のままビルドされ失敗するため、事前に登録する。
+`deploy.yml` はデプロイ時に環境別の env をシークレットから `.env.<環境名>` に書き出す（`secrets[format('ENV_FILE_{0}', name)]`）。
+シークレット未登録のまま push すると env が空のままビルドされ失敗するため、事前に登録する。
 
 | Secret 名 | 中身 | 参照されるブランチ |
 | --- | --- | --- |
-| `ENV_DEVELOP` | `.env.develop` の全文 | `feat/*` 等（develop 環境）|
-| `ENV_STAGING` | `.env.staging` の全文 | `release/*` / `hotfix/*`（staging 環境）|
-| `ENV_PRODUCTION` | `.env.production` の全文 | `production`（本番）|
-| `FIREBASE_TOKEN` | デプロイ用トークン | 全環境共通 |
+| `ENV_FILE_DEVELOP` | `.env.develop` の全文 | `feat/*` 等（develop 環境）|
+| `ENV_FILE_STAGING` | `.env.staging` の全文 | `release/*` / `hotfix/*`（staging 環境）|
+| `ENV_FILE_PRODUCTION` | `.env.production` の全文 | `production`（本番）|
+| `FIREBASE_SERVICE_ACCOUNT` | サービスアカウント鍵 JSON の全文 | 全環境共通 |
 
 ```bash
 # 環境別 env の全文をそのまま登録（ローカルにファイルがある前提）
-gh secret set ENV_DEVELOP < .env.develop
-gh secret set ENV_STAGING < .env.staging
-gh secret set ENV_PRODUCTION < .env.production
+gh secret set ENV_FILE_DEVELOP < .env.develop
+gh secret set ENV_FILE_STAGING < .env.staging
+gh secret set ENV_FILE_PRODUCTION < .env.production
 
-# Firebase デプロイ用トークンを取得して登録
-firebase login:ci                       # 出力されたトークンをコピー
-gh secret set FIREBASE_TOKEN            # プロンプトに貼り付け
+# サービスアカウント鍵を登録
+# （Firebase Console > プロジェクトの設定 > サービスアカウント > 新しい秘密鍵の生成）
+gh secret set FIREBASE_SERVICE_ACCOUNT < service-account.json
 ```
 
-- `FIREBASE_TOKEN` が未設定なら `deploy` ジョブはスキップされ、チェック（型・lint・テスト・ビルド）のみ実行される。
-- env ファイルを更新したら、対応する `ENV_*` シークレットも登録し直す。
+- `FIREBASE_SERVICE_ACCOUNT` が未設定なら `deploy` ジョブはスキップされ、チェック（型・lint・テスト・ビルド）のみ実行される。
+- `firebase login:ci` の `FIREBASE_TOKEN` は firebase-tools v13 以降非推奨のため使わない。
+- env ファイルを更新したら、対応する `ENV_FILE_*` シークレットも登録し直す。
 
 ### GCP API の初回有効化
 
