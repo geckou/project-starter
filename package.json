@@ -15,9 +15,9 @@
   "scripts": {
     "setup": "bash scripts/setup.sh",
     "dev": "turbo dev",
-    "dev:web": "rm -rf apps/web/.next && turbo dev --filter=@geckou/web",
-    "dev:mobile": "turbo dev --filter=@geckou/mobile",
-    "dev:functions": "turbo dev --filter=@geckou/functions",
+    "dev:web": "rm -rf apps/web/.next && turbo dev --filter=@geckou/web...",
+    "dev:mobile": "turbo dev --filter=@geckou/mobile...",
+    "dev:functions": "turbo dev --filter=@geckou/functions...",
     "build": "turbo build",
     "build:functions": "turbo build --filter=@geckou/functions",
     "lint": "turbo lint",
@@ -36,7 +36,8 @@
     "deploy:develop": "bash scripts/deploy.sh develop",
     "deploy:staging": "bash scripts/deploy.sh staging",
     "deploy:production": "bash scripts/deploy.sh production",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-rules-test \"vitest run tests/firestore-rules.test.ts\""
   },
   "resolutions": {
     "tar": ">=7.5.11",
@@ -46,8 +47,10 @@
     "eslint-plugin-react-hooks": "^5"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "firebase": "^11.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "next": "^15.0.0",
@@ -55,6 +58,7 @@
     "prettier-plugin-tailwindcss": "^0.6.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "turbo": "^2.0.0"
+    "turbo": "^2.0.0",
+    "vitest": "^3.0.0"
   }
 }

@@ -32,5 +32,21 @@ const isConfigured =
 
 const adminApp = isConfigured ? getAdminApp() : null
 
-export const adminAuth = adminApp ? getAuth(adminApp) : (null as never)
-export const adminDb = adminApp ? getFirestore(adminApp) : (null as never)
+// 未設定のままアクセスした場合に原因が分かるエラーを投げる
+// （null のままだと「Cannot read properties of null」になり原因が追えない）
+function createNotConfiguredProxy<T extends object>(): T {
+  return new Proxy({} as T, {
+    get() {
+      throw new Error(
+        'firebase-admin が未設定です。FIREBASE_SERVICE_ACCOUNT_KEY または GOOGLE_APPLICATION_CREDENTIALS を設定してください'
+      )
+    },
+  })
+}
+
+export const adminAuth = adminApp
+  ? getAuth(adminApp)
+  : createNotConfiguredProxy<ReturnType<typeof getAuth>>()
+export const adminDb = adminApp
+  ? getFirestore(adminApp)
+  : createNotConfiguredProxy<ReturnType<typeof getFirestore>>()

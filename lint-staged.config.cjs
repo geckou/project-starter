@@ -6,4 +6,6 @@ module.exports = {
   'apps/web/**/*.{ts,tsx,js,jsx}': () => 'yarn workspace @geckou/web lint',
   'apps/mobile/**/*.{ts,tsx,js,jsx}': () =>
     'yarn workspace @geckou/mobile lint',
+  'apps/functions/**/*.{ts,js}': () => 'yarn workspace @geckou/functions lint',
+  'packages/shared/**/*.{ts,tsx}': () => 'yarn workspace @geckou/shared lint',
 }

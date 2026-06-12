@@ -1,7 +1,13 @@
 import { auth } from '@/lib/firebase'
+import Constants from 'expo-constants'
 
+// 未設定時は Functions エミュレーターを指す（プロジェクト ID は app.config.ts の extra から取得）。
+// Android エミュレーターからは localhost ではなく 10.0.2.2 を指定すること
+const EMULATOR_PROJECT_ID =
+  Constants.expoConfig?.extra?.firebaseProjectId || 'your-project-develop'
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:5001'
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  `http://localhost:5001/${EMULATOR_PROJECT_ID}/asia-northeast1/api`
 
 type ApiOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'

@@ -12,7 +12,7 @@ out/
 dist/
 
 # production
-build
+/build
 
 # misc
 .DS_Store
@@ -40,6 +40,7 @@ next-env.d.ts
 # firebase
 .firebase/
 firebase-debug.log
+firestore-debug.log
 firebase-emulator-data/
 **/service-account*.json
 

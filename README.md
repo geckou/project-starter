@@ -27,7 +27,7 @@ Turborepo によるモノレポ構成で、1つのリポジトリから Web・�
 project-starter/
 │
 ├── apps/                        # デプロイ可能なアプリケーション
-│   ├── web/                     # Next.js（Vercel / Cloud Run 等にデプロイ）
+│   ├── web/                     # Next.js（Firebase Hosting の webframeworks でデプロイ）
 │   │   ├── src/
 │   │   │   ├── app/             # App Router のページ
 │   │   │   ├── lib/
@@ -47,7 +47,7 @@ project-starter/
 │   │   ├── tailwind.config.js   # shared/theme からデザイントークンを読み込み
 │   │   ├── metro.config.js      # NativeWind + モノレポ対応
 │   │   ├── babel.config.js
-│   │   ├── app.json
+│   │   ├── app.config.ts        # Expo 設定（.env.local から Firebase 設定を注入）
 │   │   └── package.json
 │   │
 │   └── functions/               # Firebase Cloud Functions（Firebase にデプロイ）
@@ -192,12 +192,12 @@ yarn env:production
 
 | Secret 名 | 中身 | 登録コマンド |
 | --- | --- | --- |
-| `ENV_DEVELOP` | `.env.develop` の全文 | `gh secret set ENV_DEVELOP < .env.develop` |
-| `ENV_STAGING` | `.env.staging` の全文 | `gh secret set ENV_STAGING < .env.staging` |
-| `FIREBASE_TOKEN` | `firebase login:ci` で取得したトークン | `firebase login:ci` → `gh secret set FIREBASE_TOKEN` |
+| `ENV_FILE_DEVELOP` | `.env.develop` の全文 | `gh secret set ENV_FILE_DEVELOP < .env.develop` |
+| `ENV_FILE_STAGING` | `.env.staging` の全文 | `gh secret set ENV_FILE_STAGING < .env.staging` |
+| `FIREBASE_SERVICE_ACCOUNT` | サービスアカウント鍵 JSON の全文 | `gh secret set FIREBASE_SERVICE_ACCOUNT < service-account.json` |
 
-- `production` ブランチへの push は `ENV_PRODUCTION` を参照する（必要なら同様に登録）。
-- `FIREBASE_TOKEN` 未設定の場合、`deploy` ジョブはスキップされチェックのみ実行される。
+- `production` ブランチへの push は `ENV_FILE_PRODUCTION` を参照する（必要なら同様に登録）。
+- `FIREBASE_SERVICE_ACCOUNT` 未設定の場合、`deploy` ジョブはスキップされチェックのみ実行される。
 
 詳細は [.claude/docs/git-workflow.md](.claude/docs/git-workflow.md) を参照。
 
@@ -231,14 +231,21 @@ yarn firebase:emulators
 | `yarn build`                     | 全アプリのビルド            |
 | `yarn build:functions`           | Functions のみビルド        |
 | `yarn test`                      | 全テスト実行                |
+| `yarn test:rules`                | Firestore ルールのテスト（エミュレーター経由） |
 | `yarn lint`                      | 全アプリの ESLint 実行      |
+| `yarn lint:fix`                  | ESLint の自動修正           |
 | `yarn format`                    | Prettier でフォーマット     |
 | `yarn format:check`              | フォーマットのチェックのみ  |
 | `yarn type-check`                | 全パッケージの型チェック    |
 | `yarn firebase:emulators`        | Firebase エミュレーター起動 |
-| `yarn firebase:deploy`           | Firebase 全体をデプロイ     |
+| `yarn env:<環境名>`              | 環境切り替え（develop / staging / production） |
+| `yarn deploy:<環境名>`           | 事前チェック付きデプロイ（develop / staging / production） |
+| `yarn firebase:deploy`           | Firebase 全体をデプロイ（チェックなしの素のコマンド） |
 | `yarn firebase:deploy:functions` | Functions のみデプロイ      |
 | `yarn firebase:deploy:hosting`   | Hosting のみデプロイ        |
+
+> デプロイは `yarn deploy:<環境名>` を推奨。型チェック・テスト・ビルドの事前実行、
+> webframeworks experiment の有効化、workspace 依存の一時削除（Cloud Build 対策）まで自動で行う。
 
 ---
 
@@ -302,7 +309,7 @@ Firebase SDK はそれぞれ別のモジュールを使う。
 | 変数                           | 用途                       | 公開範囲                         |
 | ------------------------------ | -------------------------- | -------------------------------- |
 | `NEXT_PUBLIC_FIREBASE_*`       | Web クライアント用         | ブラウザに露出する（公開前提）   |
-| `FIREBASE_*`                   | Mobile (Expo) 用           | `app.json` の `extra` 経由で参照 |
+| `FIREBASE_*`                   | Mobile (Expo) 用           | `app.config.ts` の `extra` 経由で参照 |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | Web サーバー用 (Admin SDK) | サーバーのみ。絶対に公開しない   |
 
 ---
@@ -324,9 +331,9 @@ Web・Mobile の両方で RevenueCat を使った課金に対応している。
 | 変数                             | 用途             | 設定場所                               |
 | -------------------------------- | ---------------- | -------------------------------------- |
 | `NEXT_PUBLIC_REVENUECAT_API_KEY` | Web SDK 用       | `.env.local`                           |
-| `REVENUECAT_API_KEY_APPLE`       | iOS 用           | `.env.local`（app.json の extra 経由） |
-| `REVENUECAT_API_KEY_GOOGLE`      | Android 用       | `.env.local`（app.json の extra 経由） |
-| `REVENUECAT_WEBHOOK_SECRET`      | Webhook 署名検証 | `apps/functions/.env`                  |
+| `REVENUECAT_API_KEY_APPLE`       | iOS 用           | `.env.local`（app.config.ts の extra 経由） |
+| `REVENUECAT_API_KEY_GOOGLE`      | Android 用       | `.env.local`（app.config.ts の extra 経由） |
+| `REVENUECAT_WEBHOOK_AUTH`        | Webhook の Authorization ヘッダー値 | `apps/functions/.env` |
 
 全て RevenueCat Dashboard > API Keys から取得。
 
@@ -338,7 +345,11 @@ Web・Mobile の両方で RevenueCat を使った課金に対応している。
    ```
    https://<region>-<project-id>.cloudfunctions.net/api/webhooks/revenuecat
    ```
-4. Signing Secret を `apps/functions/.env` の `REVENUECAT_WEBHOOK_SECRET` に設定
+4. Authorization header value（任意の文字列。例: `Bearer xxxxx`）を設定し、
+   同じ値を `apps/functions/.env` の `REVENUECAT_WEBHOOK_AUTH` に設定
+
+> RevenueCat の Webhook は HMAC 署名ではなく、Dashboard で設定した
+> Authorization ヘッダー値をそのまま送信する方式。
 
 Webhook で `INITIAL_PURCHASE` / `RENEWAL` / `CANCELLATION` / `EXPIRATION` イベントを受信し、
 Firestore の `users/{userId}.subscription` を自動更新する。
@@ -564,3 +575,16 @@ apps/
   "name": "@geckou/customjapan"
 }
 ```
+
+### リネームチェックリスト
+
+テンプレートには `geckou` 名がハードコードされている箇所がある。
+プロジェクト開始時に以下を実プロジェクト名に置換する:
+
+| 箇所 | ファイル |
+|---|---|
+| パッケージスコープ `@geckou/*` | 各 `package.json` の `name`・`dependencies`、ルートの `nohoist`、`scripts/deploy.sh` |
+| アプリ名 `Geckou App` / 社名 | `apps/mobile/app.config.ts`、`apps/web/src/app/layout.tsx` |
+| Bundle ID `com.geckou.app` | `apps/mobile/app.config.ts`（iOS / Android。**iOS は Firebase 登録後に変更不可**） |
+| URL スキーム `geckou` | `apps/mobile/app.config.ts` の `scheme` |
+| Expo slug `geckou-app` | `apps/mobile/app.config.ts` |

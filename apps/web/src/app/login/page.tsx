@@ -5,10 +5,17 @@ import { getAuth, signInWithEmailAndPassword } from 'firebase/auth'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
 
+// open redirect 防止: サイト内パス（/ 始まり、// は除外）のみ許可
+function sanitizeRedirect(redirect: string | null): string {
+  if (!redirect) return '/'
+  if (!redirect.startsWith('/') || redirect.startsWith('//')) return '/'
+  return redirect
+}
+
 function LoginInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirectTo = searchParams.get('redirect') ?? '/'
+  const redirectTo = sanitizeRedirect(searchParams.get('redirect'))
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -19,7 +26,25 @@ function LoginInner() {
 
     try {
       const auth = getAuth()
-      await signInWithEmailAndPassword(auth, email, password)
+      const credential = await signInWithEmailAndPassword(auth, email, password)
+
+      // サーバーにセッション cookie を発行させる
+      // （middleware.ts の保護ルート判定はこの cookie を見る）
+      const idToken = await credential.user.getIdToken()
+      const response = await fetch('/api/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      })
+
+      if (!response.ok) {
+        // cookie なしでサインイン済みの中途半端な状態を残さない
+        // （middleware は cookie を見るため、残すとリダイレクトループの原因になる）
+        await auth.signOut()
+        setError('セッションの作成に失敗しました')
+        return
+      }
+
       router.push(redirectTo)
     } catch {
       setError('メールアドレスまたはパスワードが正しくありません')

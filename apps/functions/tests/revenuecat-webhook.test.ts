@@ -1,10 +1,9 @@
-import crypto from 'crypto'
-import { type Request, type Response } from 'express'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { type Request, type Response } from 'express'
 
 // firebase-admin/firestore をモック
-const mockUpdate = vi.fn().mockResolvedValue(undefined)
-const mockDoc = vi.fn().mockReturnValue({ update: mockUpdate })
+const mockSet = vi.fn().mockResolvedValue(undefined)
+const mockDoc = vi.fn().mockReturnValue({ set: mockSet })
 const mockCollection = vi.fn().mockReturnValue({ doc: mockDoc })
 
 vi.mock('firebase-admin/firestore', () => ({
@@ -15,14 +14,9 @@ vi.mock('firebase-admin/firestore', () => ({
 
 import { handleRevenueCatWebhook } from '../src/revenuecat-webhook'
 
-// テスト用ヘルパー
-function createSignature(body: string, secret: string): string {
-  return crypto.createHmac('sha256', secret).update(body).digest('base64')
-}
-
 function createMockRequest(overrides: Partial<Request> = {}): Request {
   return {
-    body: '',
+    body: {},
     headers: {},
     ...overrides,
   } as Request
@@ -47,11 +41,18 @@ function createMockResponse(): Response & {
   return res as unknown as Response & { statusCode: number; body: unknown }
 }
 
+function createEventBody(type: string, userId: string) {
+  return {
+    event: { type, app_user_id: userId, timestamp: 123 },
+  }
+}
+
 describe('RevenueCat Webhook', () => {
-  const WEBHOOK_SECRET = 'test-secret-key'
+  // RevenueCat Dashboard で設定する Authorization ヘッダー値
+  const AUTH_HEADER = 'Bearer test-webhook-auth'
 
   beforeEach(() => {
-    vi.stubEnv('REVENUECAT_WEBHOOK_SECRET', WEBHOOK_SECRET)
+    vi.stubEnv('REVENUECAT_WEBHOOK_AUTH', AUTH_HEADER)
     vi.clearAllMocks()
   })
 
@@ -59,9 +60,9 @@ describe('RevenueCat Webhook', () => {
     vi.unstubAllEnvs()
   })
 
-  it('シークレット未設定で 500 を返す', async () => {
-    vi.stubEnv('REVENUECAT_WEBHOOK_SECRET', '')
-    delete process.env.REVENUECAT_WEBHOOK_SECRET
+  it('REVENUECAT_WEBHOOK_AUTH 未設定で 500 を返す', async () => {
+    vi.stubEnv('REVENUECAT_WEBHOOK_AUTH', '')
+    delete process.env.REVENUECAT_WEBHOOK_AUTH
 
     const req = createMockRequest()
     const res = createMockResponse()
@@ -69,21 +70,25 @@ describe('RevenueCat Webhook', () => {
     await handleRevenueCatWebhook(req, res as unknown as Response)
 
     expect(res.statusCode).toBe(500)
-    expect(res.body).toEqual({ error: 'Webhook secret not configured' })
+    expect(res.body).toEqual({ error: 'Webhook auth not configured' })
   })
 
-  it('不正な署名で 401 を返す', async () => {
-    const body = JSON.stringify({
-      event: {
-        type: 'INITIAL_PURCHASE',
-        app_user_id: 'user-1',
-        timestamp: 123,
-      },
-    })
-
+  it('Authorization ヘッダーなしで 401 を返す', async () => {
     const req = createMockRequest({
-      body: body,
-      headers: { 'x-revenuecat-signature': 'invalid-signature' } as Record<
+      body: createEventBody('INITIAL_PURCHASE', 'user-1'),
+    })
+    const res = createMockResponse()
+
+    await handleRevenueCatWebhook(req, res as unknown as Response)
+
+    expect(res.statusCode).toBe(401)
+    expect(res.body).toEqual({ error: 'Unauthorized' })
+  })
+
+  it('不正な Authorization ヘッダーで 401 を返す', async () => {
+    const req = createMockRequest({
+      body: createEventBody('INITIAL_PURCHASE', 'user-1'),
+      headers: { authorization: 'Bearer wrong-value' } as Record<
         string,
         string
       >,
@@ -93,25 +98,13 @@ describe('RevenueCat Webhook', () => {
     await handleRevenueCatWebhook(req, res as unknown as Response)
 
     expect(res.statusCode).toBe(401)
-    expect(res.body).toEqual({ error: 'Invalid signature' })
+    expect(res.body).toEqual({ error: 'Unauthorized' })
   })
 
   it('INITIAL_PURCHASE で subscription を active に更新する', async () => {
-    const body = JSON.stringify({
-      event: {
-        type: 'INITIAL_PURCHASE',
-        app_user_id: 'user-1',
-        timestamp: 123,
-      },
-    })
-    const signature = createSignature(body, WEBHOOK_SECRET)
-
     const req = createMockRequest({
-      body: body,
-      headers: { 'x-revenuecat-signature': signature } as Record<
-        string,
-        string
-      >,
+      body: createEventBody('INITIAL_PURCHASE', 'user-1'),
+      headers: { authorization: AUTH_HEADER } as Record<string, string>,
     })
     const res = createMockResponse()
 
@@ -120,127 +113,133 @@ describe('RevenueCat Webhook', () => {
     expect(res.statusCode).toBe(200)
     expect(mockCollection).toHaveBeenCalledWith('users')
     expect(mockDoc).toHaveBeenCalledWith('user-1')
-    expect(mockUpdate).toHaveBeenCalledWith({
-      'subscription.status': 'active',
-      'subscription.updatedAt': expect.any(Date),
-    })
+    expect(mockSet).toHaveBeenCalledWith(
+      {
+        subscription: { status: 'active', updatedAt: expect.any(Date) },
+      },
+      { merge: true }
+    )
   })
 
   it('RENEWAL で subscription を active に更新する', async () => {
-    const body = JSON.stringify({
-      event: { type: 'RENEWAL', app_user_id: 'user-2', timestamp: 456 },
-    })
-    const signature = createSignature(body, WEBHOOK_SECRET)
-
     const req = createMockRequest({
-      body: body,
-      headers: { 'x-revenuecat-signature': signature } as Record<
-        string,
-        string
-      >,
+      body: createEventBody('RENEWAL', 'user-2'),
+      headers: { authorization: AUTH_HEADER } as Record<string, string>,
     })
     const res = createMockResponse()
 
     await handleRevenueCatWebhook(req, res as unknown as Response)
 
     expect(res.statusCode).toBe(200)
-    expect(mockUpdate).toHaveBeenCalledWith({
-      'subscription.status': 'active',
-      'subscription.updatedAt': expect.any(Date),
-    })
+    expect(mockSet).toHaveBeenCalledWith(
+      {
+        subscription: { status: 'active', updatedAt: expect.any(Date) },
+      },
+      { merge: true }
+    )
   })
 
   it('CANCELLATION で subscription を cancelled に更新する', async () => {
-    const body = JSON.stringify({
-      event: { type: 'CANCELLATION', app_user_id: 'user-3', timestamp: 789 },
-    })
-    const signature = createSignature(body, WEBHOOK_SECRET)
-
     const req = createMockRequest({
-      body: body,
-      headers: { 'x-revenuecat-signature': signature } as Record<
-        string,
-        string
-      >,
+      body: createEventBody('CANCELLATION', 'user-3'),
+      headers: { authorization: AUTH_HEADER } as Record<string, string>,
     })
     const res = createMockResponse()
 
     await handleRevenueCatWebhook(req, res as unknown as Response)
 
     expect(res.statusCode).toBe(200)
-    expect(mockUpdate).toHaveBeenCalledWith({
-      'subscription.status': 'cancelled',
-      'subscription.cancelledAt': expect.any(Date),
-    })
+    expect(mockSet).toHaveBeenCalledWith(
+      {
+        subscription: { status: 'cancelled', cancelledAt: expect.any(Date) },
+      },
+      { merge: true }
+    )
   })
 
   it('EXPIRATION で subscription を expired に更新する', async () => {
-    const body = JSON.stringify({
-      event: { type: 'EXPIRATION', app_user_id: 'user-4', timestamp: 999 },
-    })
-    const signature = createSignature(body, WEBHOOK_SECRET)
-
     const req = createMockRequest({
-      body: body,
-      headers: { 'x-revenuecat-signature': signature } as Record<
-        string,
-        string
-      >,
+      body: createEventBody('EXPIRATION', 'user-4'),
+      headers: { authorization: AUTH_HEADER } as Record<string, string>,
     })
     const res = createMockResponse()
 
     await handleRevenueCatWebhook(req, res as unknown as Response)
 
     expect(res.statusCode).toBe(200)
-    expect(mockUpdate).toHaveBeenCalledWith({
-      'subscription.status': 'expired',
-      'subscription.expiredAt': expect.any(Date),
-    })
+    expect(mockSet).toHaveBeenCalledWith(
+      {
+        subscription: { status: 'expired', expiredAt: expect.any(Date) },
+      },
+      { merge: true }
+    )
   })
 
   it('未知のイベントタイプでも 200 を返す（Firestore 更新なし）', async () => {
-    const body = JSON.stringify({
-      event: { type: 'UNKNOWN_EVENT', app_user_id: 'user-5', timestamp: 111 },
-    })
-    const signature = createSignature(body, WEBHOOK_SECRET)
-
     const req = createMockRequest({
-      body: body,
-      headers: { 'x-revenuecat-signature': signature } as Record<
-        string,
-        string
-      >,
+      body: createEventBody('UNKNOWN_EVENT', 'user-5'),
+      headers: { authorization: AUTH_HEADER } as Record<string, string>,
     })
     const res = createMockResponse()
 
     await handleRevenueCatWebhook(req, res as unknown as Response)
 
     expect(res.statusCode).toBe(200)
-    expect(mockUpdate).not.toHaveBeenCalled()
+    expect(mockSet).not.toHaveBeenCalled()
   })
 
-  it('Buffer 形式の body を正しく処理する', async () => {
-    const bodyString = JSON.stringify({
-      event: {
-        type: 'INITIAL_PURCHASE',
-        app_user_id: 'user-6',
-        timestamp: 222,
-      },
-    })
-    const signature = createSignature(bodyString, WEBHOOK_SECRET)
+  it('Firestore エラー時に 500 を返す', async () => {
+    mockSet.mockRejectedValueOnce(new Error('firestore down'))
 
     const req = createMockRequest({
-      body: Buffer.from(bodyString),
-      headers: { 'x-revenuecat-signature': signature } as Record<
-        string,
-        string
-      >,
+      body: createEventBody('INITIAL_PURCHASE', 'user-6'),
+      headers: { authorization: AUTH_HEADER } as Record<string, string>,
+    })
+    const res = createMockResponse()
+
+    await handleRevenueCatWebhook(req, res as unknown as Response)
+
+    expect(res.statusCode).toBe(500)
+    expect(res.body).toEqual({ error: 'Internal error' })
+  })
+
+  it('不正な JSON の body で 400 を返す', async () => {
+    const req = createMockRequest({
+      body: 'not-a-json',
+      headers: { authorization: AUTH_HEADER } as Record<string, string>,
+    })
+    const res = createMockResponse()
+
+    await handleRevenueCatWebhook(req, res as unknown as Response)
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body).toEqual({ error: 'Invalid JSON' })
+  })
+
+  it('event の形が想定外の payload で 400 を返す', async () => {
+    const req = createMockRequest({
+      body: { event: { type: 'INITIAL_PURCHASE' } }, // app_user_id なし
+      headers: { authorization: AUTH_HEADER } as Record<string, string>,
+    })
+    const res = createMockResponse()
+
+    await handleRevenueCatWebhook(req, res as unknown as Response)
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body).toEqual({ error: 'Invalid payload' })
+    expect(mockSet).not.toHaveBeenCalled()
+  })
+
+  it('文字列 body も正しく処理する', async () => {
+    const req = createMockRequest({
+      body: JSON.stringify(createEventBody('INITIAL_PURCHASE', 'user-7')),
+      headers: { authorization: AUTH_HEADER } as Record<string, string>,
     })
     const res = createMockResponse()
 
     await handleRevenueCatWebhook(req, res as unknown as Response)
 
     expect(res.statusCode).toBe(200)
-    expect(mockDoc).toHaveBeenCalledWith('user-6')
+    expect(mockDoc).toHaveBeenCalledWith('user-7')
   })
 })

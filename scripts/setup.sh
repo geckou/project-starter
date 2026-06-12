@@ -116,8 +116,8 @@ setup_branch_protection() {
     return
   fi
 
-  # owner/repo を抽出
-  REPO=$(echo "$REMOTE_URL" | sed -E 's#.*github\.com[:/](.+/.+?)(\.git)?$#\1#')
+  # owner/repo を抽出（BSD sed は非貪欲量指定子 .+? を解釈できないため多段置換。末尾の / と .git も除去）
+  REPO=$(echo "$REMOTE_URL" | sed -E 's#.*github\.com[:/]##; s#/$##; s#\.git$##')
   if [ -z "$REPO" ]; then
     echo "[skip] GitHub リポジトリを検出できませんでした"
     return
@@ -145,7 +145,8 @@ setup_branch_protection() {
   fi
 
   # ブランチ保護ルールを設定
-  gh api "repos/$REPO/branches/production/protection" \
+  # （set -e 環境下でも失敗時に else 節へ到達できるよう if で直接判定する）
+  if gh api "repos/$REPO/branches/production/protection" \
     --method PUT \
     --input - <<'JSON' > /dev/null
 {
@@ -162,8 +163,7 @@ setup_branch_protection() {
   "allow_deletions": false
 }
 JSON
-
-  if [ $? -eq 0 ]; then
+  then
     echo "[done] production ブランチに保護ルールを設定しました"
     echo "  - CI (ci ジョブ) パス必須 (strict: true)"
     echo "  - PR 必須 + 1名以上のレビュー承認"
