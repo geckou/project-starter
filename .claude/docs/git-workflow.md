@@ -46,7 +46,7 @@ Firebase プロジェクトを3つ作成し、環境ごとに使い分ける。
 
 | ブランチ      | デプロイ先   | 切る元         | 用途                     |
 | ------------- | ------------ | -------------- | ------------------------ |
-| `feat/*`      | develop      | `production`   | 機能開発                 |
+| `feat/*`      | develop（手動）| `production`   | 機能開発                 |
 | `release/*`   | staging      | `production`   | リリース候補の QA        |
 | `hotfix/*`    | staging      | `production`   | 緊急修正                 |
 | `production`  | production   | -              | 本番（デフォルトブランチ）|
@@ -58,8 +58,8 @@ Firebase プロジェクトを3つ作成し、環境ごとに使い分ける。
 ```
 production（常にクリーン）
  │
- ├── feat/auth ──→ push → develop に自動デプロイ → 動作確認
- ├── feat/posts ──→ push → develop に自動デプロイ → 動作確認
+ ├── feat/auth ──→ push → yarn deploy:develop で動作確認
+ ├── feat/posts ──→ push → yarn deploy:develop で動作確認
  │
  ├── release/1.0.0 ←── feat/auth + feat/posts を merge
  │       │
