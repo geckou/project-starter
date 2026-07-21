@@ -63,8 +63,6 @@ jobs:
             echo "name=production" >> $GITHUB_OUTPUT
           elif [[ "$REF" == release/* ]] || [[ "$REF" == hotfix/* ]]; then
             echo "name=staging" >> $GITHUB_OUTPUT
-          else
-            echo "name=develop" >> $GITHUB_OUTPUT
           fi
 
           if [ -n "$FIREBASE_SERVICE_ACCOUNT" ]; then
