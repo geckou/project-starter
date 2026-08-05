@@ -243,6 +243,13 @@ yarn firebase:emulators
 - **引き継ぎなしのセッション終了** → 次のセッションが状況を把握できない。終了時は `/wrap-up` を実行する
 - **進捗の口頭管理**（「あれ終わった？」だけで済ませる）→ 進捗の正は `roadmap.md` の機能ステータス表。表の更新まで指示する
 
+### GitHub 連携（任意）
+
+| 機能 | セットアップ |
+|---|---|
+| PR 自動レビュー / `@claude` メンション | リポジトリの Secrets に `ANTHROPIC_API_KEY` を登録（未登録ならスキップされる）。`.github/workflows/claude.yml` |
+| テンプレート更新の取り込み | 親テンプレートがプライベートの場合は `SOURCE_REPO_PAT` を登録。取り込み対象外は `.templatesyncignore` で管理。`.github/workflows/template-sync.yml` |
+
 ---
 
 ## Scripts
