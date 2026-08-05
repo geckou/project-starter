@@ -206,6 +206,9 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 | コマンド | 説明 |
 |---|---|
+| `/kickoff` | 新規プロジェクトのヒアリング → 企画書・仕様書・ロードマップ作成 |
+| `/next` | ロードマップから次のタスクを選定して提案 |
+| `/wrap-up` | セッション終了処理（引き継ぎ・メモリ記録・コミット） |
 | `/new-page` | Next.js の新規ページ作成 |
 | `/new-component` | React コンポーネント作成 |
 | `/new-function` | Firebase Cloud Function 追加 |

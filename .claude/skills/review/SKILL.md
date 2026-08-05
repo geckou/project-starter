@@ -49,6 +49,17 @@ description: このプロジェクト構成を前提としたコードレビュ�
 - Firebase Security Rules が適切か
 - CORS の設定が適切か
 
+### 6. ドキュメントと実装の整合
+
+仕様書（`.claude/docs/spec.md`）が「正」であり続けるための突き合わせチェック。
+
+- **画面一覧 ⇔ 実ルート**: spec.md の画面一覧と `apps/web/src/app/`（および `apps/mobile/src/app/`）のルート構成が一致しているか
+- **コレクション一覧 ⇔ 実装**: spec.md のコレクション一覧と `firestore.rules` の match ブロック・`packages/shared/src/types/` の型定義が一致しているか
+- **API 一覧 ⇔ ルーティング**: spec.md の API 一覧と `apps/functions/src/api.ts` のルーティング定義が一致しているか
+- **用語集 ⇔ 命名**: 新しく登場したドメイン用語が planning.md の用語集に載っているか
+
+乖離を見つけたら、**「実装が正しい（仕様書を更新）」か「仕様書が正しい（実装を修正）」かをユーザーに確認**してから修正する。勝手にどちらかへ寄せない。
+
 ## 出力フォーマット
 
 レビュー結果は以下の形式で報告する:
