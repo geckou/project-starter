@@ -87,6 +87,11 @@ jobs:
       - run: yarn install --frozen-lockfile
         if: steps.env.outputs.deploy == 'true'
 
+      # deploy.sh が yarn type-check を実行するため、ここでも router 型生成が必要
+      - name: Generate Expo router types
+        if: steps.env.outputs.deploy == 'true'
+        run: yarn workspace @geckou/mobile exec expo customize tsconfig.json
+
       # 環境別の .env をシークレットから生成
       # （deploy.sh → use-env.sh が .env.local と apps/web/.env.local に配布する）
       - name: Create .env.${{ steps.env.outputs.name }}
