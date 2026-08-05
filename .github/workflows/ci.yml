@@ -23,6 +23,9 @@ jobs:
 
       - run: yarn install --frozen-lockfile
 
+      - name: Generate Expo router types
+        run: yarn workspace @geckou/mobile exec expo customize tsconfig.json
+
       - name: Type Check
         run: yarn type-check
 
