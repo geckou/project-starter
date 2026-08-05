@@ -1,5 +1,6 @@
 import { auth } from '@/lib/firebase'
 import Constants from 'expo-constants'
+import type { ApiResponse } from '@geckou/shared'
 
 // 未設定時は Functions エミュレーターを指す（プロジェクト ID は app.config.ts の extra から取得）。
 // Android エミュレーターからは localhost ではなく 10.0.2.2 を指定すること
@@ -15,12 +16,6 @@ type ApiOptions = {
   authenticated?: boolean
 }
 
-type ApiResponse<T> = {
-  success: boolean
-  data?: T
-  error?: string
-}
-
 /**
  * Cloud Functions API を呼び出す共通ヘルパー
  */
@@ -34,7 +29,7 @@ export async function apiClient<T>(
     'Content-Type': 'application/json',
   }
 
-  if (authenticated) {
+  if (authenticated && auth) {
     const user = auth.currentUser
 
     if (user) {

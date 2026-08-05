@@ -6,8 +6,8 @@
     "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "lint:fix": "next lint --fix",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -17,12 +17,13 @@
     "firebase": "^11.0.0",
     "firebase-admin": "^13.0.0",
     "next": "^15.0.0",
-    "@revenuecat/purchases-js": "^0.5.0",
+    "@revenuecat/purchases-js": "^1.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

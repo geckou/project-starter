@@ -9,7 +9,7 @@ export function initializeRevenueCat(appUserId: string) {
   if (!apiKey) return null
 
   if (!instance) {
-    instance = Purchases.configure(apiKey, appUserId)
+    instance = Purchases.configure({ apiKey, appUserId })
   }
   return instance
 }

@@ -29,14 +29,22 @@ export type EntityName = {
 
 ### Firestore ドキュメント型
 
+`packages/shared/src/index.ts` のルートバレルは環境非依存（型・純ユーティリティ・定数）のみを
+export する方針のため、`firebase/firestore` の `Timestamp` は import せず、
+互換の構造型で表現する。
+
 ```typescript
-import { Timestamp } from 'firebase/firestore'
+// Firestore Timestamp と構造互換の型（firebase への依存を持たない）
+export type TimestampLike = {
+  seconds: number
+  nanoseconds: number
+}
 
 // Firestore に保存される形式
 export type EntityNameDoc = {
   id: string
-  createdAt: Timestamp
-  updatedAt: Timestamp
+  createdAt: TimestampLike
+  updatedAt: TimestampLike
 }
 
 // アプリ内で使う形式（Date に変換済み）
@@ -59,6 +67,9 @@ type UsersResponse = ApiResponse<User[]>
 
 ## ルール
 
+- `types/` には環境依存パッケージ（`firebase`, `zustand` 等）を import しない
+  （ルートバレル `packages/shared/src/index.ts` は環境非依存のみを export する方針。
+  functions が `@geckou/shared` を import しても firebase client SDK の型解決が不要になる）
 - 型名はパスカルケース（例: `ChatRoom`, `UserProfile`）
 - Firestore のドキュメント型を作る場合は `XxxDoc`（Firestore 形式）と `Xxx`（アプリ形式）を分ける
 - `interface` ではなく `type` を使う（プロジェクトの規約）

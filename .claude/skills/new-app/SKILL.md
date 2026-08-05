@@ -22,7 +22,8 @@ description: モノレポに新しいアプリを追加する
 
 ```bash
 # 例: Next.js アプリ「admin」を追加
-cp -r apps/web apps/admin
+# node_modules / ビルド成果物 / 環境変数ファイルを除外してコピーする
+rsync -a --exclude=node_modules --exclude=.next --exclude=.turbo --exclude='.env*' apps/web/ apps/admin/
 ```
 
 ## コピー後に変更するファイル
@@ -35,6 +36,12 @@ cp -r apps/web apps/admin
   "version": "0.1.0",
   "private": true
 }
+```
+
+`dev` スクリプトのポートも変更する（`3000` は web が使用中）:
+
+```json
+"dev": "next dev --port 3001"
 ```
 
 ### src/app/layout.tsx
@@ -52,9 +59,10 @@ cp -r apps/web apps/admin
 - Firebase の設定もそのまま使える（同じプロジェクトの場合）
 - 別の Firebase プロジェクトを使う場合は `.env` を分ける
 - コピー元にあるテストやサンプルコードは削除する
-- ルートの `package.json` に便利スクリプトを追加する:
+- ルートの `package.json` に便利スクリプトを追加する（既存の `dev:web` と同じ形式。
+  `...` サフィックスで依存パッケージも dev 対象に含める）:
   ```json
-  "dev:<app-name>": "turbo dev --filter=@geckou/<app-name>"
+  "dev:<app-name>": "rm -rf apps/<app-name>/.next && turbo dev --filter=@geckou/<app-name>..."
   ```
 
 ## Web アプリ（Next.js）を複数置く場合
@@ -71,7 +79,8 @@ yarn がルートの単一コピーに dedupe する。これにより:
 バージョン範囲を保てば追加設定は不要。範囲を変えると重複コピーが生じるため変えない。
 
 mobile（React Native / react@18 系）はルートの `package.json` の
-`workspaces.nohoist`（`@geckou/mobile-*/**`）で隔離済み。web の react@19 系と干渉しない。
+`workspaces.nohoist`（`@geckou/mobile/**` と `@geckou/mobile-*/**` の2エントリ）で隔離済み。
+web の react@19 系と干渉しない。
 
 ### Firebase Hosting に追加 web アプリを載せる場合
 

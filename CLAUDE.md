@@ -117,7 +117,7 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 - Server Component をデフォルト、必要時のみ `'use client'`
 - アイコンは `components/icons/`、定数は `lib/constants/`
 - セマンティック HTML + Tailwind CSS でスタイリング
-- ESLint: `.eslintrc.cjs` のルールに従う
+- ESLint: 各ワークスペースの `eslint.config.mjs`（flat config）のルールに従う
 
 ## Git ブランチ運用
 
@@ -170,6 +170,7 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 | `/new-type` | shared に型定義追加 |
 | `/new-app` | モノレポに新しいアプリ追加 |
 | `/new-skill` | 新しいスキル（スラッシュコマンド）を作成 |
+| `/init-project` | テンプレートから派生プロジェクトを初期化 |
 | `/migrate` | 既存リポジトリの移植 + ドキュメント自動生成 |
 | `/review` | プロジェクト構成を前提としたコードレビュー |
 | `/deploy` | デプロイ手順ガイド |
@@ -239,6 +240,8 @@ gh issue create \
 | daily | `memory/daily/` | - |
 | short-term | `memory/short-term/` | pain_count >= 2 → long-term |
 | long-term | `memory/long-term/` | pain_count >= 3 → CLAUDE.md |
+| Lv.3 | `CLAUDE.md` | reinforce_count >= 3 → スキル / Hook |
+| Lv.4 | スキル / Hook | -（手順型は /new-skill でスキル化、条件型は Hook 化） |
 
 詳細は `memory/evolution.md` を参照。
 

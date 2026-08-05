@@ -28,7 +28,7 @@ yarn build         # ビルドエラー
 | ------------------------------------- | --------------------------------- | ---------------------------------------------------------- |
 | `Cannot find module '@geckou/shared'` | shared のパスエイリアス           | tsconfig.json の paths を確認                              |
 | `Type 'X' is not assignable to 'Y'`  | 型の不一致                        | 型定義を確認。`as const` の有無を確認                      |
-| `Cannot find module '@sentry/*'`      | パッケージ未インストール          | `@ts-nocheck` が付いているか確認。インストール後に削除     |
+| `Cannot find module '@sentry/*'`      | パッケージ未インストール          | 各 `lib/sentry.ts` の import 行に `// @ts-ignore` + 直上の `// eslint-disable-next-line` が付いているか確認。インストール後にこの2行を削除 |
 | vite Plugin 型の不一致               | node_modules の二重インストール   | `vitest.config.ts` を tsconfig の exclude に追加           |
 
 #### ビルドエラー
@@ -57,8 +57,8 @@ node -v  # 20.x が期待値
 rm -rf node_modules apps/*/node_modules packages/*/node_modules
 yarn install
 
-# turbo キャッシュのクリア
-npx turbo clean
+# turbo キャッシュのクリア（turbo に clean コマンドはないため直接削除する）
+rm -rf .turbo apps/*/.turbo packages/*/.turbo
 ```
 
 ### 4. CI 固有の問題

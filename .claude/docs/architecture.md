@@ -9,6 +9,10 @@ Next.js の API Routes（`app/api/`）は使わない。
 Next.js の API Routes は Web からしかアクセスできないが、
 Cloud Functions なら Web・Mobile・外部サービス（Webhook 等）全てから共通で使える。
 
+**例外**: セッション Cookie の発行・破棄を行う `app/api/session/` のみ API Routes を許可する
+（`apps/web/src/app/api/session/route.ts`）。Cookie は Web 固有かつ same-origin で
+設定する必要があり、`middleware.ts` のルート保護がこの Cookie を前提とするため。
+
 ## Firebase の使い分け
 
 | 場面                             | ファイル                             | SDK              | 説明                                                             |
@@ -37,12 +41,12 @@ Server Component で Firestore からデータを取得する（SSR）:
 
 ```typescript
 // apps/web/src/app/dashboard/page.tsx
-import { adminDb } from '@/lib/firebase-admin';
+import { adminDb } from '@/lib/firebase-admin'
 
 export default async function DashboardPage() {
-  const snapshot = await adminDb.collection('users').limit(10).get();
-  const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  return <ul>{users.map(user => <li key={user.id}>{user.id}</li>)}</ul>;
+  const snapshot = await adminDb.collection('users').limit(10).get()
+  const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  return <ul>{users.map(user => <li key={user.id}>{user.id}</li>)}</ul>
 }
 ```
 
@@ -66,7 +70,7 @@ app/<path>/
 | 種類               | ファイル               | 例                                     |
 | ------------------ | ---------------------- | -------------------------------------- |
 | Web クライアント用 | `.env.local`（ルート） | `NEXT_PUBLIC_FIREBASE_*`               |
-| Mobile 用          | `.env.local`（ルート） | `FIREBASE_*`（app.config.ts の extra 経由） |
+| Mobile 用          | `apps/mobile/.env.local`（use-env.sh が配布） | `FIREBASE_*`（app.config.ts の extra 経由） |
 | サーバー専用       | `.env.local`（ルート） | `FIREBASE_SERVICE_ACCOUNT_KEY`         |
 | Functions 専用     | `apps/functions/.env`  | `REVENUECAT_WEBHOOK_AUTH`            |
 
@@ -112,7 +116,8 @@ import { uploadFile, deleteFile, getFileUrl } from '@geckou/shared/storage'
 | Mobile    | `apps/mobile/src/lib/sentry.ts`     | `@sentry/react-native` |
 | Functions | `apps/functions/src/lib/sentry.ts`  | `@sentry/node`         |
 
-※ Sentry パッケージインストール後に各ファイルの `@ts-nocheck` を削除すること。
+※ Sentry パッケージインストール後、各ファイルの import 行に付いている
+`// @ts-ignore` と直上の `// eslint-disable-next-line` の2行を削除すること。
 
 ## i18n（多言語対応）
 

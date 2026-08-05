@@ -84,7 +84,8 @@ export function middleware(request: NextRequest) {
 
   if (!isProtected) return withNoStore(NextResponse.next())
 
-  // Cookie からセッショントークンを取得
+  // Cookie の存在チェックのみ（Edge runtime では firebase-admin が使えないため）。
+  // セッション Cookie の実検証（verifySessionCookie）は各保護ページのサーバーコンポーネントで行う
   const session = request.cookies.get('session')
 
   if (!session) {

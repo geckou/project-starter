@@ -33,6 +33,8 @@ const config: ExpoConfig = {
     typedRoutes: true,
   },
   extra: {
+    // push 通知を使う場合は `eas init` 実行後に extra.eas.projectId の追記が必要
+    // （src/lib/push-notifications.ts が参照する）
     firebaseApiKey: process.env.FIREBASE_API_KEY ?? '',
     firebaseAuthDomain: process.env.FIREBASE_AUTH_DOMAIN ?? '',
     firebaseProjectId: process.env.FIREBASE_PROJECT_ID ?? '',
