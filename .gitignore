@@ -48,7 +48,6 @@ firebase-emulator-data/
 .turbo
 
 # claude
-.claude/settings.json
 .claude/settings.local.json
 
 # functions build

@@ -10,7 +10,7 @@
 | Lv.1 | `memory/short-term/` | 弱（意識すればできる） | プロジェクト固有の一時的パターン |
 | Lv.2 | `memory/long-term/` | 中（習慣化） | プロジェクト横断的な持続パターン |
 | Lv.3 | `CLAUDE.md` | 強（自動適用） | 昇格済みルール |
-| Lv.4 | スキル / Hook | 最強（強制実行） | 自動化された行動 |
+| Lv.4 | スキル / Hook | 最強（強制実行） | 自動化された行動（Hook の実体は `.claude/settings.json` + `.claude/hooks/`） |
 
 ## pain_count プロトコル
 
