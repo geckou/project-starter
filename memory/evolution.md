@@ -66,7 +66,7 @@ status: active
 ### long-term → スキル / Hook（reinforce_count >= 3）
 
 - CLAUDE.md 昇格後もパターンが繰り返される場合:
-  - 「手順型」パターン → `.claude/commands/` にスキル化
+  - 「手順型」パターン → `.claude/skills/` にスキル化（`/new-skill` で作成）
   - 「条件型」パターン → `settings.json` に Hook 化
 
 ## Evolved Rules
