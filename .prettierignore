@@ -9,3 +9,6 @@ coverage
 
 # FlatCompat が生成する一時ファイル
 apps/mobile/.eslintrc.js
+
+# expo customize が生成する型定義ファイル
+apps/mobile/expo-env.d.ts
