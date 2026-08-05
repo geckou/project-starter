@@ -3,11 +3,15 @@ import { fileURLToPath } from 'url'
 
 import type { NextConfig } from 'next'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// CJS コンパイル時は import.meta.url が undefined になるためガード
+const appDir =
+  typeof __dirname !== 'undefined'
+    ? __dirname
+    : path.dirname(fileURLToPath(import.meta.url))
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  outputFileTracingRoot: path.join(__dirname, '../../'),
+  outputFileTracingRoot: path.join(appDir, '../../'),
   transpilePackages: ['@geckou/shared'],
   headers: async () => [
     {
