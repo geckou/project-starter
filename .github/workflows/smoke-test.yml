@@ -65,6 +65,18 @@ jobs:
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
             const body = `週次スモークテストが失敗しました。上流エコシステムの変化でテンプレートが壊れている可能性があります。\n\n実行ログ: ${runUrl}`
 
+            // smoke-test ラベルが未作成だと list/create が 422 になるため先に保証する
+            try {
+              await github.rest.issues.createLabel({
+                ...context.repo,
+                name: 'smoke-test',
+                color: 'd93f0b',
+                description: '週次スモークテストの自動起票',
+              })
+            } catch (error) {
+              if (error.status !== 422) throw error // 422 = 既に存在する
+            }
+
             const { data: issues } = await github.rest.issues.listForRepo({
               ...context.repo,
               state: 'open',

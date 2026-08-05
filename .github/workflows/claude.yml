@@ -54,9 +54,12 @@ jobs:
             重要度付きでレビューコメントを投稿してください。
 
   mention:
+    # 外部ユーザーのコメントで書き込み権限付きジョブが起動しないよう、
+    # メンションはリポジトリの OWNER / MEMBER / COLLABORATOR に限定する
     if: >-
       (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
-      contains(github.event.comment.body, '@claude')
+      contains(github.event.comment.body, '@claude') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     permissions:
       contents: write
