@@ -85,7 +85,8 @@ yarn deploy:staging
 yarn deploy:production
 ```
 
-CI/CD: `.github/workflows/deploy.yml` でブランチ push 時に自動デプロイ。
+CI/CD: `.github/workflows/deploy.yml` が `release/*` / `hotfix/*`（→ staging）と `production` の push で自動デプロイ。
+develop は自動デプロイ対象外（複数人の feat/* push が互いに上書きし合うため）。各自 `yarn deploy:develop` で手動デプロイする。
 
 ### CI 用 GitHub Secrets の登録
 
@@ -94,14 +95,14 @@ CI/CD: `.github/workflows/deploy.yml` でブランチ push 時に自動デプロ
 
 | Secret 名 | 中身 | 参照されるブランチ |
 | --- | --- | --- |
-| `ENV_FILE_DEVELOP` | `.env.develop` の全文 | `feat/*` 等（develop 環境）|
 | `ENV_FILE_STAGING` | `.env.staging` の全文 | `release/*` / `hotfix/*`（staging 環境）|
 | `ENV_FILE_PRODUCTION` | `.env.production` の全文 | `production`（本番）|
 | `FIREBASE_SERVICE_ACCOUNT` | サービスアカウント鍵 JSON の全文 | 全環境共通 |
 
+develop 用のシークレットは不要（CI からデプロイしないため）。
+
 ```bash
 # 環境別 env の全文をそのまま登録（ローカルにファイルがある前提）
-gh secret set ENV_FILE_DEVELOP < .env.develop
 gh secret set ENV_FILE_STAGING < .env.staging
 gh secret set ENV_FILE_PRODUCTION < .env.production
 

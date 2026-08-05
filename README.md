@@ -192,11 +192,11 @@ yarn env:production
 
 | Secret 名 | 中身 | 登録コマンド |
 | --- | --- | --- |
-| `ENV_FILE_DEVELOP` | `.env.develop` の全文 | `gh secret set ENV_FILE_DEVELOP < .env.develop` |
 | `ENV_FILE_STAGING` | `.env.staging` の全文 | `gh secret set ENV_FILE_STAGING < .env.staging` |
+| `ENV_FILE_PRODUCTION` | `.env.production` の全文 | `gh secret set ENV_FILE_PRODUCTION < .env.production` |
 | `FIREBASE_SERVICE_ACCOUNT` | サービスアカウント鍵 JSON の全文 | `gh secret set FIREBASE_SERVICE_ACCOUNT < service-account.json` |
 
-- `production` ブランチへの push は `ENV_FILE_PRODUCTION` を参照する（必要なら同様に登録）。
+- CI 自動デプロイの対象は `release/*` / `hotfix/*`（staging）と `production` のみ。develop へは各自 `yarn deploy:develop` で手動デプロイする（複数人の push が互いに上書きし合うのを防ぐため）。
 - `FIREBASE_SERVICE_ACCOUNT` 未設定の場合、`deploy` ジョブはスキップされチェックのみ実行される。
 
 詳細は [.claude/docs/git-workflow.md](.claude/docs/git-workflow.md) を参照。

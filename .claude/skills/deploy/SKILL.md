@@ -43,13 +43,14 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
 
 `.github/workflows/deploy.yml` が push トリガーで同じ `scripts/deploy.sh` を実行する:
 
-| ブランチ                  | デプロイ先 |
-| ------------------------- | ---------- |
-| feat/fix/refactor/test/** | develop    |
-| release/** / hotfix/**    | staging    |
-| production                | production |
+| ブランチ               | デプロイ先 |
+| ---------------------- | ---------- |
+| release/** / hotfix/** | staging    |
+| production             | production |
 
-CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウント JSON）と `ENV_FILE_<ENV>`（.env の内容）が必要。
+develop は CI から自動デプロイしない（複数人の feat/* push が互いに上書きし合うため）。各自 `yarn deploy:develop` で手動デプロイする。
+
+CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウント JSON）と `ENV_FILE_STAGING` / `ENV_FILE_PRODUCTION`（.env の内容）が必要。
 
 ## ルール
 
