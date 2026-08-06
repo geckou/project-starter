@@ -38,7 +38,7 @@ jobs:
             echo "ANTHROPIC_API_KEY が未設定のためスキップします"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.check.outputs.enabled == 'true'
         with:
           fetch-depth: 0
@@ -80,7 +80,7 @@ jobs:
             echo "ANTHROPIC_API_KEY が未設定のためスキップします"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: steps.check.outputs.enabled == 'true'
         with:
           fetch-depth: 0
