@@ -27,8 +27,7 @@ import {
 // ---- 型定義 ----
 
 type FirestoreResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: string }
+  { success: true; data: T } | { success: false; error: string }
 
 type QueryOptions = {
   conditions?: Array<{
