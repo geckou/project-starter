@@ -32,10 +32,17 @@ export const useUiStore = create<UiState>((set) => ({
 
 ### 2. バレルエクスポートに追加
 
-`packages/shared/src/stores/index.ts` に追加:
+`packages/shared/src/stores/index.ts` に追加（既存と同じ `export *` 形式）:
 
 ```typescript
-export { useUiStore } from './ui-store'
+export * from './ui-store'
+```
+
+注意: stores はルートバレル（`packages/shared/src/index.ts`）からは export されない
+（ルートバレルは環境非依存のみ）。利用側は必ず `@geckou/shared/stores` サブパス経由で import する:
+
+```typescript
+import { useUiStore } from '@geckou/shared/stores'
 ```
 
 ### 3. 命名規則

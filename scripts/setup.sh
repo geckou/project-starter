@@ -62,7 +62,7 @@ fi
 echo ""
 
 # Node.js バージョンチェック
-REQUIRED_NODE=20
+REQUIRED_NODE=22
 CURRENT_NODE=$(node -v 2>/dev/null | cut -d'.' -f1 | tr -d 'v')
 if [ -z "$CURRENT_NODE" ]; then
   echo "[warn] Node.js がインストールされていません"

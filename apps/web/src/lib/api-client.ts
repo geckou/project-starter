@@ -1,3 +1,5 @@
+import type { ApiResponse } from '@geckou/shared'
+
 import { auth } from '@/lib/firebase'
 
 // 未設定時は Functions エミュレーターを指す（プロジェクト ID は Firebase 設定から取得）
@@ -11,12 +13,6 @@ type ApiOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
   body?: unknown
   authenticated?: boolean
-}
-
-type ApiResponse<T> = {
-  success: boolean
-  data?: T
-  error?: string
 }
 
 /**

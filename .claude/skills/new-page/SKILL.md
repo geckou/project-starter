@@ -57,8 +57,15 @@ export default function Loading() {
 
 ### error.tsx
 
+実際の `apps/web/src/app/error.tsx` と同じ構成にする（日本語文言 + `useEffect` でのエラーログ）:
+
 ```tsx
 'use client'
+
+import { useEffect } from 'react'
+
+// Sentry インストール後に有効化:
+// import { Sentry } from '@/lib/sentry'
 
 export default function Error({
   error,
@@ -67,11 +74,23 @@ export default function Error({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  useEffect(() => {
+    console.error(error)
+    // Sentry インストール後に有効化:
+    // Sentry.captureException(error)
+  }, [error])
+
   return (
-    <div>
-      <h2>Something went wrong</h2>
-      <button onClick={() => reset()}>Try again</button>
-    </div>
+    <main className="flex min-h-screen flex-col items-center justify-center gap-4">
+      <h2 className="text-xl font-bold">エラーが発生しました</h2>
+      <p className="text-gray-500">{error.message}</p>
+      <button
+        onClick={() => reset()}
+        className="bg-primary-600 hover:bg-primary-700 rounded px-4 py-2 text-white"
+      >
+        再試行
+      </button>
+    </main>
   )
 }
 ```

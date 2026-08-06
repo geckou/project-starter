@@ -20,17 +20,24 @@ description: Firebase Cloud Function を追加する
 
 ### HTTP エンドポイント（api.ts に追加）
 
+認証は `lib/auth-middleware.ts` の `requireAuth` ミドルウェアを使う
+（手書きのトークン検証は書かない）。`api.ts` には import 済み。
+
 ```typescript
 // apps/functions/src/api.ts に追加
-app.post('/endpoint-name', async (req, res) => {
-  // 認証チェック
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return res.status(401).json({ error: 'Unauthorized' })
+import { requireAuth, type AuthenticatedRequest } from './lib/auth-middleware'
 
-  const decoded = await getAuth().verifyIdToken(token)
+// 注意: Express 4 は async ハンドラの reject を捕捉しないため、
+// 各ハンドラ内で try/catch してエラーレスポンスを返すこと
+app.post('/endpoint-name', requireAuth, async (req, res) => {
+  const uid = (req as AuthenticatedRequest).uid
 
-  // ロジック
-  res.json({ success: true })
+  try {
+    // ロジック
+    res.json({ success: true })
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Internal server error' })
+  }
 })
 ```
 
@@ -41,10 +48,14 @@ app.post('/endpoint-name', async (req, res) => {
 import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { getFirestore } from 'firebase-admin/firestore'
 
-export const dailyCleanup = onSchedule('every day 03:00', async () => {
-  const db = getFirestore()
-  // クリーンアップ処理
-})
+// api.ts と同じく region を asia-northeast1 に揃える
+export const dailyCleanup = onSchedule(
+  { schedule: 'every day 03:00', timeZone: 'Asia/Tokyo', region: 'asia-northeast1' },
+  async () => {
+    const db = getFirestore()
+    // クリーンアップ処理
+  }
+)
 ```
 
 ### Firestore トリガー（新規ファイル）
@@ -53,8 +64,9 @@ export const dailyCleanup = onSchedule('every day 03:00', async () => {
 // apps/functions/src/triggers.ts
 import { onDocumentCreated } from 'firebase-functions/v2/firestore'
 
+// api.ts と同じく region を asia-northeast1 に揃える
 export const onUserCreate = onDocumentCreated(
-  'users/{userId}',
+  { document: 'users/{userId}', region: 'asia-northeast1' },
   async (event) => {
     const snapshot = event.data
     if (!snapshot) return
@@ -75,4 +87,4 @@ export const onUserCreate = onDocumentCreated(
 - 変数は `const` を使う。比較は `===` / `!==` を使う
 - 略語は避ける（`req` / `res` はフレームワーク慣例のため例外）
 - 配列は複数形にする（`users`, `tokens`）
-- Functions 固有の環境変数は `apps/functions/.env` に追加し、`.env.example` も更新する
+- Functions 固有の環境変数は `apps/functions/.env` に追加し、ルートの `.env.example` の Functions セクションを更新する

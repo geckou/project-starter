@@ -79,7 +79,7 @@ project-starter/
 
 | ツール       | バージョン | 確認コマンド         |
 | ------------ | ---------- | -------------------- |
-| Node.js      | 20 以上    | `node -v`            |
+| Node.js      | 22 以上    | `node -v`            |
 | yarn         | 1.x        | `yarn -v`            |
 | Firebase CLI | 最新       | `firebase --version` |
 

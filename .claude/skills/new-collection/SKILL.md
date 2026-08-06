@@ -31,6 +31,8 @@ export type Post = {
 ### 2. Firestore セキュリティルールの追加
 
 `firestore.rules` にコレクションのルールを追加する。
+追記位置は `match /databases/{database}/documents { ... }` の内側、
+デフォルト拒否の `match /{document=**}` ブロックの後。
 
 ```
 match /posts/{postId} {
@@ -50,6 +52,11 @@ match /posts/{postId} {
 - **認証済みなら読み取り可**: `request.auth != null`
 - **誰でも読める（公開）**: `allow read: if true`
 - **管理者のみ**: `request.auth.token.admin == true`
+
+注意: 1つの Firebase プロジェクトに複数環境を相乗りさせる運用では、
+環境ごとに明示的な match を追加する（`match /dev_posts/{postId}`, `match /stg_posts/{postId}`）。
+ワイルドカード `/{prefix}posts` はセグメント内マッチ不可のため使えない
+（`firestore.rules` 内のコメント参照）。
 
 ### 3. API エンドポイントの追加
 
@@ -112,20 +119,33 @@ app.post('/posts', requireAuth, async (req, res) => {
 })
 ```
 
-補足:
+### 4. 複合インデックスの追加
 
-- `where` + `orderBy` の組み合わせは複合インデックスが必要になる場合がある。エラーになったら `firestore.indexes.json` に追加する
+複合クエリ（`where` + `orderBy` の組み合わせ等）には `firestore.indexes.json` への
+複合インデックス追加が必要。上記の一覧取得クエリの場合:
 
-### 4. テストの追加
+```json
+{
+  "collectionGroup": "posts",
+  "queryScope": "COLLECTION",
+  "fields": [
+    { "fieldPath": "authorId", "order": "ASCENDING" },
+    { "fieldPath": "createdAt", "order": "DESCENDING" }
+  ]
+}
+```
+
+### 5. テストの追加
 
 `apps/functions/tests/` に API エンドポイントのテストを追加する。
 Firebase Admin の `getAuth()` と `getFirestore()` をモックして検証する。
 
-### 5. 確認事項
+### 6. 確認事項
 
 - [ ] `packages/shared/src/types/index.ts` に型を追加した
 - [ ] `firestore.rules` にルールを追加した
 - [ ] `apps/functions/src/api.ts` にエンドポイントを追加した
+- [ ] 複合クエリがある場合、`firestore.indexes.json` に複合インデックスを追加した
 - [ ] テストを追加した
 - [ ] `yarn type-check` が通る
 - [ ] `yarn test` が通る

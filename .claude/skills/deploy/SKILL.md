@@ -21,12 +21,15 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
 
 ## deploy.sh がやること
 
-1. `scripts/use-env.sh <env>` で `.env.local`（ルート + `apps/web/`）と Firebase プロジェクトを切り替え
+1. `scripts/use-env.sh <env>` で `.env.local`（ルート + `apps/web/` + `apps/mobile/`）と Firebase プロジェクトを切り替え
 2. `type-check` / `lint` / `test` / `build` の事前チェック
 3. workspace 依存（`@geckou/*`）を package.json から一時削除（Cloud Build が npm registry から取得しようとして失敗するため。終了時に自動復元）
 4. functions / firestore をデプロイ後、framework hosting をターゲットごとに個別デプロイ（複数同梱だと next build がハングするため）
 
 `--force` フラグは上記の理由で意図的に使用している（削除しないこと）。
+
+production へのデプロイは `production` ブランチからのみ実行できるガードが deploy.sh に入っている。
+どうしても他ブランチから実行する必要がある場合のみ `FORCE_DEPLOY=1 yarn deploy:production` で回避できる。
 
 ## 手順
 
@@ -34,8 +37,9 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
 2. 前提を確認する:
    - `.env.<env>` が存在するか（なければ `.env.example` からコピーして値を埋める）
    - `firebase login:list` でログイン済みか
-   - `firebase experiments:enable webframeworks` が有効か（初回のみ必要）
-   - production の場合: 現在のブランチが `production` か（release/hotfix マージ後のデプロイが原則）
+   - production の場合: 現在のブランチが `production` か（deploy.sh がガードしている。release/hotfix マージ後のデプロイが原則）
+
+   `firebase experiments:enable webframeworks` は deploy.sh が自動実行するため手動での有効化は不要。
 3. `yarn deploy:<env>` を実行する
 4. 失敗したら `/troubleshoot` の手順で診断する
 

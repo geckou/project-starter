@@ -5,7 +5,8 @@ import { onRequest } from 'firebase-functions/v2/https'
 import { requireAuth, type AuthenticatedRequest } from './lib/auth-middleware'
 import { handleRevenueCatWebhook } from './revenuecat-webhook'
 
-const app = express()
+// テストから直接リクエストを投げられるよう app 自体も export する
+export const app = express()
 
 // 本番では ALLOWED_ORIGINS（カンマ区切り）で許可オリジンを絞る。
 // 未設定・空の場合は全オリジン許可（開発用）
