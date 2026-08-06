@@ -48,6 +48,18 @@ jobs:
       - name: Test
         run: yarn test
 
+      # Firestore ルールテスト（turbo のタスクグラフ外なので明示的に実行する）
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Firestore Rules Test
+        run: yarn test:rules
+
       - name: Build
         run: yarn build
 
