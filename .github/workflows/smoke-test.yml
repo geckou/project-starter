@@ -58,7 +58,7 @@ jobs:
 
       - name: Report failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const title = '[Smoke Test] 週次スモークテストが失敗しました'
