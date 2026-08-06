@@ -1,0 +1,30 @@
+# Template Sync の対象外（派生プロジェクト固有にカスタマイズするファイル）
+# ここに載っていないファイル（.claude/skills/, .github/workflows/, ルート設定等）が
+# テンプレート更新の取り込み対象になる。
+
+# プロダクト固有ドキュメント
+.claude/docs/planning.md
+.claude/docs/spec.md
+.claude/docs/roadmap.md
+.claude/docs/roadmap-archive.md
+CLAUDE.md
+README.md
+
+# プロジェクトの学習メモリ
+memory/
+
+# 環境・Firebase 設定（プロジェクトごとに異なる）
+.env*
+.firebaserc
+firebase.json
+firestore.rules
+firestore.indexes.json
+storage.rules
+
+# アプリ実装・共有コード（ドメインロジックはプロジェクト固有）
+apps/
+packages/
+
+# 依存関係（プロジェクトごとに増減する）
+package.json
+yarn.lock

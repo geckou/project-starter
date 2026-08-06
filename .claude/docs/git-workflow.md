@@ -138,3 +138,30 @@ gcloud services enable cloudfunctions.googleapis.com \
 
 自動有効化される場合もあるが反映に時間がかかるため、事前に有効化しておくのが確実。
 [Google Cloud Console](https://console.cloud.google.com/apis/library) からも有効化可能。
+
+## マージルールの強制（プラン別）
+
+マージルール（production へは release/* と hotfix/* のみ等）の機械的な強制は、GitHub の契約プランによってできることが変わる。
+
+### 全プラン共通（同梱済み）
+
+`.github/workflows/branch-guard.yml` が production 向け PR の head ブランチを検証し、`release/*`・`hotfix/*` 以外なら CI を赤にする。
+
+> **注意**: Free プランのプライベートリポジトリでは Required status checks が使えないため、これは「赤い ✗ による可視化」であり物理的なマージブロックではない。ただし本テンプレートではマージ操作の主体がかなりの割合で AI（Claude）であり、AI は「CI が赤の PR はマージしない」を守るため実効性は高い。
+
+### 対応プラン（Pro / Team / Enterprise、またはパブリックリポジトリ）
+
+Rulesets で強制できる。同梱の定義を取り込む:
+
+```bash
+gh api repos/{owner}/{repo}/rulesets \
+  --method POST \
+  --input .github/rulesets/production.json
+```
+
+内容: production の削除・force push 禁止、PR 必須（レビュー1件）、Required status checks（`ci` / `guard`）。
+`hotfix/*` の緊急セルフマージを許す場合は、取り込み後に UI で bypass 設定を調整する。
+
+### Free プランのプライベートリポジトリの場合
+
+マージ操作の強制はできない。branch-guard の可視化と運用規律（CLAUDE.md のマージルール）に依存することを、チームで共有しておく。
