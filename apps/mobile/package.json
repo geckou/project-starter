@@ -21,7 +21,7 @@
     "expo-router": "~4.0.0",
     "expo-status-bar": "~2.0.0",
     "firebase": "^11.0.0",
-    "nativewind": "^4.0.0",
+    "nativewind": "^4.2.6",
     "react": "^18.3.0",
     "react-native": "~0.76.0",
     "react-native-purchases": "^8.0.0",
