@@ -18,8 +18,11 @@ const firebaseConfig = {
   appId: extra.firebaseAppId ?? '',
 }
 
-// 環境変数が未設定の場合（テンプレート初期状態）は初期化をスキップ
-const isConfigured = firebaseConfig.apiKey !== ''
+// 環境変数が未設定の場合（テンプレート初期状態）は初期化をスキップ。
+// 一部だけ設定された不完全な状態でも初期化しないよう、必須項目が全て揃っているかで判定する
+const isConfigured = Object.values(firebaseConfig).every(
+  (value) => value !== ''
+)
 
 // React Native では getAuth() だと永続化されず、アプリ再起動でログイン状態が消える。
 // AsyncStorage を使った永続化付きで Auth を初期化する

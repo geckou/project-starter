@@ -51,7 +51,7 @@ yarn build         # ビルドエラー
 
 ```bash
 # Node.js バージョン確認
-node -v  # 20.x が期待値
+node -v  # .nvmrc の値（22.x）が期待値
 
 # 依存関係の再インストール
 rm -rf node_modules apps/*/node_modules packages/*/node_modules
