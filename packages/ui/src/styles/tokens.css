@@ -1,0 +1,61 @@
+/*
+ * デザイントークン（customjapan/front_cj の assets/scss/variables.scss 由来）
+ * ビューポート 430px〜980px の間で流体スケーリングする。
+ * SCSS の calcClamp() を純 CSS の clamp() に展開済み。
+ *
+ * 各コンポーネントは var(--token, フォールバック値) で参照するため、
+ * このファイルを読み込まなくても固定値で動作する。
+ * アプリ側で読み込むと本来の流体スケーリングが有効になる:
+ *   @import '@geckou/ui/styles/tokens.css';
+ */
+:root {
+  /* 基準値（6px〜8px） */
+  --bv: clamp(0.375rem, 0.2773rem + 0.3636vw, 0.5rem);
+
+  /* スペーシング */
+  --sp: var(--bv);
+  --sp-max: calc(var(--sp) * 12);
+  --sp-larger: calc(var(--sp) * 8);
+  --sp-large: calc(var(--sp) * 4);
+  --sp-medium: calc(var(--sp) * 2);
+  --sp-small: var(--sp);
+  --sp-min: calc(var(--sp) / 2);
+
+  /* アイコンサイズ */
+  --icon-min: calc(var(--bv) * 2);
+  --icon-small: calc(var(--bv) * 2.5);
+  --icon-medium: calc(var(--bv) * 3);
+  --icon-large: calc(var(--bv) * 4);
+  --icon-larger: calc(var(--bv) * 5);
+
+  /* 角丸 */
+  --radius-min: calc(var(--bv) / 4);
+  --radius-small: calc(var(--bv) / 2);
+  --radius-medium: var(--bv);
+  --radius-large: calc(var(--bv) * 2);
+
+  /* フォントサイズ */
+  --fs-min: 10px;
+  --fs-smaller: clamp(0.625rem, 0.5761rem + 0.1818vw, 0.6875rem);
+  --fs-small: clamp(0.6875rem, 0.6386rem + 0.1818vw, 0.75rem);
+  --fs-medium: clamp(0.8125rem, 0.7636rem + 0.1818vw, 0.875rem);
+  --fs-large: clamp(0.875rem, 0.7773rem + 0.3636vw, 1rem);
+  --fs-larger: clamp(1rem, 0.8045rem + 0.7273vw, 1.25rem);
+  --fs-max: clamp(1.125rem, 0.8318rem + 1.0909vw, 1.5rem);
+
+  /* 行間・字間 */
+  --line-height-tight: 1.12;
+  --line-height-narrow: 1.4;
+  --line-height-normal: 1.6;
+  --letter-spacing-normal: 0.08em;
+  --letter-spacing-narrow: 0.04em;
+
+  /* 画面幅 */
+  --mobile-lower-width: 430px;
+  --tablet-lower-width: 740px;
+  --desktop-lower-width: 1025px;
+  --contents-max-width: 1440px;
+
+  /* その他 */
+  --transition-duration: 0.3s;
+}
