@@ -12,7 +12,7 @@ const appDir =
 const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: path.join(appDir, '../../'),
-  transpilePackages: ['@geckou/shared'],
+  transpilePackages: ['@geckou/shared', '@geckou/ui'],
   headers: async () => [
     {
       source: '/(.*)',

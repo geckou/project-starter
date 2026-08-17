@@ -2,7 +2,10 @@ import type { Config } from 'tailwindcss'
 import { colors, fontFamily, borderRadius } from '@geckou/shared/theme'
 
 const config: Config = {
-  content: ['./src/**/*.{js,jsx,ts,tsx}'],
+  content: [
+    './src/**/*.{js,jsx,ts,tsx}',
+    '../../packages/ui/src/**/*.{ts,tsx}',
+  ],
   theme: {
     extend: {
       colors,
