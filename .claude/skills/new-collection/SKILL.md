@@ -31,6 +31,8 @@ export type Post = {
 ### 2. Firestore セキュリティルールの追加
 
 `firestore.rules` にコレクションのルールを追加する。
+追記位置は `match /databases/{database}/documents { ... }` の内側、
+デフォルト拒否の `match /{document=**}` ブロックの後。
 
 ```
 match /posts/{postId} {
@@ -51,69 +53,99 @@ match /posts/{postId} {
 - **誰でも読める（公開）**: `allow read: if true`
 - **管理者のみ**: `request.auth.token.admin == true`
 
+注意: 1つの Firebase プロジェクトに複数環境を相乗りさせる運用では、
+環境ごとに明示的な match を追加する（`match /dev_posts/{postId}`, `match /stg_posts/{postId}`）。
+ワイルドカード `/{prefix}posts` はセグメント内マッチ不可のため使えない
+（`firestore.rules` 内のコメント参照）。
+
 ### 3. API エンドポイントの追加
 
 `apps/functions/src/api.ts` に CRUD エンドポイントを追加する。
 
-認証が必要なエンドポイントの基本パターン:
+**認証は必ず `requireAuth` ミドルウェア（`apps/functions/src/lib/auth-middleware.ts`）を使う。**
+エンドポイント内でトークンを手動検証しない。
+
+**リクエストボディは必ず許可フィールドのみ抽出してから書き込む。**
+`...req.body` をそのままスプレッドして保存しない（`authorId` の偽装や余分なフィールドの混入を防ぐ）。
 
 ```typescript
-import { getAuth } from 'firebase-admin/auth'
 import { getFirestore } from 'firebase-admin/firestore'
+import { requireAuth, type AuthenticatedRequest } from './lib/auth-middleware'
 
 // GET /posts - 一覧取得
-app.get('/posts', async (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return res.status(401).json({ error: 'Unauthorized' })
+app.get('/posts', requireAuth, async (req, res) => {
+  const { uid } = req as AuthenticatedRequest
 
   try {
-    const decoded = await getAuth().verifyIdToken(token)
     const db = getFirestore()
     const snapshot = await db
       .collection('posts')
-      .where('authorId', '==', decoded.uid)
+      .where('authorId', '==', uid)
       .orderBy('createdAt', 'desc')
       .limit(20)
       .get()
 
     const posts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
     res.json({ success: true, data: posts })
-  } catch (error) {
+  } catch {
     res.status(500).json({ success: false, error: 'Internal server error' })
   }
 })
 
 // POST /posts - 新規作成
-app.post('/posts', async (req, res) => {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return res.status(401).json({ error: 'Unauthorized' })
+app.post('/posts', requireAuth, async (req, res) => {
+  const { uid } = req as AuthenticatedRequest
+
+  // 許可フィールドのみ抽出してバリデーションする
+  const { title, content } = req.body
+  if (typeof title !== 'string' || title.length === 0 || typeof content !== 'string') {
+    res.status(400).json({ success: false, error: 'Invalid request body' })
+    return
+  }
 
   try {
-    const decoded = await getAuth().verifyIdToken(token)
     const db = getFirestore()
     const docRef = await db.collection('posts').add({
-      ...req.body,
-      authorId: decoded.uid,
+      title,
+      content,
+      authorId: uid,
       createdAt: new Date(),
       updatedAt: new Date(),
     })
     res.json({ success: true, data: { id: docRef.id } })
-  } catch (error) {
+  } catch {
     res.status(500).json({ success: false, error: 'Internal server error' })
   }
 })
 ```
 
-### 4. テストの追加
+### 4. 複合インデックスの追加
+
+複合クエリ（`where` + `orderBy` の組み合わせ等）には `firestore.indexes.json` への
+複合インデックス追加が必要。上記の一覧取得クエリの場合:
+
+```json
+{
+  "collectionGroup": "posts",
+  "queryScope": "COLLECTION",
+  "fields": [
+    { "fieldPath": "authorId", "order": "ASCENDING" },
+    { "fieldPath": "createdAt", "order": "DESCENDING" }
+  ]
+}
+```
+
+### 5. テストの追加
 
 `apps/functions/tests/` に API エンドポイントのテストを追加する。
 Firebase Admin の `getAuth()` と `getFirestore()` をモックして検証する。
 
-### 5. 確認事項
+### 6. 確認事項
 
 - [ ] `packages/shared/src/types/index.ts` に型を追加した
 - [ ] `firestore.rules` にルールを追加した
 - [ ] `apps/functions/src/api.ts` にエンドポイントを追加した
+- [ ] 複合クエリがある場合、`firestore.indexes.json` に複合インデックスを追加した
 - [ ] テストを追加した
 - [ ] `yarn type-check` が通る
 - [ ] `yarn test` が通る

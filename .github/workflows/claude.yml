@@ -1,0 +1,91 @@
+name: Claude
+
+# GitHub 上で Claude を使うためのワークフロー。
+# - PR 作成時: /review スキルと同じ観点で自動レビュー
+# - Issue / PR コメントの @claude メンション: 修正・調査タスクを依頼
+#
+# セットアップ: リポジトリの Secrets に ANTHROPIC_API_KEY を登録する。
+# 未登録の場合は何もせずスキップする（CI は壊れない）。
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  auto-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Check secret
+        id: check
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "ANTHROPIC_API_KEY が未設定のためスキップします"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            /review でこの PR をレビューしてください。
+            .claude/skills/review/SKILL.md の観点（プロジェクト構成・Firebase・Next.js・
+            コード品質・セキュリティ・ドキュメントと実装の整合）に従い、
+            重要度付きでレビューコメントを投稿してください。
+
+  mention:
+    # 外部ユーザーのコメントで書き込み権限付きジョブが起動しないよう、
+    # メンションはリポジトリの OWNER / MEMBER / COLLABORATOR に限定する
+    if: >-
+      (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
+      contains(github.event.comment.body, '@claude') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Check secret
+        id: check
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "ANTHROPIC_API_KEY が未設定のためスキップします"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

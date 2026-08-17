@@ -1,27 +1,36 @@
-// 参考実装: SSR での Firestore データ取得パターン
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+
+import { adminAuth, adminDb } from '@/lib/firebase-admin'
+
+// 参考実装: 保護ページでのセッション検証 + SSR での Firestore データ取得パターン
 // ビルド時の静的生成をスキップし、リクエスト時に SSR で実行する
 export const dynamic = 'force-dynamic'
 
-import { adminDb } from '@/lib/firebase-admin'
-
 export default async function DashboardPage() {
-  // サーバーサイドで Firestore からデータ取得（SSR）
-  const snapshot = await adminDb.collection('users').limit(10).get()
-  const users = snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }))
+  // middleware は Cookie の存在チェックのみ（Edge runtime では firebase-admin が使えない）。
+  // セッション Cookie の実検証は保護ページ側で行う
+  const sessionCookie = (await cookies()).get('session')?.value
+  if (!sessionCookie) redirect('/login')
+
+  // 失効チェック付きで検証（第2引数 true でログアウト・無効化済みセッションを弾く）
+  const decoded = await adminAuth
+    .verifySessionCookie(sessionCookie, true)
+    .catch(() => null)
+  if (!decoded) redirect('/login')
+
+  // サーバーサイドで Firestore からデータ取得（SSR）。
+  // 検証済みの uid にスコープし、本人のデータのみ返す
+  const userDoc = await adminDb.collection('users').doc(decoded.uid).get()
+  const user = userDoc.data()
 
   return (
     <main className="p-8">
       <h1 className="text-2xl font-bold">Dashboard</h1>
-      <ul className="mt-4 space-y-2">
-        {users.map((user) => (
-          <li key={user.id} className="rounded border p-3">
-            {user.id}
-          </li>
-        ))}
-      </ul>
+      <div className="mt-4 rounded border p-3">
+        <p>uid: {decoded.uid}</p>
+        {user && <p>displayName: {String(user.displayName ?? '')}</p>}
+      </div>
     </main>
   )
 }

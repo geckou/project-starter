@@ -1,0 +1,25 @@
+name: Release
+
+# テンプレート本体のバージョニング。production へのマージを契機に
+# Release Please がリリース PR を作成・更新し、マージするとタグ + GitHub Release が作られる。
+# 派生プロジェクトは bug_report の「テンプレートのバージョン」欄や
+# Template Sync の取り込み基準としてこのタグを使う。
+# （テンプレート本体でのみ動作する。派生プロジェクトでは skip）
+
+on:
+  push:
+    branches: [production]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: github.repository == 'geckou/project-starter'
+
+    steps:
+      - uses: googleapis/release-please-action@v5
+        with:
+          release-type: simple

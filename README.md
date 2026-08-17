@@ -79,7 +79,7 @@ project-starter/
 
 | ツール       | バージョン | 確認コマンド         |
 | ------------ | ---------- | -------------------- |
-| Node.js      | 20 以上    | `node -v`            |
+| Node.js      | 22 以上    | `node -v`            |
 | yarn         | 1.x        | `yarn -v`            |
 | Firebase CLI | 最新       | `firebase --version` |
 
@@ -192,11 +192,11 @@ yarn env:production
 
 | Secret 名 | 中身 | 登録コマンド |
 | --- | --- | --- |
-| `ENV_FILE_DEVELOP` | `.env.develop` の全文 | `gh secret set ENV_FILE_DEVELOP < .env.develop` |
 | `ENV_FILE_STAGING` | `.env.staging` の全文 | `gh secret set ENV_FILE_STAGING < .env.staging` |
+| `ENV_FILE_PRODUCTION` | `.env.production` の全文 | `gh secret set ENV_FILE_PRODUCTION < .env.production` |
 | `FIREBASE_SERVICE_ACCOUNT` | サービスアカウント鍵 JSON の全文 | `gh secret set FIREBASE_SERVICE_ACCOUNT < service-account.json` |
 
-- `production` ブランチへの push は `ENV_FILE_PRODUCTION` を参照する（必要なら同様に登録）。
+- CI 自動デプロイの対象は `release/*` / `hotfix/*`（staging）と `production` のみ。develop へは各自 `yarn deploy:develop` で手動デプロイする（複数人の push が互いに上書きし合うのを防ぐため）。
 - `FIREBASE_SERVICE_ACCOUNT` 未設定の場合、`deploy` ジョブはスキップされチェックのみ実行される。
 
 詳細は [.claude/docs/git-workflow.md](.claude/docs/git-workflow.md) を参照。
@@ -216,6 +216,39 @@ yarn dev:mobile
 # Firebase エミュレーター起動（Functions / Firestore / Auth をローカルで動かす）
 yarn firebase:emulators
 ```
+
+---
+
+## Claude との協働ガイド
+
+このテンプレートは AI（Claude Code）が `.claude/docs/` のドキュメントを読んで自律的に開発を進める前提で設計されている。
+指示の仕方でフローへの乗り方が変わるので、場面別の言い回しを参考にする。
+
+### 場面別プロンプト例
+
+| 場面 | 言い方の例 |
+|---|---|
+| プロジェクト開始（ゼロから） | 「`/kickoff` して。企画を一緒に詰めたい」 |
+| 既存リポジトリの移植 | 「`/migrate` で `~/projects/old-app` を移植して」 |
+| 次のタスクを決める | 「`/next`」または「次何をすればいい？」 |
+| 機能を追加したい | 「XX 機能を追加したい。まず spec.md に追記してから実装して」 |
+| 仕様を変えたい | 「XX の仕様を YY に変えたい。仕様書から直して」 |
+| バグを直したい | 「XX すると ZZ になる。`/troubleshoot` して」 |
+| コードレビュー | 「`/review` でこのブランチを見て」 |
+| セッションを終える | 「今日はここまで。`/wrap-up` して」 |
+
+### 避けたほうがいい指示
+
+- **仕様書を飛ばした実装依頼**（「とりあえずこの機能作って」）→ 仕様書と実装が乖離し、以後の AI の判断基準が壊れる。「spec.md に追記してから」を付ける
+- **引き継ぎなしのセッション終了** → 次のセッションが状況を把握できない。終了時は `/wrap-up` を実行する
+- **進捗の口頭管理**（「あれ終わった？」だけで済ませる）→ 進捗の正は `roadmap.md` の機能ステータス表。表の更新まで指示する
+
+### GitHub 連携（任意）
+
+| 機能 | セットアップ |
+|---|---|
+| PR 自動レビュー / `@claude` メンション | リポジトリの Secrets に `ANTHROPIC_API_KEY` を登録（未登録ならスキップされる）。`.github/workflows/claude.yml` |
+| テンプレート更新の取り込み | 親テンプレートがプライベートの場合は `SOURCE_REPO_PAT` を登録。取り込み対象外は `.templatesyncignore` で管理。`.github/workflows/template-sync.yml` |
 
 ---
 

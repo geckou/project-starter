@@ -1,5 +1,5 @@
-import type { Config } from 'tailwindcss'
 import { colors, fontFamily, borderRadius } from '@geckou/shared/theme'
+import type { Config } from 'tailwindcss'
 
 const config: Config = {
   content: [

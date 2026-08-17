@@ -9,7 +9,7 @@
 | ページ | `pages/index.vue` | `app/page.tsx` | Next はディレクトリ = URL、`page.tsx` が必須 |
 | レイアウト | `layouts/default.vue` | `app/layout.tsx` | Next はネスト可能（各ディレクトリに置ける） |
 | ミドルウェア | `middleware/auth.ts` | `middleware.ts`（ルート直下1ファイル） | Next は Edge Runtime で動作 |
-| サーバーAPI | `server/api/` | 使わない | このプロジェクトでは Cloud Functions に集約 |
+| サーバーAPI | `server/api/` | 使わない | このプロジェクトでは Cloud Functions に集約。例外はセッション Cookie 発行/破棄の `app/api/session/` のみ |
 | データ取得 | `useFetch` / `useAsyncData` | Server Component で直接 `await` | Next はコンポーネント自体が async 関数になれる |
 | クライアント限定 | `<ClientOnly>` / `.client.vue` | `'use client'` ディレクティブ | ファイル先頭に `'use client'` を書く |
 | ローディング | `<NuxtLoadingIndicator>` | `loading.tsx`（ファイル規約） | 同階層に置くだけで Suspense が効く |

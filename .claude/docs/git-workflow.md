@@ -85,7 +85,8 @@ yarn deploy:staging
 yarn deploy:production
 ```
 
-CI/CD: `.github/workflows/deploy.yml` でブランチ push 時に自動デプロイ。
+CI/CD: `.github/workflows/deploy.yml` が `release/*` / `hotfix/*`（→ staging）と `production` の push で自動デプロイ。
+develop は自動デプロイ対象外（複数人の feat/* push が互いに上書きし合うため）。各自 `yarn deploy:develop` で手動デプロイする。
 
 ### CI 用 GitHub Secrets の登録
 
@@ -94,14 +95,14 @@ CI/CD: `.github/workflows/deploy.yml` でブランチ push 時に自動デプロ
 
 | Secret 名 | 中身 | 参照されるブランチ |
 | --- | --- | --- |
-| `ENV_FILE_DEVELOP` | `.env.develop` の全文 | `feat/*` 等（develop 環境）|
 | `ENV_FILE_STAGING` | `.env.staging` の全文 | `release/*` / `hotfix/*`（staging 環境）|
 | `ENV_FILE_PRODUCTION` | `.env.production` の全文 | `production`（本番）|
 | `FIREBASE_SERVICE_ACCOUNT` | サービスアカウント鍵 JSON の全文 | 全環境共通 |
 
+develop 用のシークレットは不要（CI からデプロイしないため）。
+
 ```bash
 # 環境別 env の全文をそのまま登録（ローカルにファイルがある前提）
-gh secret set ENV_FILE_DEVELOP < .env.develop
 gh secret set ENV_FILE_STAGING < .env.staging
 gh secret set ENV_FILE_PRODUCTION < .env.production
 
@@ -137,3 +138,30 @@ gcloud services enable cloudfunctions.googleapis.com \
 
 自動有効化される場合もあるが反映に時間がかかるため、事前に有効化しておくのが確実。
 [Google Cloud Console](https://console.cloud.google.com/apis/library) からも有効化可能。
+
+## マージルールの強制（プラン別）
+
+マージルール（production へは release/* と hotfix/* のみ等）の機械的な強制は、GitHub の契約プランによってできることが変わる。
+
+### 全プラン共通（同梱済み）
+
+`.github/workflows/branch-guard.yml` が production 向け PR の head ブランチを検証し、`release/*`・`hotfix/*` 以外なら CI を赤にする。
+
+> **注意**: Free プランのプライベートリポジトリでは Required status checks が使えないため、これは「赤い ✗ による可視化」であり物理的なマージブロックではない。ただし本テンプレートではマージ操作の主体がかなりの割合で AI（Claude）であり、AI は「CI が赤の PR はマージしない」を守るため実効性は高い。
+
+### 対応プラン（Pro / Team / Enterprise、またはパブリックリポジトリ）
+
+Rulesets で強制できる。同梱の定義を取り込む:
+
+```bash
+gh api repos/{owner}/{repo}/rulesets \
+  --method POST \
+  --input .github/rulesets/production.json
+```
+
+内容: production の削除・force push 禁止、PR 必須（レビュー1件）、Required status checks（`ci` / `guard`）。
+`hotfix/*` の緊急セルフマージを許す場合は、取り込み後に UI で bypass 設定を調整する。
+
+### Free プランのプライベートリポジトリの場合
+
+マージ操作の強制はできない。branch-guard の可視化と運用規律（CLAUDE.md のマージルール）に依存することを、チームで共有しておく。

@@ -7,6 +7,16 @@
 Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Functions。
 共有コードは `packages/shared` に集約。
 
+## プロダクトの目的（北極星）
+
+> ⚠️ scaffold 後、`planning.md` の「一言で言うと」「目的・ゴール」から転記する。企画書側を更新したら必ずここも更新する。
+
+**<XXX に困っている YYY が、ZZZ するための、Web/Mobile アプリ>**
+
+北極星指標（KPI）: <1行で記入>
+
+実装の判断に迷ったら「この作業は上記の目的に資するか」に立ち返る。
+
 ## プロジェクトドキュメント
 
 プロダクトの「何を作るか」「どう作るか」はローカルの `.claude/docs/` で管理する。
@@ -16,10 +26,11 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 |---|---|---|
 | 企画書 | `.claude/docs/planning.md` | プロダクト背景・ターゲット・ペルソナ・用語集・機能一覧 |
 | 仕様書 | `.claude/docs/spec.md` | 画面一覧・データモデル・API・セキュリティ（**最新・正**） |
-| ロードマップ | `.claude/docs/roadmap.md` | 残タスク・進捗・セッション引き継ぎ履歴 |
-| Figma | `<Figma URL>` | デザインカンプ |
+| ロードマップ | `.claude/docs/roadmap.md` | 機能ステータス表（**進捗の正**）・残タスク・セッション引き継ぎ |
+| Figma | `<Figma URL>`（⚠️ scaffold 後に実際の URL へ置換。未使用なら行ごと削除） | デザインカンプ |
 
-仕様書を正とする。企画書はプロダクト背景・ターゲットの参考として使う。
+技術仕様は仕様書を、進捗・タスク状態はロードマップの機能ステータス表を正とする。
+企画書はプロダクト背景・ターゲット・優先度の参考として使う。
 
 ## プロジェクト進行ルール
 
@@ -48,26 +59,61 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 ## 「次何をすればいい？」と聞かれたら
 
-1. **ロードマップ**を確認し、現在のバージョンで「未着手」の機能を探す
+1. **ロードマップの機能ステータス表**で、現在のバージョンの「未着手」の機能を探す
 2. **フェーズ順**（基盤→BE→FE→結合）で最も早いものを選ぶ
 3. **前提機能**が全て「完了」であることを確認する
-4. 該当機能の**仕様書**セクションを読む（画面・データモデル・API）
+4. 機能ステータス表の「関連仕様」に列挙された**仕様書**セクションを読む（画面・データモデル・API）
 5. **Figma** リンクがあればデザインを確認する
 6. 作業内容・影響範囲・使うスキルを提案する
 7. ユーザーが承認したら実装を開始する
 
+この手順は `/next` で実行できる。
+
 ## 機能実装フロー
 
 ```
-1. ロードマップ（.claude/docs/roadmap.md）で対象機能を「実装中」に更新
+1. ロードマップ（.claude/docs/roadmap.md）の機能ステータス表で対象機能を「実装中」に更新
 2. 企画書（.claude/docs/planning.md）の用語集でドメイン用語を確認（→ 変数名・コレクション名に使う）
 3. 仕様書（.claude/docs/spec.md）のデータモデルを確認 → /new-collection でスキーマ・型・API・テストを生成
 4. 仕様書の API を確認 → /new-function でエンドポイントを生成
 5. 仕様書の画面一覧 + Figma を確認 → /new-page でページを生成
 6. 必要に応じて /new-component, /new-form, /new-store を使う
 7. テストを実行（yarn test）
-8. ロードマップを「完了」に更新
+8. 完了条件（Definition of Done）を確認し、機能ステータス表を「完了」に更新
 ```
+
+### 仕様書ファースト（仕様にない実装依頼を受けたら）
+
+1. 実装する**前に** spec.md（必要なら planning.md のコア機能一覧・roadmap.md の機能ステータス表）に追記し、ユーザーの承認を得る
+2. 承認後に実装を開始する
+3. 「仕様書に書く → 実装する」の順を崩さない。緊急対応で実装が先行した場合も、同じ作業内で必ず仕様書に反映する
+
+### 機能の完了条件（Definition of Done）
+
+- [ ] `yarn type-check` / `yarn lint` / `yarn test` が通る
+- [ ] テスト方針の必須ケース（API 正常系 + 認証エラー、ルール許可 / 拒否）がある
+- [ ] spec.md が実装と一致している（実装中の仕様変更を反映済み）
+- [ ] 実装中に導入した新しいドメイン用語を planning.md の用語集に追記した
+- [ ] roadmap.md の機能ステータス表を「完了」に更新した
+
+### 自律性の境界
+
+**確認なしで進めてよい**
+
+- 仕様書に定義済みの機能の実装・テスト・リファクタ
+- バグ修正（挙動を仕様書に合わせる方向）
+- ドキュメントの整合更新
+
+**ユーザー確認が必須**
+
+- 依存パッケージの追加・メジャーアップデート
+- データモデル（スキーマ・コレクション構造）の変更
+- セキュリティルール・認証まわりの方針変更
+- 課金・外部サービス連携に関わる変更
+- 仕様書にない機能の追加（→ 仕様書ファースト）
+- デプロイ・本番環境への操作
+
+境界は派生プロジェクトの方針に合わせて調整してよい。
 
 ## テスト方針
 
@@ -117,7 +163,7 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 - Server Component をデフォルト、必要時のみ `'use client'`
 - アイコンは `components/icons/`、定数は `lib/constants/`
 - セマンティック HTML + Tailwind CSS でスタイリング
-- ESLint: `.eslintrc.cjs` のルールに従う
+- ESLint: 各ワークスペースの `eslint.config.mjs`（flat config）のルールに従う
 
 ## Git ブランチ運用
 
@@ -160,6 +206,9 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 | コマンド | 説明 |
 |---|---|
+| `/kickoff` | 新規プロジェクトのヒアリング → 企画書・仕様書・ロードマップ作成 |
+| `/next` | ロードマップから次のタスクを選定して提案 |
+| `/wrap-up` | セッション終了処理（引き継ぎ・メモリ記録・コミット） |
 | `/new-page` | Next.js の新規ページ作成 |
 | `/new-component` | React コンポーネント作成 |
 | `/new-function` | Firebase Cloud Function 追加 |
@@ -170,6 +219,7 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 | `/new-type` | shared に型定義追加 |
 | `/new-app` | モノレポに新しいアプリ追加 |
 | `/new-skill` | 新しいスキル（スラッシュコマンド）を作成 |
+| `/init-project` | テンプレートから派生プロジェクトを初期化 |
 | `/migrate` | 既存リポジトリの移植 + ドキュメント自動生成 |
 | `/review` | プロジェクト構成を前提としたコードレビュー |
 | `/deploy` | デプロイ手順ガイド |
@@ -221,6 +271,8 @@ gh issue create \
 `bug_report.yml` には「テンプレートのバージョン / コミット」欄があるので、`git log` で派生元のコミットを把握して記入する。
 重複を避けるため、作成前に必ず `gh issue list -R geckou/project-starter --search "<キーワード>"` で既存 Issue を確認する。
 
+`gh` CLI が使えない環境（Claude Code の Web / リモートセッション等）では、GitHub MCP ツール（Issue の検索・作成）で代替する。それも使えない場合は、Issue 本文の下書きを作成してユーザーに起票を依頼する。
+
 ## 進化的メモリシステム
 
 フィードバックの記録・昇格は `memory/evolution.md` のプロトコルに従うこと。
@@ -239,6 +291,8 @@ gh issue create \
 | daily | `memory/daily/` | - |
 | short-term | `memory/short-term/` | pain_count >= 2 → long-term |
 | long-term | `memory/long-term/` | pain_count >= 3 → CLAUDE.md |
+| Lv.3 | `CLAUDE.md` | reinforce_count >= 3 → スキル / Hook |
+| Lv.4 | スキル / Hook | -（手順型は /new-skill でスキル化、条件型は Hook 化） |
 
 詳細は `memory/evolution.md` を参照。
 
@@ -248,7 +302,7 @@ gh issue create \
 
 - `.claude/docs/planning.md` — 企画書（プロダクト背景・ターゲット・ペルソナ・用語集・機能一覧）
 - `.claude/docs/spec.md` — 仕様書（画面一覧・データモデル・API・セキュリティ）
-- `.claude/docs/roadmap.md` — ロードマップ（残タスク・進捗・セッション引き継ぎ履歴）
+- `.claude/docs/roadmap.md` — ロードマップ（機能ステータス表・残タスク・セッション引き継ぎ）
 - `.claude/docs/architecture.md` — API方針、Firebase使い分け、認証、データ取得、環境変数、Zustand、Storage、FCM、Sentry、i18n、RevenueCat、Tailwind、コンポーネント整理
 - `.claude/docs/nuxt-nextjs.md` — Nuxt.js → Next.js の対応表（Server Component、ルーティング等）
 - `.claude/docs/git-workflow.md` — リリースフロー詳細、マルチ環境構成、GCP API 有効化

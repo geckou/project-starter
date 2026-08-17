@@ -9,21 +9,29 @@ import Constants from 'expo-constants'
 
 const extra = Constants.expoConfig?.extra ?? {}
 
+const firebaseConfig = {
+  apiKey: extra.firebaseApiKey ?? '',
+  authDomain: extra.firebaseAuthDomain ?? '',
+  projectId: extra.firebaseProjectId ?? '',
+  storageBucket: extra.firebaseStorageBucket ?? '',
+  messagingSenderId: extra.firebaseMessagingSenderId ?? '',
+  appId: extra.firebaseAppId ?? '',
+}
+
+// 環境変数が未設定の場合（テンプレート初期状態）は初期化をスキップ。
+// 一部だけ設定された不完全な状態でも初期化しないよう、必須項目が全て揃っているかで判定する
+const isConfigured = Object.values(firebaseConfig).every(
+  (value) => value !== ''
+)
+
 // React Native では getAuth() だと永続化されず、アプリ再起動でログイン状態が消える。
 // AsyncStorage を使った永続化付きで Auth を初期化する
-const { app, auth, db } = initFirebase(
-  {
-    apiKey: extra.firebaseApiKey ?? '',
-    authDomain: extra.firebaseAuthDomain ?? '',
-    projectId: extra.firebaseProjectId ?? '',
-    storageBucket: extra.firebaseStorageBucket ?? '',
-    messagingSenderId: extra.firebaseMessagingSenderId ?? '',
-    appId: extra.firebaseAppId ?? '',
-  },
-  (firebaseApp) =>
-    initializeAuth(firebaseApp, {
-      persistence: getReactNativePersistence(AsyncStorage),
-    })
-)
+const { app, auth, db } = isConfigured
+  ? initFirebase(firebaseConfig, (firebaseApp) =>
+      initializeAuth(firebaseApp, {
+        persistence: getReactNativePersistence(AsyncStorage),
+      })
+    )
+  : { app: null, auth: null, db: null }
 
 export { app, auth, db }

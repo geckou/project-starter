@@ -1,0 +1,31 @@
+name: Branch Guard
+
+# マージルール（CLAUDE.md / .claude/docs/git-workflow.md）の機械的チェック。
+#
+# 注意: Free プランのプライベートリポジトリでは Required status checks が使えないため、
+# このワークフローは「赤い ✗ による可視化」であり、物理的なマージブロックではない。
+# 対応プラン（Pro/Team/Enterprise またはパブリックリポジトリ）では
+# .github/rulesets/production.json を取り込んで強制する（git-workflow.md 参照）。
+
+on:
+  pull_request:
+    branches: [production]
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    # テンプレート本体（geckou/project-starter）はマージルールの適用外（CLAUDE.md 参照）
+    if: github.repository != 'geckou/project-starter'
+
+    steps:
+      - name: Check head branch
+        run: |
+          case "${{ github.head_ref }}" in
+            release/*|hotfix/*)
+              echo "OK: ${{ github.head_ref }} から production への PR は許可されています"
+              ;;
+            *)
+              echo "::error::production への PR は release/* または hotfix/* からのみ許可されます（現在: ${{ github.head_ref }}）。詳細は .claude/docs/git-workflow.md を参照してください。"
+              exit 1
+              ;;
+          esac

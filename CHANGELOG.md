@@ -1,0 +1,56 @@
+# Changelog
+
+## 1.0.0 (2026-08-06)
+
+
+### Features
+
+* Basic 認証・pre-commit フォーマット・進化的メモリを追加 ([c8b3e06](https://github.com/geckou/project-starter/commit/c8b3e06ed39c5aa7c83919d6e60ba3ec8407caf8))
+* Basic 認証と pre-commit フォーマットチェックを追加 ([a706f6c](https://github.com/geckou/project-starter/commit/a706f6c99f8a6f42bbefc8d4048c3ec3ad181e81))
+* kickoff/next/wrap-up スキルを追加し、new-collection と review を改善 ([be85809](https://github.com/geckou/project-starter/commit/be8580987a83434612601d3b82f61d02b30f3d0c))
+* setup にブランチ保護ルールの自動設定を追加 ([c39a035](https://github.com/geckou/project-starter/commit/c39a03564fa79ed011040b64470867724812e82f))
+* テンプレート拡充 - ドキュメント体系・進行ルール・スキル・インフラ整備 ([2b36a05](https://github.com/geckou/project-starter/commit/2b36a058a62e3818308667c307d267e4018b26b8))
+* 運用ルールを強制する hooks を同梱 ([b92adac](https://github.com/geckou/project-starter/commit/b92adac5b6e76a8fe4dbcd0a4637916c7ca34393))
+
+
+### Bug Fixes
+
+* address PR review comments (shebang, glob, auth regex, semicolon) ([3c0303c](https://github.com/geckou/project-starter/commit/3c0303cb0e6868fecbe1061c1450d7482d915e20))
+* Basic 認証応答に no-store を付与し CDN キャッシュ貫通を防止 ([#16](https://github.com/geckou/project-starter/issues/16)) ([d6dca58](https://github.com/geckou/project-starter/commit/d6dca582d5f902591420c788bf0bee17ed9713e4))
+* Basic 認証応答に no-store を付与し CDN キャッシュ貫通を防止 ([#16](https://github.com/geckou/project-starter/issues/16)) ([1ed36cd](https://github.com/geckou/project-starter/commit/1ed36cd00dc860f4d0da2b7e91f5eb543cb5d72f))
+* CI に Firestore ルールテストを追加 ([4046bc2](https://github.com/geckou/project-starter/commit/4046bc24c9d028830052688d230feefa4e7c0ce1))
+* CI の Firebase CLI をグローバルインストールに変更 ([dcf6765](https://github.com/geckou/project-starter/commit/dcf6765829c35e1d36d6f694678e7373c11e4781))
+* CI の Node 20 非互換を解消し、CI Secrets ドキュメントを新方式に整合 ([8540642](https://github.com/geckou/project-starter/commit/854064241cf752b97097f1362b7d26a4e199cbaf))
+* CI の型チェック前に Expo router の型生成ステップを追加 ([a6d7cb4](https://github.com/geckou/project-starter/commit/a6d7cb41d09d6b8baae891ab88c172726e7caf88))
+* CI の型チェック前に Expo router の型生成ステップを追加 ([14cfd67](https://github.com/geckou/project-starter/commit/14cfd6750a3fa16daad91fd896a3ed037e0bab63)), closes [#23](https://github.com/geckou/project-starter/issues/23)
+* CI を check と deploy に分離、トークン未設定時はデプロイをスキップ ([f5e4044](https://github.com/geckou/project-starter/commit/f5e404455cc5d9d9ec9f967d6d244825eb7fcdf6))
+* commitlint を Node 20 互換の v19 系に変更 ([c1bad05](https://github.com/geckou/project-starter/commit/c1bad0584e06a683244cd03d78f73350230cfde9))
+* Copilot レビュー指摘8件を修正 ([b4d5169](https://github.com/geckou/project-starter/commit/b4d5169a980a6e8133a714c906275a2575c17df0))
+* Copilot レビュー指摘の修正 ([53eee8a](https://github.com/geckou/project-starter/commit/53eee8ac088de6a5905705d3fe875c0a33c49f52))
+* Copilot レビュー指摘の修正 ([9d8589f](https://github.com/geckou/project-starter/commit/9d8589f80b916f63e4bda5229ffecf96fd60583f))
+* Copilot レビュー指摘を反映 ([07e69a4](https://github.com/geckou/project-starter/commit/07e69a46d8758073c230e33be51dcbaffd43bbd2))
+* corp-site-v2 で発覚したテンプレートの問題を修正 ([3c8dead](https://github.com/geckou/project-starter/commit/3c8dead455acdd04538eb045eb11f65e7b861409))
+* deploy job でも Expo router 型生成を実行 ([3d0c570](https://github.com/geckou/project-starter/commit/3d0c570e4de8f00feef019f9677dd1ce19f86e41))
+* deploy.sh の firebase deploy に --force を追加 ([6ae4f5e](https://github.com/geckou/project-starter/commit/6ae4f5efac043c218f67b1f3a03a347728d3f9fb))
+* deploy.sh の firebase deploy に --force を追加 ([95d2f0f](https://github.com/geckou/project-starter/commit/95d2f0f783863be0339c5983887de64c8b1e916f))
+* develop 環境への自動デプロイを無効化 ([a609b5b](https://github.com/geckou/project-starter/commit/a609b5b01be70a5df2ad780fd078df69bcee4605))
+* develop 自動デプロイの取り残しを削除し手動デプロイに統一 ([e1ff10a](https://github.com/geckou/project-starter/commit/e1ff10a7b1ef4d98f3e35e9fc78e2b52f54f8c7b))
+* develop 自動デプロイの取り残しを削除し手動デプロイに統一 ([2624baa](https://github.com/geckou/project-starter/commit/2624baa31f65e82bfa1e0a125f36f9f110697e71))
+* eslint-plugin-react-hooks を v5 に統一し ESLint 9 クラッシュを解消 ([fcf2f9f](https://github.com/geckou/project-starter/commit/fcf2f9f08f5412b07b8ed5a00c538e6150d77beb)), closes [#12](https://github.com/geckou/project-starter/issues/12)
+* expo customize が生成する expo-env.d.ts を prettier 対象外に ([fed5d45](https://github.com/geckou/project-starter/commit/fed5d451b23165655b38171404f012d5e3960e6d))
+* Firebase 未設定時でもビルドが通るようにガード追加 ([0ee391d](https://github.com/geckou/project-starter/commit/0ee391d74bd47b7fd250f178a2949d14ba094d6e))
+* next.config.ts の import.meta.url を ESM/CJS 両対応に ([c22409c](https://github.com/geckou/project-starter/commit/c22409c7871dd643fb025bc9551bff21f50ac67c))
+* next.config.ts の import.meta.url を ESM/CJS 両対応に ([49ed3b5](https://github.com/geckou/project-starter/commit/49ed3b5428a60f82daab6dc418245dceeaf64638)), closes [#20](https://github.com/geckou/project-starter/issues/20)
+* Tailwind config パスを修正、Prettier フォーマットを適用 ([4c2274e](https://github.com/geckou/project-starter/commit/4c2274e717d6bacb7770f77867a2169faea2292b))
+* Taros 立ち上げで発覚した template 問題を修正 ([#5](https://github.com/geckou/project-starter/issues/5)) ([3dfd6a3](https://github.com/geckou/project-starter/commit/3dfd6a3f43da1d921fb68370dd700cd40fff998e))
+* test:rules をルールテスト専用の最小 config で実行する ([c25438b](https://github.com/geckou/project-starter/commit/c25438bf164329ccd3d570e44f897b1782927f30))
+* vite の脆弱性を修正（7.3.1 → 7.3.2） ([de473f2](https://github.com/geckou/project-starter/commit/de473f292b3729279fec982fa43d184d3d7f8b15))
+* web アプリ複数構成での react/next 解決を安定化 ([#9](https://github.com/geckou/project-starter/issues/9)) ([dd34c9b](https://github.com/geckou/project-starter/commit/dd34c9b035b7bf4ae8e1ef388819f2c91deada11))
+* web アプリ複数構成での react/next 解決を安定化 ([#9](https://github.com/geckou/project-starter/issues/9)) ([616c303](https://github.com/geckou/project-starter/commit/616c3031ae313b2a0486cacd8adf403c54dd40a2))
+* web の lint エラーを修正（import 順序、[@ts-nocheck](https://github.com/ts-nocheck)） ([5e6c96b](https://github.com/geckou/project-starter/commit/5e6c96b2fd580c630022c6da02ba5e3c0011e8f7))
+* Webhook 署名検証を raw body ベースに修正、Functions tsconfig に paths 追加 ([c37018a](https://github.com/geckou/project-starter/commit/c37018ac60bb20851678b76bbdf76a235eed5ccb))
+* テンプレート監査で検出した問題を一括修正 ([e22efb8](https://github.com/geckou/project-starter/commit/e22efb83394a3c6d44c87c085beafead12acc394))
+* テンプレート監査で検出した問題を一括修正 ([c545677](https://github.com/geckou/project-starter/commit/c54567700cb7984af5e8298affc40d8d6119f4f4))
+* テンプレート監査で検出した問題を一括修正 ([5d8e52c](https://github.com/geckou/project-starter/commit/5d8e52c34a58d19419702afa4c5c04e4f9e2fb14))
+* テンプレート監査で検出した問題を一括修正 ([ef5ca32](https://github.com/geckou/project-starter/commit/ef5ca32f5b0a3908311779c9c790992ba26db39d))
+* 依存パッケージの脆弱性を修正（tar, @xmldom/xmldom, @tootallnate/once） ([94a31e5](https://github.com/geckou/project-starter/commit/94a31e5caa555cbdd4609dea88b8c9e2d87c1c23))

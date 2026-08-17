@@ -1,0 +1,34 @@
+name: Template Sync
+
+# 親テンプレート（geckou/project-starter）の更新を派生プロジェクトに PR として取り込む。
+# 派生プロジェクトでのみ動作する（テンプレート本体では skip）。
+#
+# セットアップ（派生プロジェクト側）:
+# 1. テンプレートがプライベートの場合、read 権限付き PAT を SOURCE_REPO_PAT シークレットに登録する
+# 2. 取り込みたくないファイル（プロジェクト固有にカスタマイズしたもの）は .templatesyncignore に追記する
+# 3. 差分 PR が作られたら、内容を確認してマージする（コンフリクトは PR 上で解決）
+
+on:
+  schedule:
+    - cron: '0 3 * * 1' # 毎週月曜 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    if: github.repository != 'geckou/project-starter'
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: AndreasAugustin/actions-template-sync@v2
+        with:
+          source_repo_path: geckou/project-starter
+          upstream_branch: production
+          source_gh_token: ${{ secrets.SOURCE_REPO_PAT || github.token }}
+          pr_title: 'chore: テンプレート更新の取り込み'
+          pr_labels: template-sync
+          pr_commit_msg: 'chore: テンプレート更新の取り込み'

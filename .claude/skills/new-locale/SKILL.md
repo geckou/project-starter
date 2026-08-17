@@ -22,6 +22,11 @@ description: i18n 翻訳キーの追加
 既存セクション（`common`, `auth`, `navigation`）に追加する場合はそのセクション内に。
 新しい機能用のセクションが必要な場合はセクションごと追加する。
 
+**翻訳は `セクション.キー` の2階層まで。**
+`ja.ts` の `satisfies Record<string, Record<string, string>>` と
+`packages/shared/tests/i18n.test.ts` のキー比較ロジックが2階層前提のため、
+3階層以上にする場合は両方の変更が必要。
+
 ```typescript
 // ja.ts に追加
 posts: {

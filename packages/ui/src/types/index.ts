@@ -1,10 +1,5 @@
 export type StateVariation =
-  | 'default'
-  | 'error'
-  | 'disabled'
-  | 'valid'
-  | 'focus'
-  | 'hover'
+  'default' | 'error' | 'disabled' | 'valid' | 'focus' | 'hover'
 
 export type BorderStyle = {
   color: string
