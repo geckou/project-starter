@@ -22,7 +22,7 @@
     "expo-status-bar": "~2.0.0",
     "firebase": "^11.0.0",
     "nativewind": "^4.2.6",
-    "react": "^18.3.0",
+    "react": "^19.2.8",
     "react-native": "~0.76.0",
     "react-native-purchases": "^8.0.0",
     "react-native-purchases-ui": "^8.0.0",
@@ -32,7 +32,7 @@
   "devDependencies": {
     "@babel/core": "^7.29.7",
     "@eslint/eslintrc": "^3.0.0",
-    "@types/react": "~18.3.0",
+    "@types/react": "~19.2.18",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
