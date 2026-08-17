@@ -1,7 +1,7 @@
 'use client'
 
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { COLOR } from '../constants'
 
 type Tab = {
@@ -33,6 +33,10 @@ export function TabUI({
     () => tabs[initialIndex]?.key ?? tabs[0]?.key ?? ''
   )
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+  // 複数インスタンス設置時の DOM id 重複を避ける
+  const uid = useId()
+  const tabId = (key: string) => `${uid}-tab-${key}`
+  const panelId = (key: string) => `${uid}-panel-${key}`
 
   const changeTabs = (key: string) => setActiveTab(key)
 
@@ -45,12 +49,17 @@ export function TabUI({
   // 無関係にタブが切り替わり複数設置時に競合した。タブリストにフォーカスが
   // あるときだけ矢印キーで移動する（WAI-ARIA Tabs パターン）
   const handleKeydown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+
     const currentIndex = tabs.findIndex((tab) => tab.key === activeTab)
+    if (currentIndex === -1) return
+
+    event.preventDefault()
     const lastIndex = tabs.length - 1
 
     if (event.key === 'ArrowLeft') {
       activateTab(currentIndex > 0 ? currentIndex - 1 : lastIndex)
-    } else if (event.key === 'ArrowRight') {
+    } else {
       activateTab(currentIndex < lastIndex ? currentIndex + 1 : 0)
     }
   }
@@ -71,13 +80,13 @@ export function TabUI({
         {tabs.map((tab, index) => (
           <button
             key={tab.key}
-            id={tab.key}
+            id={tabId(tab.key)}
             ref={(el) => {
               tabRefs.current[index] = el
             }}
             type="button"
             role="tab"
-            aria-controls={`${tab.key}_${index}`}
+            aria-controls={panelId(tab.key)}
             aria-selected={activeTab === tab.key}
             tabIndex={activeTab === tab.key ? 0 : -1}
             className={`border-none bg-transparent px-4 py-2 text-base ${activeTab === tab.key ? 'cursor-auto' : 'cursor-pointer'}`}
@@ -87,12 +96,12 @@ export function TabUI({
           </button>
         ))}
       </div>
-      {tabs.map((tab, index) => (
+      {tabs.map((tab) => (
         <div
           key={`${tab.key}_panel`}
-          id={`${tab.key}_${index}`}
+          id={panelId(tab.key)}
           role="tabpanel"
-          aria-labelledby={tab.key}
+          aria-labelledby={tabId(tab.key)}
           hidden={activeTab !== tab.key}
         >
           {panelSlots?.[`${tab.key}Contents`]}

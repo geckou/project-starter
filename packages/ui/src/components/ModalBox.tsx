@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useId } from 'react'
 
 type Props = {
   isShown: boolean
@@ -38,6 +38,8 @@ export function ModalBox({
   footer,
   children,
 }: Props) {
+  const headerId = useId()
+
   useEffect(() => {
     if (isShown) document.body.style.overflow = 'hidden'
     else document.body.style.overflow = ''
@@ -54,15 +56,22 @@ export function ModalBox({
           ? 'pointer-events-auto opacity-100'
           : 'pointer-events-none opacity-0'
       }`}
+      aria-hidden={!isShown}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={header ? headerId : undefined}
         className={`relative flex max-h-full w-full cursor-auto flex-col rounded-[var(--radius-small,0.1875rem)] bg-white drop-shadow-[0_0_6px_#33333355] ${MAX_WIDTH_CLASSES[size]}`}
       >
         {header && (
-          <header className="border-b border-[#eee] px-[var(--sp-large,1.5rem)] py-[var(--sp-medium,0.75rem)] max-md:p-[var(--sp-medium,0.75rem)] [&>h2]:font-bold [&>h2]:text-[var(--fs-large,0.875rem)]">
+          <header
+            id={headerId}
+            className="border-b border-[#eee] px-[var(--sp-large,1.5rem)] py-[var(--sp-medium,0.75rem)] max-md:p-[var(--sp-medium,0.75rem)] [&>h2]:font-bold [&>h2]:text-[var(--fs-large,0.875rem)]"
+          >
             {header}
           </header>
         )}

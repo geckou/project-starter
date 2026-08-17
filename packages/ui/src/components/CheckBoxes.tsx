@@ -68,11 +68,11 @@ export function CheckBoxes({
   }
 
   return (
-    <div className="relative flex flex-wrap gap-x-6 gap-y-4" data-name={name}>
+    <div className="relative flex flex-wrap gap-x-6 gap-y-4">
       {options.map((option) => (
         <LabeledCheckbox
-          key={option.label}
-          name={option.label}
+          key={option.value}
+          name={name}
           label={option.label}
           checked={checkedValues.includes(String(option.value))}
           onChange={(checked) => toggleValue(String(option.value), checked)}
