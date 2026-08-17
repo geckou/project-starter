@@ -60,7 +60,7 @@
     "prettier-plugin-tailwindcss": "^0.8.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "tailwindcss": "^4.0.0",
+    "tailwindcss": "^4.3.3",
     "turbo": "^2.10.8",
     "typescript": "^5.0.0",
     "vitest": "^4.1.10"
