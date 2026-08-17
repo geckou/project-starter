@@ -93,7 +93,7 @@ export function SlideDownUi({
       <button
         type="button"
         disabled={isDisabled}
-        className="text-(--link-color) relative grid w-full cursor-pointer grid-cols-[1fr_auto] items-center justify-items-start"
+        className="relative grid w-full cursor-pointer grid-cols-[1fr_auto] items-center justify-items-start text-(--link-color)"
         onClick={(event) => {
           event.preventDefault()
           toggleBox()
@@ -102,7 +102,7 @@ export function SlideDownUi({
         <div className="w-full text-left">{trigger}</div>
         {!isHiddenArrow && (
           <KeyboardArrowDownIcon
-            className={`text-(--link-color) size-[var(--icon-medium,1.125rem)] flex-none transition-all duration-100 ${isOpenedContents ? 'rotate-180' : ''}`}
+            className={`size-[var(--icon-medium,1.125rem)] flex-none text-(--link-color) transition-all duration-100 ${isOpenedContents ? 'rotate-180' : ''}`}
           />
         )}
       </button>

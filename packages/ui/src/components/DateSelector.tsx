@@ -98,7 +98,7 @@ export function DateSelector({ name, value, onChange, isRequired }: Props) {
           name={`${name}-year`}
           required={isRequired}
           onChange={(event) => selectItem('year', event.target.value)}
-          className="w-[calc(5ch+var(--sp-medium,0.75rem)*2+var(--icon-medium,1.125rem))]! p-[var(--sp-medium,0.75rem)]! pe-[calc(var(--sp-small,0.375rem)*2+var(--icon-medium,1.125rem))]! cursor-pointer"
+          className="w-[calc(5ch+var(--sp-medium,0.75rem)*2+var(--icon-medium,1.125rem))]! cursor-pointer p-[var(--sp-medium,0.75rem)]! pe-[calc(var(--sp-small,0.375rem)*2+var(--icon-medium,1.125rem))]!"
         >
           <option disabled value="">
             年
@@ -152,7 +152,7 @@ export function DateSelector({ name, value, onChange, isRequired }: Props) {
       <button
         type="button"
         style={deleteButtonStyle}
-        className="text-(--caution-color) mx-[var(--sp-medium,0.75rem)] inline-flex cursor-pointer items-center gap-[var(--sp-min,0.1875rem)] text-[length:var(--fs-small,0.6875rem)]"
+        className="mx-[var(--sp-medium,0.75rem)] inline-flex cursor-pointer items-center gap-[var(--sp-min,0.1875rem)] text-[length:var(--fs-small,0.6875rem)] text-(--caution-color)"
         onClick={() => emitBirthday(EMPTY_BIRTHDAY)}
       >
         削除

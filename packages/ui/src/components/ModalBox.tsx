@@ -51,7 +51,7 @@ export function ModalBox({
 
   return (
     <div
-      className={`fixed left-0 top-0 z-50 flex h-dvh w-dvw cursor-pointer items-center justify-center overflow-hidden bg-[#33333380] p-[var(--sp-larger,3rem)] backdrop-blur-sm transition-opacity duration-100 max-md:px-[var(--sp-large,1.5rem)] ${
+      className={`fixed top-0 left-0 z-50 flex h-dvh w-dvw cursor-pointer items-center justify-center overflow-hidden bg-[#33333380] p-[var(--sp-larger,3rem)] backdrop-blur-sm transition-opacity duration-100 max-md:px-[var(--sp-large,1.5rem)] ${
         isShown
           ? 'pointer-events-auto opacity-100'
           : 'pointer-events-none opacity-0'

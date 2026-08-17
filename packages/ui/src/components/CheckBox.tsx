@@ -61,7 +61,7 @@ export function CheckBox({
           event.stopPropagation()
           if (!isDisabled) onChange?.(!isChecked)
         }}
-        className={`rounded-(--radius-size) relative flex h-6 w-6 cursor-pointer items-center justify-center border-none shadow-[0_0_0_var(--border-size)_var(--border-color)_inset] has-[input:disabled]:pointer-events-none has-[input:disabled]:before:pointer-events-auto has-[input:disabled]:before:absolute has-[input:disabled]:before:inset-0 has-[input:disabled]:before:cursor-not-allowed has-[input:disabled]:before:content-[''] ${isChecked ? 'bg-(--border-color) animate-[uiCheckPop_var(--duration)_ease-out]' : 'bg-(--background-color)'}`}
+        className={`relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-(--radius-size) border-none shadow-[0_0_0_var(--border-size)_var(--border-color)_inset] has-[input:disabled]:pointer-events-none has-[input:disabled]:before:pointer-events-auto has-[input:disabled]:before:absolute has-[input:disabled]:before:inset-0 has-[input:disabled]:before:cursor-not-allowed has-[input:disabled]:before:content-[''] ${isChecked ? 'animate-[uiCheckPop_var(--duration)_ease-out] bg-(--border-color)' : 'bg-(--background-color)'}`}
       >
         <input
           type="checkbox"

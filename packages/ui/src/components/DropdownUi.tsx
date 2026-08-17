@@ -92,7 +92,7 @@ export function DropdownUi({
         type="button"
         disabled={isDisabled}
         style={{ ...style, cursor: isInactive ? 'auto' : 'pointer' }}
-        className="text-(--trigger-color) flex size-full items-center gap-[var(--sp-small,0.375rem)]"
+        className="flex size-full items-center gap-[var(--sp-small,0.375rem)] text-(--trigger-color)"
         onClick={(event) => {
           event.preventDefault()
           toggleBox()

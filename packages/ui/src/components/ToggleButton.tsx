@@ -77,7 +77,7 @@ export function ToggleButton({
         event.stopPropagation()
         if (!isDisabled) onChange?.(!isChecked)
       }}
-      className="rounded-(--radius-size) bg-(--background-color) p-(--padding-size) relative inline-block w-[calc(var(--inline-size)+var(--handle-size)+(var(--padding-size)*2))] cursor-pointer border-none shadow-[0_0_0_var(--border-size)_var(--border-color)_inset,var(--box-shadow)]"
+      className="relative inline-block w-[calc(var(--inline-size)+var(--handle-size)+(var(--padding-size)*2))] cursor-pointer rounded-(--radius-size) border-none bg-(--background-color) p-(--padding-size) shadow-[0_0_0_var(--border-size)_var(--border-color)_inset,var(--box-shadow)]"
     >
       <input
         type="checkbox"
@@ -90,10 +90,10 @@ export function ToggleButton({
       <div
         data-on={label.on}
         data-off={label.off}
-        className={`text-(--text-color) before:duration-(--duration) after:duration-(--duration) absolute left-0 top-0 h-full w-full uppercase before:absolute before:right-0 before:m-auto before:inline-flex before:h-full before:w-[calc(100%-var(--handle-size)-var(--padding-size))] before:items-center before:justify-center before:leading-none before:transition-opacity before:ease-out before:content-[attr(data-off)] after:absolute after:left-0 after:m-auto after:inline-flex after:h-full after:w-[calc(100%-var(--handle-size)-var(--padding-size))] after:items-center after:justify-center after:leading-none after:transition-opacity after:ease-out after:content-[attr(data-on)] ${isChecked ? 'before:opacity-0 after:opacity-100' : 'before:opacity-100 after:opacity-0'}`}
+        className={`absolute top-0 left-0 h-full w-full text-(--text-color) uppercase before:absolute before:right-0 before:m-auto before:inline-flex before:h-full before:w-[calc(100%-var(--handle-size)-var(--padding-size))] before:items-center before:justify-center before:leading-none before:transition-opacity before:duration-(--duration) before:ease-out before:content-[attr(data-off)] after:absolute after:left-0 after:m-auto after:inline-flex after:h-full after:w-[calc(100%-var(--handle-size)-var(--padding-size))] after:items-center after:justify-center after:leading-none after:transition-opacity after:duration-(--duration) after:ease-out after:content-[attr(data-on)] ${isChecked ? 'before:opacity-0 after:opacity-100' : 'before:opacity-100 after:opacity-0'}`}
       />
       <div
-        className={`w-(--handle-size) bg-(--text-color) shadow-(--box-shadow) duration-(--duration) relative m-0 aspect-square rounded-[calc(var(--radius-size)-(var(--padding-size)/2))] transition-[left] ease-out ${isChecked ? 'left-[calc(100%-var(--handle-size))]' : 'left-0'}`}
+        className={`relative m-0 aspect-square w-(--handle-size) rounded-[calc(var(--radius-size)-(var(--padding-size)/2))] bg-(--text-color) shadow-(--box-shadow) transition-[left] duration-(--duration) ease-out ${isChecked ? 'left-[calc(100%-var(--handle-size))]' : 'left-0'}`}
       />
     </button>
   )

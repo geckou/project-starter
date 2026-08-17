@@ -90,7 +90,7 @@ export function SearchableSelectBox({
         cssStyle={cssStyle}
       />
       {isOpened && filteredOptions.length > 0 && (
-        <div className="absolute left-0 top-[calc(100%-var(--sp-min,0.1875rem))] z-[2] max-h-[calc(var(--bv,0.375rem)*56)] min-w-full overflow-auto rounded-[var(--radius-small,0.1875rem)] bg-white py-[var(--sp-small,0.375rem)] shadow-[0_0_6px_#33333333]">
+        <div className="absolute top-[calc(100%-var(--sp-min,0.1875rem))] left-0 z-[2] max-h-[calc(var(--bv,0.375rem)*56)] min-w-full overflow-auto rounded-[var(--radius-small,0.1875rem)] bg-white py-[var(--sp-small,0.375rem)] shadow-[0_0_6px_#33333333]">
           {filteredOptions.map((option) => (
             <button
               key={option.value}

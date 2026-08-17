@@ -68,7 +68,7 @@ export function BasicButton({
       disabled={isDisabled || isLoading}
       onClick={onClick}
       style={style}
-      className="rounded-(--radius-size) bg-(--background-color) text-(--text-color) shadow-(--button-shadow) duration-(--duration) enabled:hover:rounded-(--hover-radius-size) enabled:hover:bg-(--hover-background-color) enabled:hover:text-(--hover-text-color) enabled:hover:shadow-(--hover-button-shadow) relative inline-flex w-max cursor-pointer items-center justify-center border-none px-8 py-4 leading-none transition-all disabled:pointer-events-none disabled:before:pointer-events-auto disabled:before:absolute disabled:before:inset-0 disabled:before:cursor-not-allowed disabled:before:content-['']"
+      className="relative inline-flex w-max cursor-pointer items-center justify-center rounded-(--radius-size) border-none bg-(--background-color) px-8 py-4 leading-none text-(--text-color) shadow-(--button-shadow) transition-all duration-(--duration) enabled:hover:rounded-(--hover-radius-size) enabled:hover:bg-(--hover-background-color) enabled:hover:text-(--hover-text-color) enabled:hover:shadow-(--hover-button-shadow) disabled:pointer-events-none disabled:before:pointer-events-auto disabled:before:absolute disabled:before:inset-0 disabled:before:cursor-not-allowed disabled:before:content-['']"
     >
       {isLoading && (
         <span className="absolute inset-0 m-auto flex max-h-[calc(100%-1.5rem)] items-center justify-center fill-current text-current [&_*]:max-h-full [&_*]:fill-current">

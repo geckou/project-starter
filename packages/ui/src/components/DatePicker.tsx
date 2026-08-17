@@ -159,7 +159,7 @@ export function DatePicker({
     >
       <div className="relative flex-none" style={iconStyle}>
         <CalendarIcon
-          className={`fill-(--icon-color) pointer-events-none absolute inset-y-0 left-[var(--sp-small,0.375rem)] m-auto ${isSmall ? 'size-[var(--icon-small,0.9375rem)]' : 'size-[var(--icon-medium,1.125rem)]'}`}
+          className={`pointer-events-none absolute inset-y-0 left-[var(--sp-small,0.375rem)] m-auto fill-(--icon-color) ${isSmall ? 'size-[var(--icon-small,0.9375rem)]' : 'size-[var(--icon-medium,1.125rem)]'}`}
         />
         <input
           type={type}
@@ -170,7 +170,7 @@ export function DatePicker({
           required={isRequired}
           disabled={isDisabled}
           onChange={(event) => handleDateValueChange(event.target.value)}
-          className={`w-[calc(var(--icon-medium,1.125rem)+var(--sp-small,0.375rem)*2)]! px-[var(--sp-small,0.375rem)]! cursor-pointer opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:left-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 ${isSmall ? 'py-[var(--sp-min,0.1875rem)]!' : 'py-[var(--sp-medium,0.75rem)]!'}`}
+          className={`w-[calc(var(--icon-medium,1.125rem)+var(--sp-small,0.375rem)*2)]! cursor-pointer px-[var(--sp-small,0.375rem)]! opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:left-0 [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0 ${isSmall ? 'py-[var(--sp-min,0.1875rem)]!' : 'py-[var(--sp-medium,0.75rem)]!'}`}
         />
       </div>
       <input

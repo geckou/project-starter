@@ -69,9 +69,9 @@ export function RadioButtons({
           <label
             key={option.value}
             style={style}
-            className={`before:duration-(--duration) grid cursor-pointer grid-cols-[auto_1fr] items-center gap-2 before:inline-block before:aspect-square before:w-4 before:rounded-full before:transition-all before:ease-linear before:content-[''] has-[input:disabled]:cursor-not-allowed ${
+            className={`grid cursor-pointer grid-cols-[auto_1fr] items-center gap-2 before:inline-block before:aspect-square before:w-4 before:rounded-full before:transition-all before:duration-(--duration) before:ease-linear before:content-[''] has-[input:disabled]:cursor-not-allowed ${
               isChecked
-                ? 'text-(--text-color) before:bg-(--border-color) before:animate-[uiRadioPop_var(--duration)_ease-out] before:shadow-[0_0_0_2px_var(--background-color)_inset,0_0_0_1px_var(--border-color)]'
+                ? 'text-(--text-color) before:animate-[uiRadioPop_var(--duration)_ease-out] before:bg-(--border-color) before:shadow-[0_0_0_2px_var(--background-color)_inset,0_0_0_1px_var(--border-color)]'
                 : 'text-(--border-color) before:bg-(--background-color) before:shadow-[0_0_0_1px_var(--border-color)_inset]'
             }`}
           >

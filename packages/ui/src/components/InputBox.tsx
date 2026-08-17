@@ -163,7 +163,7 @@ export function InputBox({
   return (
     <div
       ref={inputBoxRef}
-      className={`rounded-(--radius-size) bg-(--background-color) text-(--text-color) shadow-(--input-box-shadow) [&_*::placeholder]:text-(--placeholder-color) relative inline-flex max-w-full has-[:disabled]:pointer-events-none has-[:disabled]:before:pointer-events-auto has-[:disabled]:before:absolute has-[:disabled]:before:inset-0 has-[:disabled]:before:cursor-not-allowed has-[:disabled]:before:content-[''] [&_*::placeholder]:font-normal [&_*:focus]:outline-none [&_:is(input,textarea,select)]:w-full [&_:is(input,textarea,select)]:appearance-none [&_:is(input,textarea,select)]:border-none [&_:is(input,textarea,select)]:bg-transparent [&_:is(input,textarea,select)]:p-4 [&_:is(input,textarea,select)]:outline-none ${className || ''}`}
+      className={`relative inline-flex max-w-full rounded-(--radius-size) bg-(--background-color) text-(--text-color) shadow-(--input-box-shadow) has-[:disabled]:pointer-events-none has-[:disabled]:before:pointer-events-auto has-[:disabled]:before:absolute has-[:disabled]:before:inset-0 has-[:disabled]:before:cursor-not-allowed has-[:disabled]:before:content-[''] [&_*::placeholder]:font-normal [&_*::placeholder]:text-(--placeholder-color) [&_*:focus]:outline-none [&_:is(input,textarea,select)]:w-full [&_:is(input,textarea,select)]:appearance-none [&_:is(input,textarea,select)]:border-none [&_:is(input,textarea,select)]:bg-transparent [&_:is(input,textarea,select)]:p-4 [&_:is(input,textarea,select)]:outline-none ${className || ''}`}
       style={style}
     >
       {children}

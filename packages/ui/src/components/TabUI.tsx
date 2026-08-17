@@ -73,7 +73,7 @@ export function TabUI({
     <div>
       <div
         style={style}
-        className="bg-(--background-color) flex"
+        className="flex bg-(--background-color)"
         role="tablist"
         onKeyDown={handleKeydown}
       >

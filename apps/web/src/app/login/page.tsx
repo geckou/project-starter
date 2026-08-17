@@ -76,7 +76,7 @@ function LoginInner() {
         />
         <button
           type="submit"
-          className="bg-primary-600 hover:bg-primary-700 w-full rounded py-2 text-white"
+          className="w-full rounded bg-primary-600 py-2 text-white hover:bg-primary-700"
         >
           ログイン
         </button>

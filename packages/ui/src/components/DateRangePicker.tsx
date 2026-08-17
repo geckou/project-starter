@@ -37,7 +37,7 @@ export function DateRangePicker({ isDisabled, onChange }: Props) {
   return (
     <div
       style={style}
-      className="bg-(--range-background-color) [&>*]:rounded-none! [&>*:not(:last-child)]:border-(--range-border-color) [&>*:first-child]:rounded-s-[calc(var(--bv,0.375rem)/2)]! [&>*:last-child]:rounded-e-[calc(var(--bv,0.375rem)/2)]! flex [&>*:not(:last-child)]:border-e [&>*]:flex-auto"
+      className="flex bg-(--range-background-color) [&>*]:flex-auto [&>*]:rounded-none! [&>*:first-child]:rounded-s-[calc(var(--bv,0.375rem)/2)]! [&>*:last-child]:rounded-e-[calc(var(--bv,0.375rem)/2)]! [&>*:not(:last-child)]:border-e [&>*:not(:last-child)]:border-(--range-border-color)"
     >
       <DatePicker
         value={startDate}
@@ -45,7 +45,7 @@ export function DateRangePicker({ isDisabled, onChange }: Props) {
         isDisabled={isDisabled}
         onChange={handleStartChange}
       />
-      <div className="flex-none! flex items-center px-[var(--bv,0.375rem)]">
+      <div className="flex flex-none! items-center px-[var(--bv,0.375rem)]">
         〜
       </div>
       <DatePicker
