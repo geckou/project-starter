@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type {
   ApiResponse,
   Subscription,
+  SubscriptionSource,
   SubscriptionStatus,
   User,
 } from '../src/types'
@@ -31,6 +32,7 @@ describe('型定義の整合性', () => {
       createdAt: new Date(),
       subscription: {
         status: 'active',
+        source: 'stripe',
         updatedAt: new Date(),
       },
     }
@@ -38,19 +40,32 @@ describe('型定義の整合性', () => {
     expect(user.subscription?.status).toBe('active')
   })
 
-  it('SubscriptionStatus は3種類のみ', () => {
-    const statuses: SubscriptionStatus[] = ['active', 'cancelled', 'expired']
-    expect(statuses).toHaveLength(3)
+  it('SubscriptionStatus は4種類', () => {
+    const statuses: SubscriptionStatus[] = [
+      'active',
+      'in_grace_period',
+      'cancelled',
+      'expired',
+    ]
+    expect(statuses).toHaveLength(4)
+  })
+
+  it('SubscriptionSource は Web 決済と IAP の2種類', () => {
+    const sources: SubscriptionSource[] = ['stripe', 'revenuecat']
+    expect(sources).toHaveLength(2)
   })
 
   it('Subscription のオプショナルフィールドが省略可能', () => {
     const subscription: Subscription = {
       status: 'active',
+      source: 'stripe',
+      updatedAt: new Date(),
     }
 
-    expect(subscription.updatedAt).toBeUndefined()
-    expect(subscription.cancelledAt).toBeUndefined()
-    expect(subscription.expiredAt).toBeUndefined()
+    expect(subscription.planId).toBeUndefined()
+    expect(subscription.currentPeriodEnd).toBeUndefined()
+    expect(subscription.cancelAtPeriodEnd).toBeUndefined()
+    expect(subscription.lastEventId).toBeUndefined()
   })
 
   it('ApiResponse が成功レスポンスを表現できる', () => {

@@ -8,13 +8,26 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // ユーザー: 本人のみ読み書き可
+    // サーバー（Cloud Functions / Admin SDK）だけが書き込めるフィールド。
+    // 課金の権利状態をクライアントから自己申告で書き換えられないようにする
+    function serverOnlyFields() {
+      return ['subscription', 'stripeCustomerId'];
+    }
+
+    // ユーザー: 本人のみ読み書き可。ただし課金関連フィールドは書き換え不可
     match /users/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.auth.uid == userId;
-      allow update: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId
+                    && !request.resource.data.keys().hasAny(serverOnlyFields());
+      allow update: if request.auth != null && request.auth.uid == userId
+                    && !request.resource.data.diff(resource.data)
+                         .affectedKeys().hasAny(serverOnlyFields());
       allow delete: if false;
     }
+
+    // 課金 Webhook の処理済みイベント（冪等性のため Functions が書く）。
+    // クライアントからは読み書きさせないので、上の default deny に任せる
+    // match /billing_events/{eventId} — 明示的な許可なし
 
     // 1プロジェクト相乗り時は環境ごとに明示的に match を書く
     // ワイルドカード /{prefix}users はセグメント内マッチ不可

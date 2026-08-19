@@ -1,12 +1,17 @@
 import crypto from 'crypto'
+import type { SubscriptionStatus } from '@geckou/shared'
 import { type Request, type Response } from 'express'
-import { getFirestore } from 'firebase-admin/firestore'
+
+import { applySubscriptionEvent } from './lib/subscription'
 
 type WebhookEvent = {
   event: {
+    id: string
     type: string
     app_user_id: string
-    timestamp: number
+    event_timestamp_ms?: number
+    expiration_at_ms?: number
+    entitlement_ids?: string[]
   }
 }
 
@@ -25,6 +30,36 @@ function verifyAuthorization(
   if (received.length !== secret.length) return false
 
   return crypto.timingSafeEqual(received, secret)
+}
+
+/**
+ * RevenueCat のイベント種別を共通の SubscriptionStatus に変換する。
+ * null を返した種別は権利状態を変えない（ログのみ）。
+ */
+function mapRevenueCatStatus(type: string): SubscriptionStatus | null {
+  switch (type) {
+    case 'INITIAL_PURCHASE':
+    case 'RENEWAL':
+    case 'UNCANCELLATION':
+    case 'PRODUCT_CHANGE':
+    case 'NON_RENEWING_PURCHASE':
+      return 'active'
+
+    // 自動更新を止めただけ。expiration_at_ms までは利用できる
+    case 'CANCELLATION':
+    case 'SUBSCRIPTION_PAUSED':
+      return 'cancelled'
+
+    // 支払い失敗。ストアのリトライが続いている猶予期間
+    case 'BILLING_ISSUE':
+      return 'in_grace_period'
+
+    case 'EXPIRATION':
+      return 'expired'
+
+    default:
+      return null
+  }
 }
 
 export async function handleRevenueCatWebhook(
@@ -67,34 +102,36 @@ export async function handleRevenueCatWebhook(
     return
   }
 
-  const { type, app_user_id: userId } = event
-  const db = getFirestore()
-  const now = new Date()
-
-  // set + merge を使う（update はドキュメント未作成時に throw するため）
-  const setSubscription = (fields: Record<string, unknown>) =>
-    db
-      .collection('users')
-      .doc(userId)
-      .set({ subscription: fields }, { merge: true })
+  const status = mapRevenueCatStatus(event.type)
+  if (!status) {
+    console.log(`Unhandled RevenueCat event: ${event.type}`)
+    res.status(200).json({ received: true })
+    return
+  }
 
   try {
-    switch (type) {
-      case 'INITIAL_PURCHASE':
-      case 'RENEWAL':
-        await setSubscription({ status: 'active', updatedAt: now })
-        break
+    const result = await applySubscriptionEvent({
+      // 古い RevenueCat の設定では id が来ないことがあるため、その場合は
+      // 種別 + ユーザー + 発生時刻で代替キーを作る
+      eventId:
+        event.id ??
+        `${event.type}_${event.app_user_id}_${event.event_timestamp_ms ?? 0}`,
+      source: 'revenuecat',
+      uid: event.app_user_id,
+      occurredAt: new Date(event.event_timestamp_ms ?? Date.now()),
+      subscription: {
+        status,
+        source: 'revenuecat',
+        planId: event.entitlement_ids?.[0],
+        currentPeriodEnd: event.expiration_at_ms
+          ? new Date(event.expiration_at_ms)
+          : undefined,
+        cancelAtPeriodEnd: status === 'cancelled',
+      },
+    })
 
-      case 'CANCELLATION':
-        await setSubscription({ status: 'cancelled', cancelledAt: now })
-        break
-
-      case 'EXPIRATION':
-        await setSubscription({ status: 'expired', expiredAt: now })
-        break
-
-      default:
-        console.log(`Unhandled RevenueCat event: ${type}`)
+    if (result !== 'applied') {
+      console.log(`RevenueCat event ${event.id} skipped: ${result}`)
     }
   } catch (error) {
     console.error('Failed to process RevenueCat webhook', error)

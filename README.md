@@ -16,6 +16,7 @@ Turborepo によるモノレポ構成で、1つのリポジトリから Web・�
 | 言語         | TypeScript                                                   | 全パッケージ共通                         |
 | Backend      | Firebase (Auth / Firestore / Functions / Hosting)            | 認証・DB・API・ホスティング              |
 | スタイル     | Tailwind CSS v4 (Web) / NativeWind v4 + Tailwind v3 (Mobile) | ユーティリティ CSS                       |
+| 課金         | Stripe（Web） / RevenueCat（Mobile の IAP）                  | サブスクリプション                       |
 | コード品質   | ESLint + Prettier                                            | リント・フォーマット                     |
 | CI           | GitHub Actions                                               | 型チェック・リント・ビルドの自動実行     |
 
@@ -59,7 +60,8 @@ project-starter/
 ├── packages/                    # アプリ間で共有するライブラリ
 │   └── shared/
 │       └── src/
-│           ├── types/           # 共通の型定義（User, ApiResponse 等）
+│           ├── types/           # 共通の型定義（User, Subscription, ApiResponse 等）
+│           ├── billing/         # 権利判定ヘルパー（isSubscriptionActive 等）
 │           ├── utils/           # ユーティリティ関数（formatDate 等）
 │           ├── firebase/        # Firebase クライアント SDK の初期化
 │           ├── theme/           # デザイントークン（色・フォント・角丸）
@@ -347,45 +349,94 @@ Firebase SDK はそれぞれ別のモジュールを使う。
 
 ---
 
-## RevenueCat（課金 / サブスクリプション）
+## 課金 / サブスクリプション
 
-Web・Mobile の両方で RevenueCat を使った課金に対応している。
+**モバイルはアプリ内課金（IAP）、Web は Stripe** の2経路。
+どちらで購入されても、権利状態は Firestore の `users/{uid}.subscription` に集約される。
+
+| 経路 | 決済 | 手数料 | 使いどころ |
+| --- | --- | --- | --- |
+| Mobile アプリ内 | IAP（RevenueCat 経由） | Apple 26% / Google 30%（中小 15%） | アプリでその場で買わせたい |
+| Web（ブラウザ） | Stripe | 3.6% 前後 | LP・Web から契約させる |
+
+**片方だけでも使える。** 環境変数が未設定の経路は無効になる。
+Web でしか売らないなら `STRIPE_*` だけ、アプリ内課金だけなら `REVENUECAT_*` だけ設定すればよい。
+
+> アプリ内から Web 決済へのリンクアウトは採用していない。スマホ新法（2025年12月施行）で
+> 日本でも解禁されたが、Apple 15% / Google 20% のストア手数料に加えて、
+> Apple / Google への月次の取引報告を恒久的に運用する義務が発生するため。
+> 詳細は `.claude/docs/architecture.md` の「課金」を参照。
 
 ### 構成
 
-| プラットフォーム | ファイル                                   | SDK                        | 用途                                                |
-| ---------------- | ------------------------------------------ | -------------------------- | --------------------------------------------------- |
-| Mobile           | `apps/mobile/src/lib/revenuecat.ts`        | `react-native-purchases`   | アプリ内課金（iOS / Android）                       |
-| Web              | `apps/web/src/lib/revenuecat.ts`           | `@revenuecat/purchases-js` | Web 課金（`"use client"`）                          |
-| Functions        | `apps/functions/src/revenuecat-webhook.ts` | なし（Express で受信）     | Webhook で Firestore のサブスクリプション状態を同期 |
+| 層 | ファイル | 役割 |
+| --- | --- | --- |
+| 共有 | `packages/shared/src/billing/index.ts` | `isSubscriptionActive` / `hasPlan` |
+| Functions | `apps/functions/src/billing.ts` | `POST /billing/checkout` / `POST /billing/portal` |
+| Functions | `apps/functions/src/stripe-webhook.ts` | Stripe Webhook → Firestore |
+| Functions | `apps/functions/src/revenuecat-webhook.ts` | RevenueCat Webhook → Firestore |
+| Functions | `apps/functions/src/lib/subscription.ts` | 権利状態の反映（冪等性・順序制御） |
+| Web | `apps/web/src/app/billing/page.tsx` | 購入・管理画面の参考実装 |
+| Mobile | `apps/mobile/src/lib/revenuecat.ts` | IAP の初期化・Firebase UID との紐付け |
+
+### 権利判定
+
+```typescript
+import { isSubscriptionActive } from '@geckou/shared'
+
+if (isSubscriptionActive(user.subscription)) {
+  // 有料機能を出す
+}
+```
+
+`status` は `active` / `in_grace_period` / `cancelled` / `expired` の4種類。
+`cancelled` は自動更新が止まっただけで `currentPeriodEnd` までは利用できる（ヘルパーが吸収する）。
 
 ### 環境変数
 
-| 変数                             | 用途             | 設定場所                               |
-| -------------------------------- | ---------------- | -------------------------------------- |
-| `NEXT_PUBLIC_REVENUECAT_API_KEY` | Web SDK 用       | `.env.local`                           |
-| `REVENUECAT_API_KEY_APPLE`       | iOS 用           | `.env.local`（app.config.ts の extra 経由） |
-| `REVENUECAT_API_KEY_GOOGLE`      | Android 用       | `.env.local`（app.config.ts の extra 経由） |
-| `REVENUECAT_WEBHOOK_AUTH`        | Webhook の Authorization ヘッダー値 | `apps/functions/.env` |
+| 変数 | 用途 | 設定場所 |
+| --- | --- | --- |
+| `STRIPE_SECRET_KEY` | Stripe のシークレットキー | `apps/functions/.env` |
+| `STRIPE_WEBHOOK_SECRET` | Webhook の署名シークレット | `apps/functions/.env` |
+| `STRIPE_PRICE_IDS` | 購入を許可する price ID の許可リスト | `apps/functions/.env` |
+| `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` | Checkout の戻り先 | `apps/functions/.env` |
+| `STRIPE_PORTAL_RETURN_URL` | カスタマーポータルの戻り先 | `apps/functions/.env` |
+| `NEXT_PUBLIC_STRIPE_PRICE_ID` | Web が購入する price ID | `.env.local` |
+| `REVENUECAT_API_KEY_APPLE` / `_GOOGLE` | Mobile の IAP 用 | `.env.local`（`app.config.ts` の extra 経由） |
+| `REVENUECAT_WEBHOOK_AUTH` | RevenueCat Webhook の検証値 | `apps/functions/.env` |
 
-全て RevenueCat Dashboard > API Keys から取得。
-
-### Webhook の設定
+### Stripe の設定
 
 1. Firebase Functions をデプロイする
-2. RevenueCat Dashboard > Integrations > Webhooks を開く
-3. Webhook URL に以下を設定:
+2. Stripe Dashboard > 開発者 > Webhook でエンドポイントを追加:
+   ```
+   https://<region>-<project-id>.cloudfunctions.net/api/webhooks/stripe
+   ```
+3. 送信するイベントに以下を選ぶ:
+   `checkout.session.completed` / `customer.subscription.created` /
+   `customer.subscription.updated` / `customer.subscription.deleted`
+4. 表示された署名シークレット（`whsec_...`）を `STRIPE_WEBHOOK_SECRET` に設定
+5. 販売する price ID を `STRIPE_PRICE_IDS` に列挙する（許可リスト外の price は 400 で拒否される）
+
+### RevenueCat の設定
+
+1. RevenueCat Dashboard > Integrations > Webhooks を開く
+2. Webhook URL に以下を設定:
    ```
    https://<region>-<project-id>.cloudfunctions.net/api/webhooks/revenuecat
    ```
-4. Authorization header value（任意の文字列。例: `Bearer xxxxx`）を設定し、
+3. Authorization header value（任意の文字列。例: `Bearer xxxxx`）を設定し、
    同じ値を `apps/functions/.env` の `REVENUECAT_WEBHOOK_AUTH` に設定
 
 > RevenueCat の Webhook は HMAC 署名ではなく、Dashboard で設定した
 > Authorization ヘッダー値をそのまま送信する方式。
 
-Webhook で `INITIAL_PURCHASE` / `RENEWAL` / `CANCELLATION` / `EXPIRATION` イベントを受信し、
-Firestore の `users/{userId}.subscription` を自動更新する。
+### セキュリティ
+
+- `subscription` と `stripeCustomerId` は `firestore.rules` でクライアントからの書き込みを拒否している
+  （自己申告で有料ユーザーになれないようにするため）
+- Webhook は処理済みイベントを `billing_events` に記録して冪等に処理する。
+  再送の二重適用も、古いイベントによる巻き戻しも起きない
 
 ---
 

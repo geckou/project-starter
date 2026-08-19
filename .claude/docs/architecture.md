@@ -72,7 +72,7 @@ app/<path>/
 | Web クライアント用 | `.env.local`（ルート） | `NEXT_PUBLIC_FIREBASE_*`               |
 | Mobile 用          | `apps/mobile/.env.local`（use-env.sh が配布） | `FIREBASE_*`（app.config.ts の extra 経由） |
 | サーバー専用       | `.env.local`（ルート） | `FIREBASE_SERVICE_ACCOUNT_KEY`         |
-| Functions 専用     | `apps/functions/.env`  | `REVENUECAT_WEBHOOK_AUTH`            |
+| Functions 専用     | `apps/functions/.env`  | `STRIPE_SECRET_KEY`, `REVENUECAT_WEBHOOK_AUTH` |
 
 `NEXT_PUBLIC_` プレフィックスはブラウザに露出する。サーバー用の値には絶対に付けない。
 
@@ -131,13 +131,80 @@ getTranslation(ja, 'common.loading') // → '読み込み中...'
 
 新しい翻訳キーを追加する場合は `ja.ts` と `en.ts` の両方に追加すること。
 
-## 課金（RevenueCat）
+## 課金
 
-| プラットフォーム | ファイル                                   | 用途                       |
-| ---------------- | ------------------------------------------ | -------------------------- |
-| Mobile           | `apps/mobile/src/lib/revenuecat.ts`        | アプリ内課金               |
-| Web              | `apps/web/src/lib/revenuecat.ts`           | Web 課金（`'use client'`） |
-| Functions        | `apps/functions/src/revenuecat-webhook.ts` | Webhook → Firestore 同期   |
+### 方針: モバイルは IAP、Web は Stripe
+
+購入経路を2つ持ち、**権利状態は Firestore の `users/{uid}.subscription` に一本化する**。
+
+| 経路 | 決済手段 | 手数料 | 用途 |
+| --- | --- | --- | --- |
+| Mobile アプリ内 | IAP（RevenueCat 経由） | Apple 26% / Google 30%（中小 15%） | アプリ内でその場で買わせたいプロダクト |
+| Web（ブラウザ） | Stripe | 3.6% 前後 | LP・Web サービスから契約させる |
+
+**なぜこの形か。** アプリ内課金は Face ID の1タップで完結するためコンバージョンが圧倒的に高い一方、
+手数料が最も重い。逆に Web からの直接契約はストアが一切関与しないため、手数料はカード決済分だけで済む。
+「アプリでは取りこぼさない、Web に来た人からは安く取る」を両立させるのがこの構成の狙い。
+
+**リンクアウト（アプリ内から Web 決済へ誘導）は採用していない。**
+2025年12月施行のスマホ新法で日本でも解禁されたが、Apple 15% / Google 20% のストア手数料が別途かかるうえ、
+Apple / Google への月次の取引報告（External Purchase Server API / external payments API）を
+恒久的に運用する義務が発生するため、割に合わない。採用する場合はその報告基盤の実装が別途必要になる。
+
+### どちらか一方だけ使う
+
+両方とも環境変数が未設定なら無効になるので、プロダクトに応じて片方だけ使える。
+
+- **Web だけで売る**: `STRIPE_*` のみ設定。RevenueCat の依存は mobile 側に残るが未初期化で無害
+- **アプリ内課金だけ**: `REVENUECAT_*` のみ設定。`/billing/*` エンドポイントは 503 を返す
+
+### ファイル構成
+
+| 層 | ファイル | 役割 |
+| --- | --- | --- |
+| 共有 | `packages/shared/src/types/index.ts` | `Subscription` 型（両経路で共通） |
+| 共有 | `packages/shared/src/billing/index.ts` | `isSubscriptionActive` / `hasPlan` |
+| Functions | `apps/functions/src/lib/subscription.ts` | 権利状態の反映（冪等性・順序制御） |
+| Functions | `apps/functions/src/lib/stripe.ts` | Stripe クライアント・ステータス変換 |
+| Functions | `apps/functions/src/billing.ts` | `POST /billing/checkout` / `POST /billing/portal` |
+| Functions | `apps/functions/src/stripe-webhook.ts` | Stripe Webhook → Firestore |
+| Functions | `apps/functions/src/revenuecat-webhook.ts` | RevenueCat Webhook → Firestore |
+| Web | `apps/web/src/lib/billing.ts` | Checkout / カスタマーポータルの起動 |
+| Web | `apps/web/src/app/billing/page.tsx` | 購入・管理画面の参考実装 |
+| Mobile | `apps/mobile/src/lib/revenuecat.ts` | IAP の初期化・Firebase UID との紐付け |
+
+### 権利状態の判定
+
+画面側は経路を意識せず、共有ヘルパーだけを見る。
+
+```typescript
+import { isSubscriptionActive } from '@geckou/shared'
+
+if (isSubscriptionActive(user.subscription)) {
+  // 有料機能を出す
+}
+```
+
+`status` は4種類。`cancelled` は「自動更新が止まっただけ」で `currentPeriodEnd` までは利用できる点に注意
+（`isSubscriptionActive` がこの判定を吸収する）。
+
+| status | 意味 | 利用可否 |
+| --- | --- | --- |
+| `active` | 有効 | 可 |
+| `in_grace_period` | 支払い失敗中（リトライ猶予期間） | 可 |
+| `cancelled` | 自動更新が停止 | `currentPeriodEnd` まで可 |
+| `expired` | 失効 | 不可 |
+
+### セキュリティ上の要点
+
+- **`subscription` と `stripeCustomerId` はクライアントから書き込めない**（`firestore.rules` で拒否）。
+  これが無いとユーザーが自分を `active` に書き換えて有料機能を使えてしまう
+- **Webhook は冪等**。処理済みイベントを `billing_events/{source}_{eventId}` に記録し、
+  再送を二重適用しない。反映済みより古いイベントでの上書きも防ぐ
+- **Stripe の署名検証には生のボディが必要**。`api.ts` で `express.json()` より前に
+  `express.raw()` を通している（順序を入れ替えると検証が必ず失敗する）
+- **購入可能な price はサーバー側の許可リスト**（`STRIPE_PRICE_IDS`）で検証する
+- **Checkout の戻り先 URL は環境変数で固定**（クライアント入力を使うとオープンリダイレクトになる）
 
 ## Tailwind CSS / デザイントークン
 
