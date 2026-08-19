@@ -1,6 +1,7 @@
 'use client'
 
 import { apiClient } from '@/lib/api-client'
+import { auth } from '@/lib/firebase'
 
 /**
  * Stripe Checkout を開始する。
@@ -39,4 +40,17 @@ export async function openCustomerPortal(): Promise<string | null> {
   window.location.href = response.data.url
 
   return null
+}
+
+/**
+ * 権利状態のカスタムクレームを即時反映させる。
+ *
+ * カスタムクレームは ID トークンが更新されるまで最大1時間古いままなので、
+ * 購入完了後の画面（STRIPE_SUCCESS_URL の戻り先）で一度呼ぶこと。
+ * Firestore の users/{uid}.subscription は Webhook 反映後すぐ正しくなるため、
+ * 画面表示だけならこの呼び出しは不要で、セキュリティルールで
+ * request.auth.token.subscriptionActive を使う場合に必要になる。
+ */
+export async function refreshEntitlement(): Promise<void> {
+  await auth?.currentUser?.getIdToken(true)
 }

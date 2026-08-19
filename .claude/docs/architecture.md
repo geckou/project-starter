@@ -133,6 +133,8 @@ getTranslation(ja, 'common.loading') // → '読み込み中...'
 
 ## 課金
 
+> セットアップ・実装の手順は `.claude/docs/billing.md` を参照。ここでは構成と設計判断のみ扱う。
+
 ### 方針: モバイルは IAP、Web は Stripe
 
 購入経路を2つ持ち、**権利状態は Firestore の `users/{uid}.subscription` に一本化する**。

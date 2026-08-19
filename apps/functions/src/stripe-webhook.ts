@@ -129,8 +129,8 @@ export async function handleStripeWebhook(
           },
         })
 
-        if (result !== 'applied') {
-          console.log(`Stripe event ${event.id} skipped: ${result}`)
+        if (result.status !== 'applied') {
+          console.log(`Stripe event ${event.id} skipped: ${result.status}`)
         }
         break
       }

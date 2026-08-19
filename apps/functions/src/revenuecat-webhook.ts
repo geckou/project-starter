@@ -130,8 +130,8 @@ export async function handleRevenueCatWebhook(
       },
     })
 
-    if (result !== 'applied') {
-      console.log(`RevenueCat event ${event.id} skipped: ${result}`)
+    if (result.status !== 'applied') {
+      console.log(`RevenueCat event ${event.id} skipped: ${result.status}`)
     }
   } catch (error) {
     console.error('Failed to process RevenueCat webhook', error)

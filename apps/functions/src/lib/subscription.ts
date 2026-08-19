@@ -1,5 +1,12 @@
 import type { Subscription, SubscriptionSource } from '@geckou/shared'
+import { isSubscriptionActive } from '@geckou/shared'
 import { getFirestore } from 'firebase-admin/firestore'
+
+import { syncSubscriptionClaims } from './claims'
+import {
+  onSubscriptionDowngraded,
+  onSubscriptionUpgraded,
+} from './entitlement-hooks'
 
 /** Webhook から渡される、経路非依存に正規化済みのイベント */
 export type SubscriptionEvent = {
@@ -14,7 +21,15 @@ export type SubscriptionEvent = {
   subscription: Omit<Subscription, 'updatedAt' | 'lastEventId' | 'lastEventAt'>
 }
 
-export type ApplyResult = 'applied' | 'duplicate' | 'stale'
+export type ApplyStatus = 'applied' | 'duplicate' | 'stale'
+
+export type ApplyResult = {
+  status: ApplyStatus
+  /** 適用前に権利が有効だったか */
+  wasActive: boolean
+  /** 適用後に権利が有効か（適用しなかった場合は wasActive と同じ） */
+  isActive: boolean
+}
 
 /** 処理済みイベントを記録するコレクション（冪等性のため） */
 const BILLING_EVENTS_COLLECTION = 'billing_events'
@@ -43,6 +58,9 @@ function toDate(value: unknown): Date | null {
  * Webhook は再送されるため、以下をトランザクションで保証する:
  * - 同じ eventId を二重に適用しない（duplicate）
  * - 既に反映済みのイベントより古いイベントで上書きしない（stale）
+ *
+ * 反映が確定した後に、カスタムクレームの同期と権利変化フックを実行する。
+ * これらはトランザクションの外で行う（時間がかかる処理を含みうるため）。
  */
 export async function applySubscriptionEvent(
   event: SubscriptionEvent
@@ -53,17 +71,27 @@ export async function applySubscriptionEvent(
     .doc(`${event.source}_${event.eventId}`)
   const userRef = db.collection('users').doc(event.uid)
 
-  return db.runTransaction(async (transaction) => {
+  const next: Subscription = {
+    ...event.subscription,
+    updatedAt: new Date(),
+    lastEventId: event.eventId,
+    lastEventAt: event.occurredAt,
+  }
+
+  const result = await db.runTransaction<ApplyResult>(async (transaction) => {
     // Firestore のトランザクションは全ての read を write より先に行う必要がある
     const [eventSnapshot, userSnapshot] = await Promise.all([
       transaction.get(eventRef),
       transaction.get(userRef),
     ])
 
-    if (eventSnapshot.exists) return 'duplicate'
+    const current = userSnapshot.get('subscription') as Subscription | undefined
+    const wasActive = isSubscriptionActive(current)
 
-    const current = userSnapshot.get('subscription') as
-      { lastEventAt?: unknown } | undefined
+    if (eventSnapshot.exists) {
+      return { status: 'duplicate', wasActive, isActive: wasActive }
+    }
+
     const lastEventAt = toDate(current?.lastEventAt)
     const isStale =
       lastEventAt !== null && lastEventAt.getTime() > event.occurredAt.getTime()
@@ -78,24 +106,53 @@ export async function applySubscriptionEvent(
       processedAt: new Date(),
     })
 
-    if (isStale) return 'stale'
+    if (isStale) {
+      return { status: 'stale', wasActive, isActive: wasActive }
+    }
 
     // update ではなく set + merge を使う（ドキュメント未作成時に throw するため）
-    transaction.set(
-      userRef,
-      {
-        subscription: {
-          ...event.subscription,
-          updatedAt: new Date(),
-          lastEventId: event.eventId,
-          lastEventAt: event.occurredAt,
-        },
-      },
-      { merge: true }
-    )
+    transaction.set(userRef, { subscription: next }, { merge: true })
 
-    return 'applied'
+    return {
+      status: 'applied',
+      wasActive,
+      isActive: isSubscriptionActive(next),
+    }
   })
+
+  if (result.status === 'applied') {
+    await runPostApplyEffects(event.uid, next, result)
+  }
+
+  return result
+}
+
+/**
+ * 反映確定後の副作用。
+ *
+ * ここでの失敗は Webhook を 500 にしない。権利状態（正）は既に Firestore に
+ * 書き込み済みで、再送させても同じイベント ID は duplicate になるため。
+ */
+async function runPostApplyEffects(
+  uid: string,
+  subscription: Subscription,
+  result: ApplyResult
+): Promise<void> {
+  try {
+    await syncSubscriptionClaims(uid, subscription)
+  } catch (error) {
+    console.error(`Failed to sync custom claims for ${uid}`, error)
+  }
+
+  try {
+    if (!result.wasActive && result.isActive) {
+      await onSubscriptionUpgraded(uid, subscription)
+    } else if (result.wasActive && !result.isActive) {
+      await onSubscriptionDowngraded(uid, subscription)
+    }
+  } catch (error) {
+    console.error(`Entitlement hook failed for ${uid}`, error)
+  }
 }
 
 /** Stripe の顧客 ID をユーザーに保存する（サーバーのみ書き込み可） */

@@ -304,5 +304,6 @@ gh issue create \
 - `.claude/docs/spec.md` — 仕様書（画面一覧・データモデル・API・セキュリティ）
 - `.claude/docs/roadmap.md` — ロードマップ（機能ステータス表・残タスク・セッション引き継ぎ）
 - `.claude/docs/architecture.md` — API方針、Firebase使い分け、認証、データ取得、環境変数、Zustand、Storage、FCM、Sentry、i18n、課金（Stripe / IAP）、Tailwind、コンポーネント整理
+- `.claude/docs/billing.md` — 決済の実装手順（Stripe / IAP のセットアップ、権利判定、チェックリスト、よくある失敗）
 - `.claude/docs/nuxt-nextjs.md` — Nuxt.js → Next.js の対応表（Server Component、ルーティング等）
 - `.claude/docs/git-workflow.md` — リリースフロー詳細、マルチ環境構成、GCP API 有効化

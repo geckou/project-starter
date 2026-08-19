@@ -35,6 +35,20 @@ vi.mock('firebase-admin/firestore', () => ({
   }),
 }))
 
+const mockSyncSubscriptionClaims = vi.fn().mockResolvedValue(undefined)
+const mockOnUpgraded = vi.fn().mockResolvedValue(undefined)
+const mockOnDowngraded = vi.fn().mockResolvedValue(undefined)
+
+vi.mock('../src/lib/claims', () => ({
+  syncSubscriptionClaims: (...args: unknown[]) =>
+    mockSyncSubscriptionClaims(...args),
+}))
+
+vi.mock('../src/lib/entitlement-hooks', () => ({
+  onSubscriptionUpgraded: (...args: unknown[]) => mockOnUpgraded(...args),
+  onSubscriptionDowngraded: (...args: unknown[]) => mockOnDowngraded(...args),
+}))
+
 import { applySubscriptionEvent } from '../src/lib/subscription'
 
 /** Firestore の Timestamp を模したオブジェクト（読み出し時はこの形で返る） */
@@ -59,20 +73,25 @@ function createEvent(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function readSubscription(uid: string) {
+  return store.get(`users/${uid}`)?.subscription as Record<string, unknown>
+}
+
 describe('applySubscriptionEvent', () => {
   beforeEach(() => {
     store.clear()
+    vi.clearAllMocks()
+    mockSyncSubscriptionClaims.mockResolvedValue(undefined)
+    mockOnUpgraded.mockResolvedValue(undefined)
+    mockOnDowngraded.mockResolvedValue(undefined)
   })
 
   it('新規イベントを users/{uid}.subscription に反映する', async () => {
     const result = await applySubscriptionEvent(createEvent())
 
-    expect(result).toBe('applied')
+    expect(result.status).toBe('applied')
 
-    const subscription = store.get('users/user-1')?.subscription as Record<
-      string,
-      unknown
-    >
+    const subscription = readSubscription('user-1')
     expect(subscription.status).toBe('active')
     expect(subscription.source).toBe('stripe')
     expect(subscription.planId).toBe('price_abc')
@@ -100,14 +119,8 @@ describe('applySubscriptionEvent', () => {
       })
     )
 
-    expect(result).toBe('duplicate')
-
-    // 状態は最初のイベントのまま
-    const subscription = store.get('users/user-1')?.subscription as Record<
-      string,
-      unknown
-    >
-    expect(subscription.status).toBe('active')
+    expect(result.status).toBe('duplicate')
+    expect(readSubscription('user-1').status).toBe('active')
   })
 
   it('経路が違えば同じ eventId でも別イベントとして扱う', async () => {
@@ -123,7 +136,7 @@ describe('applySubscriptionEvent', () => {
       })
     )
 
-    expect(result).toBe('applied')
+    expect(result.status).toBe('applied')
     expect(store.has('billing_events/revenuecat_evt_1')).toBe(true)
   })
 
@@ -143,13 +156,8 @@ describe('applySubscriptionEvent', () => {
       })
     )
 
-    expect(result).toBe('stale')
-
-    const subscription = store.get('users/user-1')?.subscription as Record<
-      string,
-      unknown
-    >
-    expect(subscription.status).toBe('active')
+    expect(result.status).toBe('stale')
+    expect(readSubscription('user-1').status).toBe('active')
   })
 
   it('古いイベントでもイベント自体は applied: false で記録する', async () => {
@@ -188,13 +196,8 @@ describe('applySubscriptionEvent', () => {
       })
     )
 
-    expect(result).toBe('applied')
-
-    const subscription = store.get('users/user-1')?.subscription as Record<
-      string,
-      unknown
-    >
-    expect(subscription.status).toBe('expired')
+    expect(result.status).toBe('applied')
+    expect(readSubscription('user-1').status).toBe('expired')
   })
 
   it('ユーザードキュメントが未作成でも反映できる', async () => {
@@ -202,7 +205,107 @@ describe('applySubscriptionEvent', () => {
       createEvent({ uid: 'brand-new-user' })
     )
 
-    expect(result).toBe('applied')
+    expect(result.status).toBe('applied')
     expect(store.has('users/brand-new-user')).toBe(true)
+  })
+})
+
+describe('権利変化の副作用', () => {
+  beforeEach(() => {
+    store.clear()
+    vi.clearAllMocks()
+    mockSyncSubscriptionClaims.mockResolvedValue(undefined)
+    mockOnUpgraded.mockResolvedValue(undefined)
+    mockOnDowngraded.mockResolvedValue(undefined)
+  })
+
+  it('反映時にカスタムクレームを同期する', async () => {
+    await applySubscriptionEvent(createEvent())
+
+    expect(mockSyncSubscriptionClaims).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ status: 'active', planId: 'price_abc' })
+    )
+  })
+
+  it('無効 → 有効でアップグレードフックを呼ぶ', async () => {
+    await applySubscriptionEvent(createEvent())
+
+    expect(mockOnUpgraded).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ status: 'active' })
+    )
+    expect(mockOnDowngraded).not.toHaveBeenCalled()
+  })
+
+  it('有効 → 無効でダウングレードフックを呼ぶ', async () => {
+    store.set('users/user-1', { subscription: { status: 'active' } })
+
+    await applySubscriptionEvent(
+      createEvent({
+        eventId: 'evt_expire',
+        subscription: { status: 'expired' as const, source: 'stripe' as const },
+      })
+    )
+
+    expect(mockOnDowngraded).toHaveBeenCalledWith(
+      'user-1',
+      expect.objectContaining({ status: 'expired' })
+    )
+    expect(mockOnUpgraded).not.toHaveBeenCalled()
+  })
+
+  it('有効のまま更新された場合はどちらのフックも呼ばない', async () => {
+    store.set('users/user-1', { subscription: { status: 'active' } })
+
+    await applySubscriptionEvent(createEvent({ eventId: 'evt_renew' }))
+
+    expect(mockOnUpgraded).not.toHaveBeenCalled()
+    expect(mockOnDowngraded).not.toHaveBeenCalled()
+  })
+
+  it('cancelled でも期間内なら有効のままなのでフックを呼ばない', async () => {
+    store.set('users/user-1', { subscription: { status: 'active' } })
+
+    await applySubscriptionEvent(
+      createEvent({
+        eventId: 'evt_cancel',
+        subscription: {
+          status: 'cancelled' as const,
+          source: 'stripe' as const,
+          currentPeriodEnd: new Date('2099-01-01T00:00:00Z'),
+        },
+      })
+    )
+
+    expect(mockOnDowngraded).not.toHaveBeenCalled()
+  })
+
+  it('duplicate / stale ではフックもクレーム同期も走らない', async () => {
+    await applySubscriptionEvent(createEvent())
+    vi.clearAllMocks()
+
+    await applySubscriptionEvent(createEvent())
+
+    expect(mockSyncSubscriptionClaims).not.toHaveBeenCalled()
+    expect(mockOnUpgraded).not.toHaveBeenCalled()
+    expect(mockOnDowngraded).not.toHaveBeenCalled()
+  })
+
+  it('クレーム同期が失敗しても反映は成功扱いにする', async () => {
+    mockSyncSubscriptionClaims.mockRejectedValue(new Error('auth down'))
+
+    const result = await applySubscriptionEvent(createEvent())
+
+    expect(result.status).toBe('applied')
+    expect(readSubscription('user-1').status).toBe('active')
+  })
+
+  it('フックが例外を投げても反映は成功扱いにする', async () => {
+    mockOnUpgraded.mockRejectedValue(new Error('cleanup failed'))
+
+    const result = await applySubscriptionEvent(createEvent())
+
+    expect(result.status).toBe('applied')
   })
 })
