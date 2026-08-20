@@ -60,9 +60,12 @@
 
 ### 1-2. 環境変数を設定する
 
-`apps/functions/.env`（`apps/functions/.env.example` からコピー）:
+**ルートの `.env.<環境名>` に書く。**ここが単一の正で、`yarn env:<環境名>` が
+`apps/functions/.env` を含む各所へ配布する（`apps/functions/.env` を直接編集しても
+環境切り替えで上書きされる）。
 
 ```bash
+# Functions が使う（yarn env:<環境名> が apps/functions/.env へ配布する）
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 # 購入を許可する price ID。ここに無い price はサーバーが 400 で拒否する
@@ -70,18 +73,90 @@ STRIPE_PRICE_IDS=price_xxx,price_yyy
 STRIPE_SUCCESS_URL=https://example.com/billing?status=success
 STRIPE_CANCEL_URL=https://example.com/billing?status=cancelled
 STRIPE_PORTAL_RETURN_URL=https://example.com/billing
+
+# Web クライアントが使う
+NEXT_PUBLIC_STRIPE_PRICE_ID=price_xxx
 ```
 
-ルートの `.env.<環境名>`:
+設定したら環境を切り替えて配布する。
 
 ```bash
-NEXT_PUBLIC_STRIPE_PRICE_ID=price_xxx
+yarn env:develop
 ```
 
 > `STRIPE_SECRET_KEY` に `NEXT_PUBLIC_` を**絶対に付けない**。ブラウザに漏れる。
 > `NEXT_PUBLIC_STRIPE_PRICE_ID` は公開されても問題ない値（購入可否はサーバーの許可リストで決まる）。
 
-### 1-3. ローカルで動作確認する
+**Functions に環境変数を追加したときは `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS`
+にも追記すること。**許可リストに無いキーは `apps/functions/.env` に配布されない。
+
+### 1-3. テストモードと本番モードを分ける
+
+**Stripe のテスト/本番はキーで決まる。**`sk_test_` を使えばその環境は全部テストモードで動く。
+別途フラグを立てる必要はない。
+
+| 環境 | Stripe キー | 使う場面 |
+| --- | --- | --- |
+| `.env.develop` | `sk_test_...` | ローカル開発 |
+| `.env.staging` | `sk_test_...` | 動作確認・受け入れ |
+| `.env.production` | `sk_live_...` | 本番 |
+
+`yarn env:<環境名>` は **production 以外に本番キー（`sk_live_`）が入っているとエラーで停止する。**
+開発中の操作が実在するカードに課金される事故を防ぐため。
+
+**テストモードと本番モードは完全に別世界。** price ID・顧客・サブスクリプション・Webhook
+エンドポイントがすべて別なので、`STRIPE_PRICE_IDS` と `NEXT_PUBLIC_STRIPE_PRICE_ID` も
+モードごとに違う値になる。取り違えると `/billing/checkout` が `Invalid priceId` で 400 を返す。
+
+**Webhook シークレットは3種類ある。** それぞれ別物なので取り違えないこと。
+
+| 用途 | 取得元 | 書く先 |
+| --- | --- | --- |
+| ローカル開発 | `stripe listen` が起動時に表示する値 | `.env.develop` |
+| テストモードのデプロイ先 | Dashboard（テストモード）の Webhook 設定 | `.env.staging` |
+| 本番 | Dashboard（本番モード）の Webhook 設定 | `.env.production` |
+
+#### Test Clock でサブスクの時間を進める
+
+更新・支払い失敗・期限切れは、実際には数週間〜数か月待たないと起きない。
+Stripe の **Test Clock**（テストモード限定）を使うと時間を進めて即座に再現できる。
+今回実装した Webhook の分岐を一通り確認するのに使う。
+
+```bash
+# 1. テストクロックを作る（現在時刻で作成）
+stripe test_helpers test_clocks create --frozen-time $(date +%s)
+
+# 2. そのクロックに紐づく顧客を作り、Checkout でサブスクを契約する
+#    （Dashboard のテストクロック画面からも顧客を作れる）
+
+# 3. 時間を進める（例: 32日後 = 更新が発生する）
+stripe test_helpers test_clocks advance --id clock_xxx --frozen-time <unix秒>
+```
+
+これで確認できる遷移:
+
+| 進める内容 | 発火するイベント | 期待する `status` |
+| --- | --- | --- |
+| 課金期間を1つ進める | `customer.subscription.updated` | `active`（更新成功） |
+| 決済失敗するカードで更新 | `customer.subscription.updated` | `in_grace_period` |
+| リトライ期間を過ぎる | `customer.subscription.deleted` | `expired` |
+| 解約して期間終了まで進める | `customer.subscription.updated` → `deleted` | `cancelled` → `expired` |
+
+`cancelled` は期間終了までは `isSubscriptionActive` が `true` を返す点も、
+ここで実際に確認しておくとよい。
+
+#### テストカード
+
+| 番号 | 挙動 |
+| --- | --- |
+| `4242 4242 4242 4242` | 成功 |
+| `4000 0000 0000 0341` | 登録は通るが決済時に失敗（更新失敗の再現に使う） |
+| `4000 0000 0000 9995` | 残高不足 |
+| `4000 0025 0000 3155` | 3D セキュア認証が必要 |
+
+有効期限は未来の日付、CVC は任意の3桁でよい。
+
+### 1-4. ローカルで動作確認する
 
 ```bash
 # 1. Functions を起動
@@ -100,7 +175,7 @@ yarn dev:web
 
 購入後、Firestore の `users/{uid}.subscription` が `status: 'active'` になっていれば成功。
 
-### 1-4. 本番へ
+### 1-5. 本番へ
 
 1. 本番モードで 1-1 をやり直す（price ID も Webhook シークレットも別物になる）
 2. `yarn env:production` で環境を切り替え、`yarn deploy:production`
@@ -183,6 +258,11 @@ export default function RootLayout() {
 
 購入画面は `getOfferings()` で商品を取得して表示する。Paywall UI を作り込みたくない場合は
 `react-native-purchases-ui`（インストール済み）の Paywall が使える。
+
+> **IAP のテストは Stripe と仕組みが違う。** RevenueCat 側にテストキーは無く、
+> App Store の Sandbox アカウント / Google Play の内部テストトラックで検証する。
+> Sandbox では更新周期が短縮される（例: 月額が数分で更新される）ため、
+> `RENEWAL` や `EXPIRATION` の Webhook を現実的な時間で確認できる。
 
 ---
 
@@ -313,6 +393,8 @@ yarn test:rules  # Firestore ルール（要 Firebase エミュレーター）
 - [ ] `onSubscriptionDowngraded` に後始末を実装した（不要ならその判断を記録した）
 - [ ] ルールで課金状態を使うなら `SYNC_SUBSCRIPTION_CLAIMS=true` を設定し、購入完了画面で `refreshEntitlement()` を呼んでいる
 - [ ] 特定商取引法に基づく表記を用意した（日本で有料提供する場合）
+- [ ] 開発・検証環境がテストキー（`sk_test_`）を使っている
+- [ ] Test Clock で更新・支払い失敗・失効の遷移を確認した
 - [ ] 本番モードの price ID / Webhook シークレットに差し替えた
 - [ ] `roadmap.md` の機能ステータス表を更新した
 
@@ -325,6 +407,9 @@ yarn test:rules  # Firestore ルール（要 Firebase エミュレーター）
 | Webhook が常に 400 `Invalid signature` | `api.ts` で `express.json()` より前に `express.raw()` を通す順序が崩れている。または `STRIPE_WEBHOOK_SECRET` がローカル用（`stripe listen` が出す値）と本番用で取り違えられている |
 | 購入は成功するが権利が反映されない | Webhook のイベント選択に `customer.subscription.*` が入っていない。ログに `Stripe subscription without uid metadata` が出ていれば、Checkout 作成時の `subscription_data.metadata` が欠けている |
 | `/billing/checkout` が 400 `Invalid priceId` | `STRIPE_PRICE_IDS` に該当の price ID が入っていない。商品 ID（`prod_...`）を入れていないか確認 |
+| price ID は合っているのに Stripe 側で `No such price` | テストモードで作った price を本番キーで使っている（またはその逆）。price ID はモードごとに別物 |
+| `yarn env:develop` がエラーで止まる | `.env.develop` に本番キー（`sk_live_`）が入っている。テストキーに差し替える |
+| 環境を切り替えたのに Functions が前の環境を見ている | Functions に追加した環境変数が `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` に入っていない |
 | `/billing/portal` が 500 | Stripe Dashboard でカスタマーポータルを有効化していない |
 | `/billing/portal` が 404 | そのユーザーが Stripe で一度も購入しておらず顧客が存在しない。IAP で購入したユーザーはこちら（ストアの設定画面へ誘導する） |
 | `/billing/*` が 503 | `STRIPE_SECRET_KEY` が未設定。Web 決済を使わない構成なら正常な挙動 |
