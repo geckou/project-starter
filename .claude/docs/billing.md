@@ -101,7 +101,7 @@ yarn env:develop
 | `.env.staging` | `sk_test_...` | 動作確認・受け入れ |
 | `.env.production` | `sk_live_...` | 本番 |
 
-`yarn env:<環境名>` は **production 以外に本番キー（`sk_live_`）が入っているとエラーで停止する。**
+`yarn env:<環境名>` は **production 以外に本番キー（`sk_live_` / `rk_live_`）が入っているとエラーで停止する。**
 開発中の操作が実在するカードに課金される事故を防ぐため。
 
 **テストモードと本番モードは完全に別世界。** price ID・顧客・サブスクリプション・Webhook
@@ -408,7 +408,7 @@ yarn test:rules  # Firestore ルール（要 Firebase エミュレーター）
 | 購入は成功するが権利が反映されない | Webhook のイベント選択に `customer.subscription.*` が入っていない。ログに `Stripe subscription without uid metadata` が出ていれば、Checkout 作成時の `subscription_data.metadata` が欠けている |
 | `/billing/checkout` が 400 `Invalid priceId` | `STRIPE_PRICE_IDS` に該当の price ID が入っていない。商品 ID（`prod_...`）を入れていないか確認 |
 | price ID は合っているのに Stripe 側で `No such price` | テストモードで作った price を本番キーで使っている（またはその逆）。price ID はモードごとに別物 |
-| `yarn env:develop` がエラーで止まる | `.env.develop` に本番キー（`sk_live_`）が入っている。テストキーに差し替える |
+| `yarn env:develop` がエラーで止まる | `.env.develop` に本番キー（`sk_live_` / `rk_live_`）が入っている。テストキーに差し替える |
 | 環境を切り替えたのに Functions が前の環境を見ている | Functions に追加した環境変数が `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` に入っていない |
 | `/billing/portal` が 500 | Stripe Dashboard でカスタマーポータルを有効化していない |
 | `/billing/portal` が 404 | そのユーザーが Stripe で一度も購入しておらず顧客が存在しない。IAP で購入したユーザーはこちら（ストアの設定画面へ誘導する） |
