@@ -9,6 +9,7 @@
 // `@geckou/shared` を import しても firebase / zustand の型解決が不要になる。
 
 export * from './types'
+export * from './billing'
 export * from './utils'
 export * from './theme'
 export * from './i18n'

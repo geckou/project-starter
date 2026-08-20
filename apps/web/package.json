@@ -18,7 +18,6 @@
     "firebase": "^11.0.0",
     "firebase-admin": "^13.10.0",
     "next": "^15.5.23",
-    "@revenuecat/purchases-js": "^1.52.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "server-only": "^0.0.1"

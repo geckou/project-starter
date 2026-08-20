@@ -13,6 +13,10 @@
       "types": "./src/types/index.ts",
       "default": "./dist/types/index.js"
     },
+    "./billing": {
+      "types": "./src/billing/index.ts",
+      "default": "./dist/billing/index.js"
+    },
     "./utils": {
       "types": "./src/utils/index.ts",
       "default": "./dist/utils/index.js"
