@@ -13,7 +13,12 @@ git checkout production
 git checkout -b release/1.0.0
 git merge feat/user-profile
 git merge feat/posts
-git push origin release/1.0.0  # → staging で QA
+git push origin release/1.0.0  # → staging で QA（push = staging へ自動デプロイ）
+
+# 2.5. QA で見つかった不具合の修正（release に直接コミットしない）
+git checkout -b fix/login-error release/1.0.0
+# ... 修正・push → develop で動作確認 ...
+gh pr create --base release/1.0.0
 
 # 3. リリース
 gh pr create --base production
@@ -52,6 +57,11 @@ Firebase プロジェクトを3つ作成し、環境ごとに使い分ける。
 | `production`  | production   | -              | 本番（デフォルトブランチ）|
 
 **全てのブランチは `production` から切る。** `develop` / `staging` はブランチではなく環境名。
+
+> ⚠️ **`release/*` / `hotfix/*` への push は staging への自動デプロイを発火する**（`.github/workflows/deploy.yml`）。
+> そのため `release/*` への直接コミット・push は禁止。release に直接コミットすると、develop での動作確認を経ずに staging へ直行してしまう。
+> QA で見つかった修正も `fix/*` / `feat/*` を切って develop で確認し、`release/*` へ PR でマージする。
+> `release/*` へ push してよいのは、ブランチ作成時（`production` から切って `feat/*` をマージした結果）と PR マージのみ。
 
 ### 開発〜リリースの流れ
 
