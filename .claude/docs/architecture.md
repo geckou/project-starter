@@ -84,7 +84,7 @@ app/<path>/
 `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` にも追記すること。**
 
 外部サービスのテスト用キーと本番キーは環境ごとに分ける。`production` 以外に
-Stripe の本番キー（`sk_live_`）が設定されていると `yarn env:<環境名>` はエラーで停止する。
+Stripe の本番キー（`sk_live_` / `rk_live_`）が設定されていると `yarn env:<環境名>` はエラーで停止する。
 
 ## 状態管理（Zustand）
 
