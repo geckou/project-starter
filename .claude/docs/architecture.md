@@ -72,9 +72,19 @@ app/<path>/
 | Web クライアント用 | `.env.local`（ルート） | `NEXT_PUBLIC_FIREBASE_*`               |
 | Mobile 用          | `apps/mobile/.env.local`（use-env.sh が配布） | `FIREBASE_*`（app.config.ts の extra 経由） |
 | サーバー専用       | `.env.local`（ルート） | `FIREBASE_SERVICE_ACCOUNT_KEY`         |
-| Functions 専用     | `apps/functions/.env`  | `REVENUECAT_WEBHOOK_AUTH`            |
+| Functions 専用     | `apps/functions/.env`（use-env.sh が許可リストのキーのみ生成） | `REVENUECAT_WEBHOOK_AUTH`            |
 
 `NEXT_PUBLIC_` プレフィックスはブラウザに露出する。サーバー用の値には絶対に付けない。
+
+すべての環境変数はルートの `.env.<環境名>` を単一の正とし、`yarn env:<環境名>`
+（`scripts/use-env.sh`）が各所へ配布する。`apps/functions/.env` だけは全文コピーではなく、
+`FUNCTIONS_ENV_KEYS` の許可リストに載ったキーだけを抽出して生成する。Functions の `.env` は
+デプロイ時に関数の環境変数として取り込まれるため、`FIREBASE_SERVICE_ACCOUNT_KEY` のような
+不要なサーバー秘密を載せないための措置。**Functions に環境変数を追加したら
+`scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` にも追記すること。**
+
+外部サービスのテスト用キーと本番キーは環境ごとに分ける。`production` 以外に
+Stripe の本番キー（`sk_live_` / `rk_live_`）が設定されていると `yarn env:<環境名>` はエラーで停止する。
 
 ## 状態管理（Zustand）
 
