@@ -9,7 +9,10 @@ vi.mock('stripe', () => ({
   },
 }))
 
-const mockApplySubscriptionEvent = vi.fn().mockResolvedValue('applied')
+// applySubscriptionEvent の戻り値は ApplyResult（実装と同じ形にしておく）
+const mockApplySubscriptionEvent = vi
+  .fn()
+  .mockResolvedValue({ status: 'applied', wasActive: false, isActive: true })
 const mockSaveStripeCustomerId = vi.fn().mockResolvedValue(undefined)
 
 vi.mock('../src/lib/subscription', () => ({
@@ -82,7 +85,11 @@ describe('Stripe Webhook', () => {
     vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test')
     vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test')
     vi.clearAllMocks()
-    mockApplySubscriptionEvent.mockResolvedValue('applied')
+    mockApplySubscriptionEvent.mockResolvedValue({
+      status: 'applied',
+      wasActive: false,
+      isActive: true,
+    })
   })
 
   afterEach(() => {

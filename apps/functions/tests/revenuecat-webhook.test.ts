@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type Request, type Response } from 'express'
 
-const mockApplySubscriptionEvent = vi.fn().mockResolvedValue('applied')
+// applySubscriptionEvent の戻り値は ApplyResult（実装と同じ形にしておく）
+const mockApplySubscriptionEvent = vi
+  .fn()
+  .mockResolvedValue({ status: 'applied', wasActive: false, isActive: true })
 
 vi.mock('../src/lib/subscription', () => ({
   applySubscriptionEvent: (...args: unknown[]) =>
@@ -61,7 +64,11 @@ describe('RevenueCat Webhook', () => {
   beforeEach(() => {
     vi.stubEnv('REVENUECAT_WEBHOOK_AUTH', AUTH_HEADER)
     vi.clearAllMocks()
-    mockApplySubscriptionEvent.mockResolvedValue('applied')
+    mockApplySubscriptionEvent.mockResolvedValue({
+      status: 'applied',
+      wasActive: false,
+      isActive: true,
+    })
   })
 
   afterEach(() => {
@@ -236,20 +243,115 @@ describe('RevenueCat Webhook', () => {
     expect(mockApplySubscriptionEvent).not.toHaveBeenCalled()
   })
 
-  it('event.id がない場合は種別・ユーザー・時刻から冪等性キーを作る', async () => {
-    const body = createEventBody('RENEWAL', 'user-1')
-    delete (body.event as Record<string, unknown>).id
-
+  it('event.id があればそれを冪等性キーに使う', async () => {
     const res = createMockResponse()
 
     await handleRevenueCatWebhook(
-      createMockRequest({ headers: { authorization: AUTH_HEADER }, body }),
+      createMockRequest({
+        headers: { authorization: AUTH_HEADER },
+        body: createEventBody('RENEWAL', 'user-1'),
+      }),
+      res
+    )
+
+    expect(mockApplySubscriptionEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: 'rc_evt_1' })
+    )
+  })
+
+  it('event.id が無い場合、同じペイロードなら同じ冪等性キーになる', async () => {
+    const send = async () => {
+      const body = createEventBody('RENEWAL', 'user-1')
+      delete (body.event as Record<string, unknown>).id
+
+      await handleRevenueCatWebhook(
+        createMockRequest({ headers: { authorization: AUTH_HEADER }, body }),
+        createMockResponse()
+      )
+    }
+
+    await send()
+    await send()
+
+    const [first, second] = mockApplySubscriptionEvent.mock.calls
+    expect(first[0].eventId).toBe(second[0].eventId)
+  })
+
+  it('event.id も時刻も無い別イベント同士が同じキーに衝突しない', async () => {
+    // 種別 + uid + 0 のような固定値をキーにすると衝突し、
+    // 2件目以降が duplicate として捨てられてしまう
+    const send = async (type: string) => {
+      const body = createEventBody(type, 'user-1')
+      delete (body.event as Record<string, unknown>).id
+      delete (body.event as Record<string, unknown>).event_timestamp_ms
+
+      await handleRevenueCatWebhook(
+        createMockRequest({ headers: { authorization: AUTH_HEADER }, body }),
+        createMockResponse()
+      )
+    }
+
+    await send('RENEWAL')
+    await send('CANCELLATION')
+
+    const [first, second] = mockApplySubscriptionEvent.mock.calls
+    expect(first[0].eventId).not.toBe(second[0].eventId)
+  })
+
+  it('event_timestamp_ms が数値でなければ Invalid Date にせず受信時刻を使う', async () => {
+    const res = createMockResponse()
+
+    await handleRevenueCatWebhook(
+      createMockRequest({
+        headers: { authorization: AUTH_HEADER },
+        body: createEventBody('RENEWAL', 'user-1', {
+          event_timestamp_ms: 'not-a-number',
+        }),
+      }),
+      res
+    )
+
+    const { occurredAt } = mockApplySubscriptionEvent.mock.calls[0][0]
+    expect(occurredAt).toBeInstanceOf(Date)
+    expect(Number.isNaN(occurredAt.getTime())).toBe(false)
+  })
+
+  it('expiration_at_ms が数値でなければ currentPeriodEnd を設定しない', async () => {
+    const res = createMockResponse()
+
+    await handleRevenueCatWebhook(
+      createMockRequest({
+        headers: { authorization: AUTH_HEADER },
+        body: createEventBody('CANCELLATION', 'user-1', {
+          expiration_at_ms: null,
+        }),
+      }),
       res
     )
 
     expect(mockApplySubscriptionEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventId: 'RENEWAL_user-1_1754000000000',
+        subscription: expect.objectContaining({ currentPeriodEnd: undefined }),
+      })
+    )
+  })
+
+  it('entitlement_ids が配列でなければ planId を設定しない', async () => {
+    const res = createMockResponse()
+
+    await handleRevenueCatWebhook(
+      createMockRequest({
+        headers: { authorization: AUTH_HEADER },
+        body: createEventBody('RENEWAL', 'user-1', {
+          entitlement_ids: 'pro',
+        }),
+      }),
+      res
+    )
+
+    expect(mockApplySubscriptionEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subscription: expect.objectContaining({ planId: undefined }),
       })
     )
   })

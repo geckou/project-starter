@@ -4,15 +4,36 @@ import { type Request, type Response } from 'express'
 
 import { applySubscriptionEvent } from './lib/subscription'
 
+// 外部入力なので、型はあくまで想定される形。実際の値は実行時に検証する
 type WebhookEvent = {
   event: {
-    id: string
+    // 古い RevenueCat の設定では id が来ないことがある
+    id?: string
     type: string
     app_user_id: string
     event_timestamp_ms?: number
     expiration_at_ms?: number
     entitlement_ids?: string[]
   }
+}
+
+/** 有限な数値のみ受け取る（NaN・文字列・undefined は null にする） */
+function asFiniteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/**
+ * 冪等性キーを決める。
+ *
+ * id が無い場合に「種別 + ユーザー + 時刻」のような組み立てキーを使うと、
+ * 時刻まで欠けたときに別イベントが同じキーへ衝突し、2件目以降が
+ * duplicate として捨てられてしまう。ペイロード全体のハッシュなら
+ * 再送では同じ値、別イベントでは別の値になる。
+ */
+function buildEventId(event: WebhookEvent['event']): string {
+  if (typeof event.id === 'string' && event.id !== '') return event.id
+
+  return crypto.createHash('sha256').update(JSON.stringify(event)).digest('hex')
 }
 
 // RevenueCat の Webhook は HMAC 署名ではなく、Dashboard で設定した
@@ -109,29 +130,32 @@ export async function handleRevenueCatWebhook(
     return
   }
 
+  const eventId = buildEventId(event)
+  const occurredAtMs = asFiniteNumber(event.event_timestamp_ms)
+  const expirationMs = asFiniteNumber(event.expiration_at_ms)
+  const planId = Array.isArray(event.entitlement_ids)
+    ? event.entitlement_ids.find((id) => typeof id === 'string')
+    : undefined
+
   try {
     const result = await applySubscriptionEvent({
-      // 古い RevenueCat の設定では id が来ないことがあるため、その場合は
-      // 種別 + ユーザー + 発生時刻で代替キーを作る
-      eventId:
-        event.id ??
-        `${event.type}_${event.app_user_id}_${event.event_timestamp_ms ?? 0}`,
+      eventId,
       source: 'revenuecat',
       uid: event.app_user_id,
-      occurredAt: new Date(event.event_timestamp_ms ?? Date.now()),
+      // 時刻が無ければ受信時刻で代用する（順序制御の基準として使う）
+      occurredAt: occurredAtMs !== null ? new Date(occurredAtMs) : new Date(),
       subscription: {
         status,
         source: 'revenuecat',
-        planId: event.entitlement_ids?.[0],
-        currentPeriodEnd: event.expiration_at_ms
-          ? new Date(event.expiration_at_ms)
-          : undefined,
+        planId,
+        currentPeriodEnd:
+          expirationMs !== null ? new Date(expirationMs) : undefined,
         cancelAtPeriodEnd: status === 'cancelled',
       },
     })
 
     if (result.status !== 'applied') {
-      console.log(`RevenueCat event ${event.id} skipped: ${result.status}`)
+      console.log(`RevenueCat event ${eventId} skipped: ${result.status}`)
     }
   } catch (error) {
     console.error('Failed to process RevenueCat webhook', error)
