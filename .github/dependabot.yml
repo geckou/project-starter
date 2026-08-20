@@ -12,7 +12,20 @@ updates:
           - minor
           - patch
     ignore:
-      # Expo はバージョン整合が厳しく `expo install` 前提のため手動更新とする
+      # メジャー更新は破壊的変更を含むうえ、CI が緑でも壊れていることがある
+      # （例: NativeWind と Tailwind の組み合わせは CI で検証されない）。
+      # 自動 PR は作らず、必要になったタイミングで手動で上げる。
+      #
+      # update-types による ignore はバージョン更新にのみ適用され、
+      # セキュリティ更新には適用されない。脆弱性修正はメジャーであっても
+      # 引き続き自動で PR が作られる。
+      # https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+
+      # Expo はバージョン整合が厳しく `expo install` 前提のため
+      # minor / patch も含めて全面的に手動更新とする
+      # （こちらは全面 ignore のためセキュリティ更新も止まる点に注意）
       - dependency-name: 'expo'
       - dependency-name: 'expo-*'
       - dependency-name: 'react-native'
@@ -20,13 +33,20 @@ updates:
       - dependency-name: '@expo/*'
       - dependency-name: '@react-native-async-storage/*'
       - dependency-name: 'eslint-config-expo'
-      # react / react-dom のメジャーは Expo SDK（mobile は 18 系固定）と
-      # 密結合のため SDK アップグレードと合わせて手動更新とする
+
+      # 以下は上のメジャー全面 ignore と重複するが、そのルールを緩めたときに
+      # 保護が黙って消えないよう、密結合の理由を明示して残す
+      # react / react-dom: Expo SDK（mobile は 18 系固定）と密結合
       - dependency-name: 'react'
         update-types: ['version-update:semver-major']
       - dependency-name: 'react-dom'
         update-types: ['version-update:semver-major']
+      # tailwindcss: NativeWind v4 が Tailwind v4 未対応のため mobile は v3 固定
+      - dependency-name: 'tailwindcss'
+        update-types: ['version-update:semver-major']
 
+  # GitHub Actions のメジャーは Node ランタイム更新が中心で、失敗すれば
+  # CI が即座に赤くなり検知できるため、メジャーも自動更新の対象に残す
   - package-ecosystem: github-actions
     directory: /
     schedule:
