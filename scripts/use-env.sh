@@ -27,6 +27,7 @@ FUNCTIONS_ENV_KEYS=(
   STRIPE_CANCEL_URL
   STRIPE_PORTAL_RETURN_URL
   SYNC_SUBSCRIPTION_CLAIMS
+  SENTRY_DSN
 )
 
 # .env.<環境名> から指定キーの値を取り出す（前後のクォートは除去する）
@@ -96,8 +97,17 @@ echo "[done] .env.${ENV} → .env.local, apps/web/.env.local, apps/mobile/.env.l
 } > apps/functions/.env
 echo "[done] .env.${ENV} → apps/functions/.env を生成しました（Functions 用のキーのみ）"
 
-# Firebase プロジェクトを切り替え
-firebase use "${ENV}" 2>/dev/null && echo "[done] Firebase プロジェクトを ${ENV} に切り替えました" || echo "[warn] firebase use ${ENV} に失敗しました（.firebaserc を確認してください）"
+# Firebase プロジェクトを切り替え。
+# ここで失敗を握りつぶすと、アクティブなプロジェクトが前の環境（例: production）の
+# ままになり、次の firebase deploy が意図しない環境へ飛ぶため、必ず失敗させる
+if firebase use "${ENV}"; then
+  echo "[done] Firebase プロジェクトを ${ENV} に切り替えました"
+else
+  echo "[error] firebase use ${ENV} に失敗しました"
+  echo "  .firebaserc に ${ENV} のエイリアスがあるか、firebase login 済みかを確認してください。"
+  echo "  切り替えないまま進めると、次のデプロイが前の環境（本番の可能性あり）へ飛びます。"
+  exit 1
+fi
 
 echo ""
 echo "現在の環境: ${ENV}"
