@@ -195,6 +195,7 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 - **`production` へマージできるのは `release/*` と `hotfix/*` のみ**（それ以外のブランチからの PR・マージは禁止）
 - `production` への直接 push は禁止（PR 必須）
+- **`release/*` への直接コミット・push は禁止**（`release/*` への push は staging への自動デプロイを発火するため）。QA で見つかった修正も `fix/*` を切って `release/*` へ PR でマージする。例外は、ブランチ作成時（`production` から切って `feat/*` をマージした結果）の push と、PR マージによる更新のみ
 - `release/*` → `production` は PR + レビュー必須
 - `hotfix/*` → `production` は PR 必須（緊急時はセルフマージ可）
 - `feat/*` → `release/*` へのマージは自由
