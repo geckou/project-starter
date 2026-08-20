@@ -6,6 +6,26 @@ type DocumentRef = { path: string }
 
 const store = new Map<string, Record<string, unknown>>()
 
+// 実際の Firestore は undefined を値として受け付けず throw する。
+// モックが undefined を受理すると本番でだけ落ちる書き込みを見逃すため、同じ挙動にする
+function assertNoUndefined(value: unknown, path: string): void {
+  if (value === undefined) {
+    throw new Error(
+      `Cannot use "undefined" as a Firestore value (found in field ${path})`
+    )
+  }
+
+  if (value === null || value instanceof Date) return
+
+  if (typeof value === 'object') {
+    for (const [key, child] of Object.entries(
+      value as Record<string, unknown>
+    )) {
+      assertNoUndefined(child, path ? `${path}.${key}` : key)
+    }
+  }
+}
+
 const transaction = {
   get: async (ref: DocumentRef) => {
     const data = store.get(ref.path)
@@ -18,8 +38,21 @@ const transaction = {
   set: (
     ref: DocumentRef,
     data: Record<string, unknown>,
-    options?: { merge?: boolean }
+    options?: { merge?: boolean; mergeFields?: string[] }
   ) => {
+    assertNoUndefined(data, '')
+
+    // mergeFields は指定フィールドをまるごと置き換える（深いマージはしない）
+    if (options?.mergeFields) {
+      const previous = store.get(ref.path) ?? {}
+      const nextDoc = { ...previous }
+      for (const field of options.mergeFields) {
+        nextDoc[field] = data[field]
+      }
+      store.set(ref.path, nextDoc)
+      return
+    }
+
     const previous = options?.merge ? (store.get(ref.path) ?? {}) : {}
     store.set(ref.path, { ...previous, ...data })
   },
@@ -96,6 +129,48 @@ describe('applySubscriptionEvent', () => {
     expect(subscription.source).toBe('stripe')
     expect(subscription.planId).toBe('price_abc')
     expect(subscription.lastEventId).toBe('evt_1')
+  })
+
+  it('任意項目（planId / currentPeriodEnd）が undefined でも書き込みが成功する', async () => {
+    // RevenueCat の expiration_at_ms: null / entitlement_ids 空に相当するイベント
+    const result = await applySubscriptionEvent(
+      createEvent({
+        subscription: {
+          status: 'cancelled' as const,
+          source: 'revenuecat' as const,
+          planId: undefined,
+          currentPeriodEnd: undefined,
+          cancelAtPeriodEnd: true,
+        },
+      })
+    )
+
+    expect(result.status).toBe('applied')
+
+    const subscription = readSubscription('user-1')
+    expect(subscription.status).toBe('cancelled')
+    expect('planId' in subscription).toBe(false)
+    expect('currentPeriodEnd' in subscription).toBe(false)
+  })
+
+  it('イベントに無いキーは前の subscription から引き継がない', async () => {
+    await applySubscriptionEvent(createEvent())
+
+    const result = await applySubscriptionEvent(
+      createEvent({
+        eventId: 'evt_2',
+        occurredAt: new Date('2026-09-02T00:00:00Z'),
+        subscription: { status: 'expired' as const, source: 'stripe' as const },
+      })
+    )
+
+    expect(result.status).toBe('applied')
+
+    // merge: true の深いマージだと前の currentPeriodEnd / planId が残ってしまう
+    const subscription = readSubscription('user-1')
+    expect(subscription.status).toBe('expired')
+    expect('planId' in subscription).toBe(false)
+    expect('currentPeriodEnd' in subscription).toBe(false)
   })
 
   it('処理済みイベントを記録する', async () => {

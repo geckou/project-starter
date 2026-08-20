@@ -35,6 +35,17 @@ export type ApplyResult = {
 const BILLING_EVENTS_COLLECTION = 'billing_events'
 
 /**
+ * 値が undefined のキーを取り除く。
+ * Firestore は undefined を値として受け付けず書き込みが throw するため、
+ * 任意項目（planId / currentPeriodEnd 等）が無いイベントでも安全に書けるようにする
+ */
+function omitUndefined<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, v]) => v !== undefined)
+  ) as T
+}
+
+/**
  * Firestore から読み出した日時を Date に正規化する。
  * 通常は Timestamp が返るが、Date のまま渡ってくる経路もあるため両方を受ける。
  */
@@ -71,12 +82,12 @@ export async function applySubscriptionEvent(
     .doc(`${event.source}_${event.eventId}`)
   const userRef = db.collection('users').doc(event.uid)
 
-  const next: Subscription = {
+  const next: Subscription = omitUndefined({
     ...event.subscription,
     updatedAt: new Date(),
     lastEventId: event.eventId,
     lastEventAt: event.occurredAt,
-  }
+  })
 
   const result = await db.runTransaction<ApplyResult>(async (transaction) => {
     // Firestore のトランザクションは全ての read を write より先に行う必要がある
@@ -110,8 +121,15 @@ export async function applySubscriptionEvent(
       return { status: 'stale', wasActive, isActive: wasActive }
     }
 
-    // update ではなく set + merge を使う（ドキュメント未作成時に throw するため）
-    transaction.set(userRef, { subscription: next }, { merge: true })
+    // update ではなく set + mergeFields を使う（ドキュメント未作成時に throw するため）。
+    // merge: true だと subscription マップが深いマージになり、今回のイベントに
+    // 無いキー（例: 解約時の currentPeriodEnd）に前の値が残ってしまうため、
+    // subscription フィールドはまるごと置き換える
+    transaction.set(
+      userRef,
+      { subscription: next },
+      { mergeFields: ['subscription'] }
+    )
 
     return {
       status: 'applied',
