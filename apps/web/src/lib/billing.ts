@@ -47,6 +47,7 @@ export async function openCustomerPortal(): Promise<string | null> {
  *
  * カスタムクレームは ID トークンが更新されるまで最大1時間古いままなので、
  * 購入完了後の画面（STRIPE_SUCCESS_URL の戻り先）で一度呼ぶこと。
+ * Functions 側で SYNC_SUBSCRIPTION_CLAIMS=true にしていない場合は不要。
  * Firestore の users/{uid}.subscription は Webhook 反映後すぐ正しくなるため、
  * 画面表示だけならこの呼び出しは不要で、セキュリティルールで
  * request.auth.token.subscriptionActive を使う場合に必要になる。

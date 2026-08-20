@@ -215,9 +215,21 @@ if (hasPlan(user.subscription, 'pro')) { /* ... */ }
 | `cancelled` | 自動更新が停止 | `currentPeriodEnd` まで可 |
 | `expired` | 失効 | 不可 |
 
-### 3-2. セキュリティルールでの判定
+### 3-2. セキュリティルールでの判定（任意）
 
-Webhook がカスタムクレームにも同期しているので、Firestore の `get()` なしで書ける。
+**画面の表示制御しかしないなら、この節は不要。**Firestore の
+`users/{uid}.subscription` を読めば足りる。
+
+Firestore やStorage の**ルールで課金状態を条件にしたい場合**だけ、
+カスタムクレームへの同期を有効にする。
+
+```bash
+# apps/functions/.env
+SYNC_SUBSCRIPTION_CLAIMS=true
+```
+
+有効にすると Webhook が権利状態をカスタムクレームにも書くので、
+ルールから Firestore の `get()` なしで参照できる（読み取りコストがかからない）。
 
 ```javascript
 match /premium_items/{itemId} {
@@ -229,6 +241,9 @@ match /premium_items/{itemId} {
 **クレームは ID トークンが更新されるまで最大1時間古い。** 購入直後に反映させたい画面では
 `refreshEntitlement()`（`apps/web/src/lib/billing.ts`）を呼ぶ。
 `STRIPE_SUCCESS_URL` の戻り先で1回呼んでおくのが定石。
+
+> 同期を有効にすると Webhook イベントごとに Auth の読み書きが1往復増える。
+> イベント頻度を考えれば無視できるコストだが、使わないなら有効にしないこと。
 
 ### 3-3. ダウングレード時の後始末を書く
 
@@ -296,7 +311,7 @@ yarn test:rules  # Firestore ルール（要 Firebase エミュレーター）
 - [ ] `spec.md` のデータモデルに `users.subscription` を記載した
 - [ ] 権利判定を `isSubscriptionActive` 経由にした（`status === 'active'` の直接判定が残っていない）
 - [ ] `onSubscriptionDowngraded` に後始末を実装した（不要ならその判断を記録した）
-- [ ] 購入完了画面で `refreshEntitlement()` を呼んでいる（クレームをルールで使う場合）
+- [ ] ルールで課金状態を使うなら `SYNC_SUBSCRIPTION_CLAIMS=true` を設定し、購入完了画面で `refreshEntitlement()` を呼んでいる
 - [ ] 特定商取引法に基づく表記を用意した（日本で有料提供する場合）
 - [ ] 本番モードの price ID / Webhook シークレットに差し替えた
 - [ ] `roadmap.md` の機能ステータス表を更新した
@@ -314,4 +329,5 @@ yarn test:rules  # Firestore ルール（要 Firebase エミュレーター）
 | `/billing/portal` が 404 | そのユーザーが Stripe で一度も購入しておらず顧客が存在しない。IAP で購入したユーザーはこちら（ストアの設定画面へ誘導する） |
 | `/billing/*` が 503 | `STRIPE_SECRET_KEY` が未設定。Web 決済を使わない構成なら正常な挙動 |
 | IAP の購入が反映されない | `loginRevenueCat(uid)` を呼んでおらず、`app_user_id` が Firebase の uid になっていない |
+| ルールで `subscriptionActive` が常に未定義で全員弾かれる | `SYNC_SUBSCRIPTION_CLAIMS=true` を設定していない。デフォルトは無効 |
 | ルールで弾かれる / 通ってしまう | カスタムクレームが古い。`refreshEntitlement()`（`getIdToken(true)`）で更新する |

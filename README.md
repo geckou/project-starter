@@ -404,6 +404,7 @@ if (isSubscriptionActive(user.subscription)) {
 | `STRIPE_PRICE_IDS` | 購入を許可する price ID の許可リスト | `apps/functions/.env` |
 | `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` | Checkout の戻り先 | `apps/functions/.env` |
 | `STRIPE_PORTAL_RETURN_URL` | カスタマーポータルの戻り先 | `apps/functions/.env` |
+| `SYNC_SUBSCRIPTION_CLAIMS` | 権利状態をカスタムクレームに同期するか（任意・`true` で有効） | `apps/functions/.env` |
 | `NEXT_PUBLIC_STRIPE_PRICE_ID` | Web が購入する price ID | `.env.local` |
 | `REVENUECAT_API_KEY_APPLE` / `_GOOGLE` | Mobile の IAP 用 | `.env.local`（`app.config.ts` の extra 経由） |
 | `REVENUECAT_WEBHOOK_AUTH` | RevenueCat Webhook の検証値 | `apps/functions/.env` |

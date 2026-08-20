@@ -35,8 +35,10 @@ service cloud.firestore {
     // match /dev_users/{userId} { ... }
 
     // 例: 有料プラン限定のコレクション。
-    // Webhook がカスタムクレームに同期しているので、Firestore の get() なしで判定できる
-    // （クレームは ID トークン更新まで最大1時間古い点に注意）
+    // apps/functions/.env で SYNC_SUBSCRIPTION_CLAIMS=true にすると Webhook が
+    // カスタムクレームへ同期するので、Firestore の get() なしで判定できる
+    // （未設定だとクレームが存在せず全員拒否になる。
+    //   またクレームは ID トークン更新まで最大1時間古い点にも注意）
     // match /premium_items/{itemId} {
     //   allow read: if request.auth != null;
     //   allow write: if request.auth != null

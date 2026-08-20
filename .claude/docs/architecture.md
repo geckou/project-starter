@@ -206,6 +206,9 @@ if (isSubscriptionActive(user.subscription)) {
 - **Stripe の署名検証には生のボディが必要**。`api.ts` で `express.json()` より前に
   `express.raw()` を通している（順序を入れ替えると検証が必ず失敗する）
 - **購入可能な price はサーバー側の許可リスト**（`STRIPE_PRICE_IDS`）で検証する
+- **ルールから権利状態を参照したい場合のみ** `SYNC_SUBSCRIPTION_CLAIMS=true` を設定する。
+  Webhook が Firebase Auth のカスタムクレームにも同期し、`request.auth.token.subscriptionActive`
+  で判定できるようになる（デフォルトは無効。画面の表示制御だけなら Firestore を読めば足りる）
 - **Checkout の戻り先 URL は環境変数で固定**（クライアント入力を使うとオープンリダイレクトになる）
 
 ## Tailwind CSS / デザイントークン

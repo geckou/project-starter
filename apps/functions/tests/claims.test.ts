@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Subscription } from '@geckou/shared'
 
 const mockGetUser = vi.fn()
@@ -12,7 +12,7 @@ vi.mock('firebase-admin/auth', () => ({
   }),
 }))
 
-import { syncSubscriptionClaims } from '../src/lib/claims'
+import { isClaimsSyncEnabled, syncSubscriptionClaims } from '../src/lib/claims'
 
 function createSubscription(
   overrides: Partial<Subscription> = {}
@@ -28,9 +28,14 @@ function createSubscription(
 
 describe('syncSubscriptionClaims', () => {
   beforeEach(() => {
+    vi.stubEnv('SYNC_SUBSCRIPTION_CLAIMS', 'true')
     vi.clearAllMocks()
     mockGetUser.mockResolvedValue({ customClaims: undefined })
     mockSetCustomUserClaims.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
   })
 
   it('有効な権利を subscriptionActive: true として書き込む', async () => {
@@ -94,5 +99,35 @@ describe('syncSubscriptionClaims', () => {
       'user-1',
       expect.objectContaining({ subscriptionActive: true })
     )
+  })
+})
+
+describe('SYNC_SUBSCRIPTION_CLAIMS', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetUser.mockResolvedValue({ customClaims: undefined })
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('未設定なら無効', () => {
+    expect(isClaimsSyncEnabled()).toBe(false)
+  })
+
+  it("'true' のときだけ有効", () => {
+    vi.stubEnv('SYNC_SUBSCRIPTION_CLAIMS', 'true')
+    expect(isClaimsSyncEnabled()).toBe(true)
+
+    vi.stubEnv('SYNC_SUBSCRIPTION_CLAIMS', '1')
+    expect(isClaimsSyncEnabled()).toBe(false)
+  })
+
+  it('無効なら Auth にアクセスしない', async () => {
+    await syncSubscriptionClaims('user-1', createSubscription())
+
+    expect(mockGetUser).not.toHaveBeenCalled()
+    expect(mockSetCustomUserClaims).not.toHaveBeenCalled()
   })
 })
