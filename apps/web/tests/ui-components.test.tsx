@@ -8,6 +8,9 @@ import {
   DatePicker,
   SearchableSelectBox,
   FileInput,
+  TextBox,
+  TextArea,
+  SelectBox,
 } from '@geckou/ui'
 
 declare global {
@@ -239,6 +242,132 @@ describe('FileInput', () => {
 
     renderInput([])
     expect(container.textContent).not.toContain('photo.png')
+  })
+})
+
+function blur(element: HTMLElement) {
+  act(() => {
+    element.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+  })
+}
+
+describe('TextBox のバリデーション', () => {
+  it('数値 0 は必須エラーにならない', () => {
+    act(() => {
+      root.render(<TextBox name="quantity" value={0} isRequired />)
+    })
+
+    expect(container.textContent).not.toContain('必須項目です')
+  })
+
+  it('数値 0 でも validates が実行される', () => {
+    act(() => {
+      root.render(
+        <TextBox
+          name="quantity"
+          value={0}
+          validates={[{ regex: /^[1-9]\d*$/, message: '1以上を入力' }]}
+        />
+      )
+    })
+
+    expect(container.textContent).toContain('1以上を入力')
+  })
+
+  it('g フラグ付き RegExp でも連続検証の結果が安定する', () => {
+    const validates = [{ regex: /^[0-9]+$/g, message: '数字のみ' }]
+    act(() => {
+      root.render(<TextBox name="quantity" value="123" validates={validates} />)
+    })
+
+    const input = container.querySelector('input')!
+    blur(input)
+    expect(container.textContent).not.toContain('数字のみ')
+
+    blur(input)
+    expect(container.textContent).not.toContain('数字のみ')
+  })
+
+  it('呼び出し側の RegExp の lastIndex を変異させない', () => {
+    const regex = /^[0-9]+$/g
+    act(() => {
+      root.render(
+        <TextBox
+          name="quantity"
+          value="123"
+          validates={[{ regex, message: '数字のみ' }]}
+        />
+      )
+    })
+
+    blur(container.querySelector('input')!)
+    expect(regex.lastIndex).toBe(0)
+  })
+
+  it('空文字は必須エラーになる', () => {
+    act(() => {
+      root.render(<TextBox name="quantity" value="" isRequired />)
+    })
+
+    blur(container.querySelector('input')!)
+    expect(container.textContent).toContain('必須項目です')
+  })
+})
+
+describe('TextArea のバリデーション', () => {
+  it('g フラグ付き RegExp でも連続検証の結果が安定する', () => {
+    const validates = [{ regex: /^[a-z]+$/g, message: '英小文字のみ' }]
+    act(() => {
+      root.render(<TextArea name="memo" value="abc" validates={validates} />)
+    })
+
+    const textarea = container.querySelector('textarea')!
+    blur(textarea)
+    expect(container.textContent).not.toContain('英小文字のみ')
+
+    blur(textarea)
+    expect(container.textContent).not.toContain('英小文字のみ')
+  })
+})
+
+describe('SelectBox のバリデーション', () => {
+  const options = [
+    { label: 'ゼロ', value: 0 },
+    { label: 'イチ', value: 1 },
+  ]
+
+  it('値 0 の選択肢は必須エラーにならない', () => {
+    act(() => {
+      root.render(
+        <SelectBox name="count" options={options} value={0} isRequired />
+      )
+    })
+
+    blur(container.querySelector('select')!)
+    expect(container.textContent).not.toContain('必須項目です')
+  })
+
+  it('値 0 の選択肢を選ぶと数値 0 が onChange に渡る', () => {
+    const onChange = vi.fn()
+    act(() => {
+      root.render(
+        <SelectBox name="count" options={options} onChange={onChange} />
+      )
+    })
+
+    setSelectValue(container.querySelector('select')!, '0')
+    expect(onChange).toHaveBeenLastCalledWith(0)
+  })
+
+  it('未選択は必須エラーになる', () => {
+    act(() => {
+      root.render(
+        <SelectBox name="count" options={options} value="" isRequired />
+      )
+    })
+
+    blur(container.querySelector('select')!)
+    expect(container.textContent).toContain('必須項目です')
   })
 })
 

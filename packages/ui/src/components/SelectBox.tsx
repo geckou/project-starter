@@ -47,7 +47,8 @@ export function SelectBox({
 
   const validateValue = () => {
     const messages: string[] = []
-    if (!selectedValue && isRequired) messages.push('必須項目です')
+    // 数値 0 も正当な選択値として扱うため、truthy 判定ではなく空文字と比較する
+    if (selectedValue === '' && isRequired) messages.push('必須項目です')
     setErrorMessages(messages)
   }
 
@@ -59,7 +60,7 @@ export function SelectBox({
   useEffect(() => {
     if (!hasChanged.current) {
       if (selectedValue === initialValue.current) {
-        if (selectedValue) validateValue()
+        if (selectedValue !== '') validateValue()
         return
       }
       hasChanged.current = true

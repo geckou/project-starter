@@ -43,11 +43,18 @@ export function TextArea({
   const validateValue = () => {
     const messages: string[] = []
 
-    if (!inputValue && isRequired) messages.push('必須項目です')
-    else if (inputValue && validates.length) {
+    // 空判定は空文字との比較で行う（TextBox と統一）
+    const isEmpty = inputValue === ''
+
+    if (isEmpty && isRequired) messages.push('必須項目です')
+    else if (!isEmpty && validates.length) {
       validates.forEach((validate) => {
-        if (!validate.regex.test(String(inputValue)))
-          messages.push(validate.message)
+        // g / y フラグ付き RegExp は .test() で lastIndex が変異し判定が不安定になるため、
+        // 呼び出し側のオブジェクトを変異させないよう毎回新しいインスタンスで判定する
+        const { source, flags } = validate.regex
+        const regex = new RegExp(source, flags.replace(/[gy]/g, ''))
+
+        if (!regex.test(String(inputValue))) messages.push(validate.message)
       })
     }
 
