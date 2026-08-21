@@ -57,6 +57,7 @@ export function CheckBox({
       <button
         type="button"
         style={style}
+        aria-label={name}
         aria-pressed={isChecked}
         disabled={isDisabled}
         onClick={(event) => {

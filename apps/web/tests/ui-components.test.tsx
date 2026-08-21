@@ -301,6 +301,7 @@ describe('キーボードアクセシビリティ', () => {
     renderCheckBox(false)
     const button = () => container.querySelector('button')!
     expect(button().getAttribute('aria-pressed')).toBe('false')
+    expect(button().getAttribute('aria-label')).toBe('agree')
 
     act(() => button().click())
     expect(onChange).toHaveBeenLastCalledWith(true)
@@ -394,6 +395,34 @@ describe('キーボードアクセシビリティ', () => {
     // 表示時はダイアログへ初期フォーカスが移る
     const dialog = container.querySelector('[role="dialog"]')
     expect(document.activeElement).toBe(dialog)
+
+    // header が無い場合もダイアログにアクセシブル名がある
+    expect(dialog!.getAttribute('aria-label')).toBe('ダイアログ')
+  })
+
+  it('ModalBox: header があれば aria-labelledby、ariaLabel 指定時はそれが優先される', () => {
+    act(() => {
+      root.render(
+        <ModalBox isShown onClose={() => {}} header={<h2>設定</h2>}>
+          <p>本文</p>
+        </ModalBox>
+      )
+    })
+
+    const dialog = () => container.querySelector('[role="dialog"]')!
+    const labelledBy = dialog().getAttribute('aria-labelledby')
+    expect(labelledBy).not.toBeNull()
+    expect(document.getElementById(labelledBy!)?.textContent).toBe('設定')
+    expect(dialog().hasAttribute('aria-label')).toBe(false)
+
+    act(() => {
+      root.render(
+        <ModalBox isShown onClose={() => {}} ariaLabel="確認">
+          <p>本文</p>
+        </ModalBox>
+      )
+    })
+    expect(dialog().getAttribute('aria-label')).toBe('確認')
   })
 
   it('SlideDownUi: トリガーに aria-expanded、閉状態のコンテンツは inert', () => {

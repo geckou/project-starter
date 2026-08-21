@@ -10,6 +10,8 @@ type Props = {
   header?: ReactNode
   footer?: ReactNode
   children: ReactNode
+  // header が無い場合のダイアログのアクセシブル名
+  ariaLabel?: string
 }
 
 const MAX_WIDTH_CLASSES = {
@@ -37,6 +39,7 @@ export function ModalBox({
   header,
   footer,
   children,
+  ariaLabel,
 }: Props) {
   const headerId = useId()
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -72,6 +75,7 @@ export function ModalBox({
         role="dialog"
         aria-modal="true"
         aria-labelledby={header ? headerId : undefined}
+        aria-label={header ? undefined : (ariaLabel ?? 'ダイアログ')}
         tabIndex={-1}
         className={`relative flex max-h-full w-full cursor-auto flex-col rounded-[var(--radius-small,0.1875rem)] bg-white drop-shadow-[0_0_6px_#33333355] ${MAX_WIDTH_CLASSES[size]}`}
       >
