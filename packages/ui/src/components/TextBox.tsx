@@ -58,9 +58,9 @@ export function TextBox({
     else if (!isEmpty && validates.length) {
       validates.forEach((validate) => {
         // g / y フラグ付き RegExp は .test() で lastIndex が変異し判定が不安定になるため、
-        // 呼び出し側のオブジェクトを変異させないよう毎回新しいインスタンスで判定する
-        const { source, flags } = validate.regex
-        const regex = new RegExp(source, flags.replace(/[gy]/g, ''))
+        // 呼び出し側のオブジェクトを変異させないよう毎回同じフラグのクローンで判定する
+        // （新規インスタンスは lastIndex = 0 のため、sticky の意味を保ったまま結果が安定する）
+        const regex = new RegExp(validate.regex.source, validate.regex.flags)
 
         if (!regex.test(String(inputValue))) messages.push(validate.message)
       })

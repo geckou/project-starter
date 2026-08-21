@@ -304,6 +304,20 @@ describe('TextBox のバリデーション', () => {
     expect(regex.lastIndex).toBe(0)
   })
 
+  it('y フラグの位置制約（先頭一致）を保ったまま判定する', () => {
+    const validates = [{ regex: /foo/y, message: '先頭が foo ではありません' }]
+    act(() => {
+      root.render(<TextBox name="code" value="xfoo" validates={validates} />)
+    })
+
+    const input = container.querySelector('input')!
+    blur(input)
+    expect(container.textContent).toContain('先頭が foo ではありません')
+
+    blur(input)
+    expect(container.textContent).toContain('先頭が foo ではありません')
+  })
+
   it('空文字は必須エラーになる', () => {
     act(() => {
       root.render(<TextBox name="quantity" value="" isRequired />)
