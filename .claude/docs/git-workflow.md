@@ -58,7 +58,8 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 ### なぜ release をマージするのか
 
 **`production` は前回リリース時点で止まっており、進行中の `release/*` より
-数週間〜数ヶ月遅れていることが普通だから。**production から切ったまま作業すると、
+数週間〜数ヶ月遅れていることが普通だから。**
+`production` から切ったまま作業すると、
 既にマージ済みの変更が存在しない古い土台の上で作業することになり、
 リリースへ PR を出した段階で大量のコンフリクトになる。
 
@@ -94,8 +95,9 @@ Firebase プロジェクトを3つ作成し、環境ごとに使い分ける。
 | `hotfix/*`    | staging      | `production`   | 緊急修正                 |
 | `production`  | production   | -              | 本番（デフォルトブランチ）|
 
-**全てのブランチは `production` から切る**（`develop` / `staging` はブランチではなく環境名）。
+**上表のブランチ（`feat/*` / `release/*` / `hotfix/*`）は `production` から切る**（`develop` / `staging` はブランチではなく環境名）。
 切った直後に、進行中の `release/*` があればマージして作業を始める（→「作業ブランチの切り方」）。
+例外は QA で見つかった不具合の修正で、対象の `release/*` から `fix/*` を切る（→「リリースフロー」2.5）。
 
 > ⚠️ **`release/*` / `hotfix/*` への push は staging への自動デプロイを発火する**（`.github/workflows/deploy.yml`）。
 > そのため `release/*` への直接コミット・push は禁止。release に直接コミットすると、develop での動作確認を経ずに staging へ直行してしまう。
