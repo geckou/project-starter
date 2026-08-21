@@ -175,6 +175,23 @@ describe('Stripe Webhook', () => {
     )
   })
 
+  it('unpaid を expired に変換する（リトライ枯渇後は猶予期間としない）', async () => {
+    mockConstructEvent.mockReturnValue(
+      createSubscriptionEvent('customer.subscription.updated', {
+        status: 'unpaid',
+      })
+    )
+    const res = createMockResponse()
+
+    await handleStripeWebhook(createMockRequest(), res)
+
+    expect(mockApplySubscriptionEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subscription: expect.objectContaining({ status: 'expired' }),
+      })
+    )
+  })
+
   it('canceled を cancelled に変換する（綴りの違いを吸収する）', async () => {
     mockConstructEvent.mockReturnValue(
       createSubscriptionEvent('customer.subscription.updated', {

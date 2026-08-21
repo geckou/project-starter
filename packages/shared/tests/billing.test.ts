@@ -26,7 +26,25 @@ describe('isSubscriptionActive', () => {
     expect(isSubscriptionActive(createSubscription(), NOW)).toBe(true)
   })
 
-  it('in_grace_period は true（支払い失敗中でも利用させる）', () => {
+  it('in_grace_period で期間終了前なら true', () => {
+    const subscription = createSubscription({
+      status: 'in_grace_period',
+      currentPeriodEnd: new Date('2026-09-01T00:00:00Z'),
+    })
+
+    expect(isSubscriptionActive(subscription, NOW)).toBe(true)
+  })
+
+  it('in_grace_period で期間終了後なら false', () => {
+    const subscription = createSubscription({
+      status: 'in_grace_period',
+      currentPeriodEnd: new Date('2026-08-01T00:00:00Z'),
+    })
+
+    expect(isSubscriptionActive(subscription, NOW)).toBe(false)
+  })
+
+  it('in_grace_period で期間終了日時が無ければ true（Webhook を正とするフォールバック）', () => {
     expect(
       isSubscriptionActive(
         createSubscription({ status: 'in_grace_period' }),

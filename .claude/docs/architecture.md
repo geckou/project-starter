@@ -203,7 +203,7 @@ if (isSubscriptionActive(user.subscription)) {
 | status | 意味 | 利用可否 |
 | --- | --- | --- |
 | `active` | 有効 | 可 |
-| `in_grace_period` | 支払い失敗中（リトライ猶予期間） | 可 |
+| `in_grace_period` | 支払い失敗中（リトライ猶予期間。Stripe の `past_due` / RevenueCat の `BILLING_ISSUE`） | `currentPeriodEnd` があればその日時まで可（無ければ可） |
 | `cancelled` | 自動更新が停止 | `currentPeriodEnd` まで可 |
 | `expired` | 失効 | 不可 |
 

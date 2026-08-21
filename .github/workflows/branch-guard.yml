@@ -19,13 +19,17 @@ jobs:
 
     steps:
       - name: Check head branch
+        # ブランチ名には $ や ` 等のメタ文字を含められるため、${{ }} をスクリプトへ
+        # 直接展開せず env 経由のクォート付き変数として参照する（シェル注入対策）
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
-          case "${{ github.head_ref }}" in
+          case "$HEAD_REF" in
             release/*|hotfix/*)
-              echo "OK: ${{ github.head_ref }} から production への PR は許可されています"
+              echo "OK: $HEAD_REF から production への PR は許可されています"
               ;;
             *)
-              echo "::error::production への PR は release/* または hotfix/* からのみ許可されます（現在: ${{ github.head_ref }}）。詳細は .claude/docs/git-workflow.md を参照してください。"
+              echo "::error::production への PR は release/* または hotfix/* からのみ許可されます（現在: $HEAD_REF）。詳細は .claude/docs/git-workflow.md を参照してください。"
               exit 1
               ;;
           esac

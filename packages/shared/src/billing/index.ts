@@ -31,9 +31,17 @@ export function isSubscriptionActive(
   if (!subscription) return false
 
   switch (subscription.status) {
+    // Webhook を正とする方針のため、active は日時を見ずに有効扱い
     case 'active':
-    case 'in_grace_period':
       return true
+
+    // 猶予期間は有限。currentPeriodEnd を持っている場合はそれを超えたら無効。
+    // 日時が無い場合は従来どおり有効扱い（Webhook を正とするフォールバック）
+    case 'in_grace_period': {
+      const periodEnd = toDate(subscription.currentPeriodEnd as DateLike)
+      if (periodEnd === null) return true
+      return periodEnd.getTime() > now.getTime()
+    }
 
     case 'cancelled': {
       const periodEnd = toDate(subscription.currentPeriodEnd as DateLike)
