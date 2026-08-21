@@ -169,6 +169,26 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 デフォルトブランチは `production`（`main` ではない）。全てのブランチは `production` から切る。
 
+作業開始時は必ず次の順で行う。
+
+```bash
+git fetch origin --prune                  # 進行中の release/* を見落とさないため
+git branch -r --list 'origin/release/*'   # 進行中のリリースを確認
+git checkout production && git pull
+git checkout -b feat/<名前>
+git merge origin/release/<バージョン>     # そのリリースに載せる場合のみ
+```
+
+**分岐元を `production` に保つ理由**: 作業内容を必ずしも進行中のリリースに混ぜるとは
+限らないため。`release/*` から切ると、そのリリース行きに固定される。
+
+**それでも release をマージする理由**: `production` は前回リリース時点で止まっており、
+進行中の `release/*` より遅れているのが普通のため。マージせずに作業すると、
+リリースへ PR を出す段階で大量のコンフリクトになる。
+
+⚠️ `git branch -a` はローカルの参照しか出さない。**fetch せずに「production しか無い」と
+判断しないこと。** 詳細は `.claude/docs/git-workflow.md` の「作業ブランチの切り方」。
+
 ### ブランチ命名規則
 
 | 種類 | パターン | デプロイ先 |

@@ -4,8 +4,10 @@
 
 ```bash
 # 1. 機能開発
-git checkout production
+git fetch origin --prune            # 進行中の release/* を見落とさないため必須
+git checkout production && git pull
 git checkout -b feat/user-profile
+git merge origin/release/1.0.0      # 進行中の release があり、それに載せる場合
 # ... 開発・push → develop で動作確認 ...
 
 # 2. リリース準備（出したい機能だけ選ぶ）
@@ -34,6 +36,43 @@ git checkout -b hotfix/1.0.1 production
 # ... 修正 → staging で確認 → production に merge ...
 ```
 
+## 作業ブランチの切り方
+
+**`production` から切り、進行中の `release/*` があればそれをマージしてから作業する。**
+
+```bash
+git fetch origin --prune            # まず必ず実行する
+git branch -r --list 'origin/release/*'   # 進行中のリリースを確認
+git checkout production && git pull
+git checkout -b feat/user-profile
+git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
+```
+
+### なぜ production から切るのか
+
+**作業内容を必ずしも進行中のリリースに混ぜるとは限らないため。**
+分岐元を `release/*` にするとそのリリース行きに固定され、「次のリリースに回す」
+「単独で hotfix にする」といった選択ができなくなる。分岐元を `production` に
+保っておけば、リリースへの取り込みは後から選べる。
+
+### なぜ release をマージするのか
+
+**`production` は前回リリース時点で止まっており、進行中の `release/*` より
+数週間〜数ヶ月遅れていることが普通だから。**
+`production` から切ったまま作業すると、
+既にマージ済みの変更が存在しない古い土台の上で作業することになり、
+リリースへ PR を出した段階で大量のコンフリクトになる。
+
+進行中の release に**混ぜたくない**作業（次のリリース以降に回すもの）は、
+マージせず `production` 起点のまま進める。この場合、対象リリースが決まった
+時点でそのブランチをマージする。
+
+> ⚠️ **作業開始前に必ず `git fetch origin --prune` を実行すること。**
+> `git branch -a` はローカルが持っている参照しか表示しない。fetch していないと
+> 進行中の `release/*` が見えず、「production しか無い」と誤認して
+> 何ヶ月も古い土台の上で作業を始めてしまう。
+> **`production` が最新とは限らない。**
+
 ## マルチ環境（develop / staging / production）
 
 Firebase プロジェクトを3つ作成し、環境ごとに使い分ける。
@@ -56,7 +95,9 @@ Firebase プロジェクトを3つ作成し、環境ごとに使い分ける。
 | `hotfix/*`    | staging      | `production`   | 緊急修正                 |
 | `production`  | production   | -              | 本番（デフォルトブランチ）|
 
-**全てのブランチは `production` から切る。** `develop` / `staging` はブランチではなく環境名。
+**上表のブランチ（`feat/*` / `release/*` / `hotfix/*`）は `production` から切る**（`develop` / `staging` はブランチではなく環境名）。
+切った直後に、進行中の `release/*` があればマージして作業を始める（→「作業ブランチの切り方」）。
+例外は QA で見つかった不具合の修正で、対象の `release/*` から `fix/*` を切る（→「リリースフロー」2.5）。
 
 > ⚠️ **`release/*` / `hotfix/*` への push は staging への自動デプロイを発火する**（`.github/workflows/deploy.yml`）。
 > そのため `release/*` への直接コミット・push は禁止。release に直接コミットすると、develop での動作確認を経ずに staging へ直行してしまう。
