@@ -57,11 +57,13 @@ export function CheckBox({
       <button
         type="button"
         style={style}
+        aria-pressed={isChecked}
+        disabled={isDisabled}
         onClick={(event) => {
           event.stopPropagation()
           if (!isDisabled) onChange?.(!isChecked)
         }}
-        className={`relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-(--radius-size) border-none shadow-[0_0_0_var(--border-size)_var(--border-color)_inset] has-[input:disabled]:pointer-events-none has-[input:disabled]:before:pointer-events-auto has-[input:disabled]:before:absolute has-[input:disabled]:before:inset-0 has-[input:disabled]:before:cursor-not-allowed has-[input:disabled]:before:content-[''] ${isChecked ? 'animate-[uiCheckPop_var(--duration)_ease-out] bg-(--border-color)' : 'bg-(--background-color)'}`}
+        className={`relative flex h-6 w-6 cursor-pointer items-center justify-center rounded-(--radius-size) border-none shadow-[0_0_0_var(--border-size)_var(--border-color)_inset] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-color) has-[input:disabled]:pointer-events-none has-[input:disabled]:before:pointer-events-auto has-[input:disabled]:before:absolute has-[input:disabled]:before:inset-0 has-[input:disabled]:before:cursor-not-allowed has-[input:disabled]:before:content-[''] ${isChecked ? 'animate-[uiCheckPop_var(--duration)_ease-out] bg-(--border-color)' : 'bg-(--background-color)'}`}
       >
         <input
           type="checkbox"

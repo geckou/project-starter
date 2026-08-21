@@ -45,14 +45,14 @@ export function FileInput({ value, onChange, accept = '' }: Props) {
       >
         <span>ファイルをドロップしてアップロード</span>
         <span>または</span>
-        <label className="inline-flex cursor-pointer items-center gap-[var(--sp-small,0.375rem)] rounded-[var(--radius-small,0.1875rem)] bg-transparent p-[var(--sp-small,0.375rem)] font-medium text-[var(--link-color,#1c4ac9)] transition-colors duration-100 hover:bg-[var(--hover-color,#EEF7FB)]">
+        <label className="relative inline-flex cursor-pointer items-center gap-[var(--sp-small,0.375rem)] rounded-[var(--radius-small,0.1875rem)] bg-transparent p-[var(--sp-small,0.375rem)] font-medium text-[var(--link-color,#1c4ac9)] transition-colors duration-100 hover:bg-[var(--hover-color,#EEF7FB)] has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-[var(--link-color,#1c4ac9)]">
           <BackupIcon className="size-[var(--icon-small,0.9375rem)]" />
           <span>ファイルを選択</span>
           <input
             type="file"
             multiple
             accept={accept}
-            className="hidden"
+            className="sr-only"
             onChange={(event) => {
               addFiles(event.target.files)
               event.target.value = ''
@@ -70,6 +70,7 @@ export function FileInput({ value, onChange, accept = '' }: Props) {
               {file.name}
               <button
                 type="button"
+                aria-label={`${file.name} を削除`}
                 className="inline-flex cursor-pointer items-center"
                 onClick={() => removeFile(file)}
               >

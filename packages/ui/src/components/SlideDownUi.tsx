@@ -93,6 +93,7 @@ export function SlideDownUi({
       <button
         type="button"
         disabled={isDisabled}
+        aria-expanded={isOpenedContents}
         className="relative grid w-full cursor-pointer grid-cols-[1fr_auto] items-center justify-items-start text-(--link-color)"
         onClick={(event) => {
           event.preventDefault()
@@ -112,6 +113,7 @@ export function SlideDownUi({
           transitionDuration: `${duration}s`,
           overflow: isOverflowVisible ? 'visible' : 'hidden',
         }}
+        inert={!isOpenedContents}
         className="transition-[height]"
       >
         <div ref={contentsRef}>{children}</div>

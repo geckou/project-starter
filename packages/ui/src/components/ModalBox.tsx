@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useEffect, useId } from 'react'
+import { useEffect, useId, useRef } from 'react'
 
 type Props = {
   isShown: boolean
@@ -39,6 +39,7 @@ export function ModalBox({
   children,
 }: Props) {
   const headerId = useId()
+  const dialogRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (isShown) document.body.style.overflow = 'hidden'
@@ -49,6 +50,10 @@ export function ModalBox({
     }
   }, [isShown])
 
+  useEffect(() => {
+    if (isShown) dialogRef.current?.focus()
+  }, [isShown])
+
   return (
     <div
       className={`fixed top-0 left-0 z-50 flex h-dvh w-dvw cursor-pointer items-center justify-center overflow-hidden bg-[#33333380] p-[var(--sp-larger,3rem)] backdrop-blur-sm transition-opacity duration-100 max-md:px-[var(--sp-large,1.5rem)] ${
@@ -57,14 +62,17 @@ export function ModalBox({
           : 'pointer-events-none opacity-0'
       }`}
       aria-hidden={!isShown}
+      inert={!isShown}
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose()
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={header ? headerId : undefined}
+        tabIndex={-1}
         className={`relative flex max-h-full w-full cursor-auto flex-col rounded-[var(--radius-small,0.1875rem)] bg-white drop-shadow-[0_0_6px_#33333355] ${MAX_WIDTH_CLASSES[size]}`}
       >
         {header && (
@@ -85,7 +93,8 @@ export function ModalBox({
         )}
         <button
           type="button"
-          className="absolute bottom-full left-full size-[var(--icon-medium,1.125rem)] cursor-pointer leading-none text-white [&>*]:size-full"
+          aria-label="閉じる"
+          className="absolute bottom-full left-full size-[var(--icon-medium,1.125rem)] cursor-pointer leading-none text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white [&>*]:size-full"
           onClick={onClose}
         >
           <CloseIcon />
