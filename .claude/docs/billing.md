@@ -139,7 +139,7 @@ stripe test_helpers test_clocks advance --id clock_xxx --frozen-time <unix秒>
 | --- | --- | --- |
 | 課金期間を1つ進める | `customer.subscription.updated` | `active`（更新成功） |
 | 決済失敗するカードで更新 | `customer.subscription.updated` | `in_grace_period` |
-| リトライ期間を過ぎる | `customer.subscription.deleted` | `expired` |
+| リトライ期間を過ぎる | `customer.subscription.updated`（`unpaid`）または `customer.subscription.deleted` | `expired` |
 | 解約して期間終了まで進める | `customer.subscription.updated` → `deleted` | `cancelled` → `expired` |
 
 `cancelled` は期間終了までは `isSubscriptionActive` が `true` を返す点も、
@@ -291,7 +291,7 @@ if (hasPlan(user.subscription, 'pro')) { /* ... */ }
 | status | 意味 | 利用可否 |
 | --- | --- | --- |
 | `active` | 有効 | 可 |
-| `in_grace_period` | 支払い失敗中（リトライ猶予期間） | 可 |
+| `in_grace_period` | 支払い失敗中（リトライ猶予期間。Stripe の `past_due` / RevenueCat の `BILLING_ISSUE`） | `currentPeriodEnd` があればその日時まで可（無ければ可） |
 | `cancelled` | 自動更新が停止 | `currentPeriodEnd` まで可 |
 | `expired` | 失効 | 不可 |
 

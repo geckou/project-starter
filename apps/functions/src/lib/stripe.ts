@@ -52,8 +52,11 @@ export function mapStripeStatus(
 
     // 支払い失敗中。Stripe のリトライが続いている猶予期間
     case 'past_due':
-    case 'unpaid':
       return 'in_grace_period'
+
+    // リトライを使い切った後の状態。以後の請求は行われないため失効扱いにする
+    case 'unpaid':
+      return 'expired'
 
     case 'canceled':
       return 'cancelled'
