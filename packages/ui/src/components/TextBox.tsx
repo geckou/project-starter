@@ -51,12 +51,18 @@ export function TextBox({
 
   const validateValue = () => {
     const messages: string[] = []
+    // 数値 0 も正当な入力として扱うため、truthy 判定ではなく空文字と比較する
+    const isEmpty = inputValue === ''
 
-    if (!inputValue && isRequired) messages.push('必須項目です')
-    else if (inputValue && validates.length) {
+    if (isEmpty && isRequired) messages.push('必須項目です')
+    else if (!isEmpty && validates.length) {
       validates.forEach((validate) => {
-        if (!validate.regex.test(String(inputValue)))
-          messages.push(validate.message)
+        // g / y フラグ付き RegExp は .test() で lastIndex が変異し判定が不安定になるため、
+        // 呼び出し側のオブジェクトを変異させないよう毎回同じフラグのクローンで判定する
+        // （新規インスタンスは lastIndex = 0 のため、sticky の意味を保ったまま結果が安定する）
+        const regex = new RegExp(validate.regex.source, validate.regex.flags)
+
+        if (!regex.test(String(inputValue))) messages.push(validate.message)
       })
     }
 
@@ -71,7 +77,7 @@ export function TextBox({
   useEffect(() => {
     if (!hasChanged.current) {
       if (inputValue === initialValue.current) {
-        if (inputValue) validateValue()
+        if (inputValue !== '') validateValue()
         return
       }
       hasChanged.current = true
