@@ -69,7 +69,7 @@ export function RadioButtons({
           <label
             key={option.value}
             style={style}
-            className={`grid cursor-pointer grid-cols-[auto_1fr] items-center gap-2 before:inline-block before:aspect-square before:w-4 before:rounded-full before:transition-all before:duration-(--duration) before:ease-linear before:content-[''] has-[input:disabled]:cursor-not-allowed ${
+            className={`relative grid cursor-pointer grid-cols-[auto_1fr] items-center gap-2 before:inline-block before:aspect-square before:w-4 before:rounded-full before:transition-all before:duration-(--duration) before:ease-linear before:content-[''] has-[input:disabled]:cursor-not-allowed has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-(--border-color) ${
               isChecked
                 ? 'text-(--text-color) before:animate-[uiRadioPop_var(--duration)_ease-out] before:bg-(--border-color) before:shadow-[0_0_0_2px_var(--background-color)_inset,0_0_0_1px_var(--border-color)]'
                 : 'text-(--border-color) before:bg-(--background-color) before:shadow-[0_0_0_1px_var(--border-color)_inset]'
@@ -83,7 +83,7 @@ export function RadioButtons({
               required={isRequired}
               checked={isChecked}
               onChange={() => onChange?.(option.value)}
-              className="hidden"
+              className="sr-only"
             />
             <span>{option.label}</span>
           </label>

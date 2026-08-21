@@ -11,6 +11,13 @@ import {
   TextBox,
   TextArea,
   SelectBox,
+  CheckButton,
+  CheckBox,
+  RadioButtons,
+  ToggleButton,
+  ModalBox,
+  SlideDownUi,
+  DropdownUi,
 } from '@geckou/ui'
 
 declare global {
@@ -19,6 +26,13 @@ declare global {
 }
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
+
+// jsdom には ResizeObserver が無いため（DropdownUi / SlideDownUi が使用）
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
 
 let container: HTMLDivElement
 let root: Root
@@ -382,6 +396,233 @@ describe('SelectBox のバリデーション', () => {
 
     blur(container.querySelector('select')!)
     expect(container.textContent).toContain('必須項目です')
+  })
+})
+
+// Issue #90: display:none の入力要素はタブ順・アクセシビリティツリーから除外されるため、
+// sr-only 化してフォーカス到達できることのリグレッションテスト
+describe('キーボードアクセシビリティ', () => {
+  it('CheckButton: input が label 内にあり sr-only でフォーカス可能', () => {
+    const onChange = vi.fn()
+    act(() => {
+      root.render(
+        <CheckButton name="agree" checked={false} onChange={onChange} />
+      )
+    })
+
+    const input = container.querySelector(
+      'input[type="checkbox"]'
+    ) as HTMLInputElement
+    expect(input.classList.contains('hidden')).toBe(false)
+    expect(input.classList.contains('sr-only')).toBe(true)
+    expect(input.closest('label')).not.toBeNull()
+
+    input.focus()
+    expect(document.activeElement).toBe(input)
+
+    // ネイティブ checkbox の Space トグルは click 経由で発火する
+    act(() => input.click())
+    expect(onChange).toHaveBeenLastCalledWith(true)
+  })
+
+  it('CheckBox: button に aria-pressed と disabled が反映される', () => {
+    const onChange = vi.fn()
+
+    function renderCheckBox(checked: boolean, isDisabled?: boolean) {
+      act(() => {
+        root.render(
+          <CheckBox
+            name="agree"
+            checked={checked}
+            onChange={onChange}
+            isDisabled={isDisabled}
+          />
+        )
+      })
+    }
+
+    renderCheckBox(false)
+    const button = () => container.querySelector('button')!
+    expect(button().getAttribute('aria-pressed')).toBe('false')
+    expect(button().getAttribute('aria-label')).toBe('agree')
+
+    act(() => button().click())
+    expect(onChange).toHaveBeenLastCalledWith(true)
+
+    renderCheckBox(true)
+    expect(button().getAttribute('aria-pressed')).toBe('true')
+
+    renderCheckBox(false, true)
+    expect(button().disabled).toBe(true)
+  })
+
+  it('RadioButtons: input が sr-only でフォーカス・選択できる', () => {
+    const onChange = vi.fn()
+    act(() => {
+      root.render(
+        <RadioButtons
+          value=""
+          onChange={onChange}
+          options={[
+            { label: 'りんご', value: 'apple' },
+            { label: 'みかん', value: 'orange' },
+          ]}
+        />
+      )
+    })
+
+    const inputs = [
+      ...container.querySelectorAll('input[type="radio"]'),
+    ] as HTMLInputElement[]
+    expect(inputs).toHaveLength(2)
+    for (const input of inputs) {
+      expect(input.classList.contains('hidden')).toBe(false)
+      expect(input.classList.contains('sr-only')).toBe(true)
+    }
+
+    inputs[0].focus()
+    expect(document.activeElement).toBe(inputs[0])
+
+    act(() => inputs[1].click())
+    expect(onChange).toHaveBeenLastCalledWith('orange')
+  })
+
+  it('ToggleButton: aria-pressed とアクセシブル名がある', () => {
+    const onChange = vi.fn()
+
+    function renderToggle(checked: boolean) {
+      act(() => {
+        root.render(
+          <ToggleButton
+            name="notification"
+            checked={checked}
+            onChange={onChange}
+          />
+        )
+      })
+    }
+
+    renderToggle(false)
+    const button = () => container.querySelector('button')!
+    expect(button().getAttribute('aria-pressed')).toBe('false')
+    expect(button().getAttribute('aria-label')).toBe('notification')
+
+    act(() => button().click())
+    expect(onChange).toHaveBeenLastCalledWith(true)
+
+    renderToggle(true)
+    expect(button().getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('ModalBox: 非表示時は inert、閉じるボタンにアクセシブル名がある', () => {
+    function renderModal(isShown: boolean) {
+      act(() => {
+        root.render(
+          <ModalBox isShown={isShown} onClose={() => {}}>
+            <p>本文</p>
+          </ModalBox>
+        )
+      })
+    }
+
+    renderModal(false)
+    const overlay = () => container.firstElementChild as HTMLElement
+    expect(overlay().hasAttribute('inert')).toBe(true)
+
+    renderModal(true)
+    expect(overlay().hasAttribute('inert')).toBe(false)
+
+    const closeButton = container.querySelector('button[aria-label="閉じる"]')
+    expect(closeButton).not.toBeNull()
+
+    // 表示時はダイアログへ初期フォーカスが移る
+    const dialog = container.querySelector('[role="dialog"]')
+    expect(document.activeElement).toBe(dialog)
+
+    // header が無い場合もダイアログにアクセシブル名がある
+    expect(dialog!.getAttribute('aria-label')).toBe('ダイアログ')
+  })
+
+  it('ModalBox: header があれば aria-labelledby、ariaLabel 指定時はそれが優先される', () => {
+    act(() => {
+      root.render(
+        <ModalBox isShown onClose={() => {}} header={<h2>設定</h2>}>
+          <p>本文</p>
+        </ModalBox>
+      )
+    })
+
+    const dialog = () => container.querySelector('[role="dialog"]')!
+    const labelledBy = dialog().getAttribute('aria-labelledby')
+    expect(labelledBy).not.toBeNull()
+    expect(document.getElementById(labelledBy!)?.textContent).toBe('設定')
+    expect(dialog().hasAttribute('aria-label')).toBe(false)
+
+    act(() => {
+      root.render(
+        <ModalBox isShown onClose={() => {}} ariaLabel="確認">
+          <p>本文</p>
+        </ModalBox>
+      )
+    })
+    expect(dialog().getAttribute('aria-label')).toBe('確認')
+  })
+
+  it('SlideDownUi: トリガーに aria-expanded、閉状態のコンテンツは inert', () => {
+    act(() => {
+      root.render(
+        <SlideDownUi trigger={<span>開く</span>}>
+          <button type="button">中のボタン</button>
+        </SlideDownUi>
+      )
+    })
+
+    const trigger = container.querySelector('button')!
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+
+    const contents = container.querySelector('[inert]')
+    expect(contents).not.toBeNull()
+
+    act(() => trigger.click())
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    expect(container.querySelector('[inert]')).toBeNull()
+  })
+
+  it('DropdownUi: トリガーに aria-expanded、閉状態のコンテンツは inert', () => {
+    act(() => {
+      root.render(
+        <DropdownUi
+          trigger={<span>メニュー</span>}
+          contents={<button type="button">項目</button>}
+        />
+      )
+    })
+
+    const trigger = container.querySelector('button')!
+    expect(trigger.getAttribute('aria-expanded')).toBe('false')
+    expect(container.querySelector('[inert]')).not.toBeNull()
+
+    act(() => trigger.click())
+    expect(trigger.getAttribute('aria-expanded')).toBe('true')
+    expect(container.querySelector('[inert]')).toBeNull()
+  })
+
+  it('FileInput: ファイル選択 input が sr-only、削除ボタンにアクセシブル名がある', () => {
+    const file = new File(['data'], 'photo.png', { type: 'image/png' })
+    act(() => {
+      root.render(<FileInput value={[file]} onChange={() => {}} />)
+    })
+
+    const input = container.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement
+    expect(input.classList.contains('hidden')).toBe(false)
+    expect(input.classList.contains('sr-only')).toBe(true)
+
+    const removeButton = container.querySelector(
+      'button[aria-label="photo.png を削除"]'
+    )
+    expect(removeButton).not.toBeNull()
   })
 })
 

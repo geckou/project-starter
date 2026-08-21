@@ -91,6 +91,7 @@ export function DropdownUi({
       <button
         type="button"
         disabled={isDisabled}
+        aria-expanded={isContentsOpened}
         style={{ ...style, cursor: isInactive ? 'auto' : 'pointer' }}
         className="flex size-full items-center gap-[var(--sp-small,0.375rem)] text-(--trigger-color)"
         onClick={(event) => {
@@ -108,6 +109,7 @@ export function DropdownUi({
       {contents && (
         <div
           style={contentsStyle}
+          inert={!isContentsOpened}
           className="absolute top-[calc(100%-var(--sp-min,0.1875rem))] cursor-pointer overflow-hidden rounded-[var(--radius-small,0.1875rem)] transition-[block-size] duration-100"
         >
           <div

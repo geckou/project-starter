@@ -73,11 +73,13 @@ export function ToggleButton({
       type="button"
       style={style}
       disabled={isDisabled}
+      aria-pressed={isChecked}
+      aria-label={name}
       onClick={(event) => {
         event.stopPropagation()
         if (!isDisabled) onChange?.(!isChecked)
       }}
-      className="relative inline-block w-[calc(var(--inline-size)+var(--handle-size)+(var(--padding-size)*2))] cursor-pointer rounded-(--radius-size) border-none bg-(--background-color) p-(--padding-size) shadow-[0_0_0_var(--border-size)_var(--border-color)_inset,var(--box-shadow)]"
+      className="relative inline-block w-[calc(var(--inline-size)+var(--handle-size)+(var(--padding-size)*2))] cursor-pointer rounded-(--radius-size) border-none bg-(--background-color) p-(--padding-size) shadow-[0_0_0_var(--border-size)_var(--border-color)_inset,var(--box-shadow)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--border-color)"
     >
       <input
         type="checkbox"
