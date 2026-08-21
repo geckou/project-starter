@@ -76,8 +76,12 @@ jobs:
       # ブランチからデプロイ先の環境を決定し、シークレットの有無を判定
       - name: Set environment
         id: env
+        # ブランチ名には $ や ` 等のメタ文字を含められるため、${{ }} をスクリプトへ
+        # 直接展開せず env 経由のクォート付き変数として参照する（シェル注入対策）
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          REF="${{ github.ref_name }}"
+          REF="$REF_NAME"
           if [ "$REF" = "production" ]; then
             echo "name=production" >> $GITHUB_OUTPUT
           elif [[ "$REF" == release/* ]] || [[ "$REF" == hotfix/* ]]; then
