@@ -8,7 +8,26 @@
 | ディレクトリ | 説明                                                                        |
 | ------------ | --------------------------------------------------------------------------- |
 | `shared/`    | 共有の型定義・ユーティリティ・Firebase クライアント初期化・デザイントークン |
-| `ui/`        | Web 用 React UI コンポーネント集（フォーム部品・モーダル・タブ等）          |
+
+## UI コンポーネント
+
+フォーム部品・モーダル・タブ等の汎用 UI は、このリポジトリではなく
+[`geckou/ui`](https://github.com/geckou/ui) で管理し、npm から取得する。
+
+| パッケージ | 用途 |
+| ---------- | ---- |
+| [`@geckou/ui-react`](https://www.npmjs.com/package/@geckou/ui-react) | Web（React / Next.js）用のコンポーネント |
+| [`@geckou/ui-core`](https://www.npmjs.com/package/@geckou/ui-core) | バリデーション・日付処理などの共通ロジック（`ui-react` が依存として取得する） |
+
+派生プロジェクトで修正が必要になった場合は `geckou/ui` 側で直す。
+テンプレートに同梱していた頃は、修正が派生プロジェクトへ届かなかった。
+
+`apps/web` には設定済み。新しいアプリで使う場合は以下を設定する。
+
+1. `package.json` に `"@geckou/ui-react": "^0.1.0"` を追加
+2. `next.config.ts` の `transpilePackages` に `'@geckou/ui-react'` を追加
+3. `tailwind.config.ts` の `content` に `'../../node_modules/@geckou/ui-react/src/**/*.{ts,tsx}'` を追加
+4. グローバル CSS に `@import '@geckou/ui-react/styles/tokens.css';` を追加（デザイントークン）
 
 ## shared の構成
 

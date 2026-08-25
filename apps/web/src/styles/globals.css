@@ -1,4 +1,4 @@
 @import 'tailwindcss';
-@import '@geckou/ui/styles/tokens.css';
+@import '@geckou/ui-react/styles/tokens.css';
 
 @config '../../tailwind.config.ts';

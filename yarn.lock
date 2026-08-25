@@ -2115,6 +2115,18 @@
   resolved "https://registry.yarnpkg.com/@firebase/webchannel-wrapper/-/webchannel-wrapper-1.0.3.tgz#a73bab8eb491d7b8b7be2f0e6c310647835afe83"
   integrity sha512-2xCRM9q9FlzGZCdgDMJwc0gyUkWFtkosy7Xxr6sFgQwn+wMNIWd7xIvYNauU1r64B5L5rsGKy/n9TKJ0aAFeqQ==
 
+"@geckou/ui-core@^0.1.0":
+  version "0.1.1"
+  resolved "https://registry.yarnpkg.com/@geckou/ui-core/-/ui-core-0.1.1.tgz#05f62b339598b318f85ef83bc2fe6cf9dac406ab"
+  integrity sha512-uDRajTluSVMef6xchzrv213/xZnqaQGQJ7+cO+FP2O+9+UN36femvOBRBV7G5bpnREtlZD/CoTpm4ISiAk0n5g==
+
+"@geckou/ui-react@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@geckou/ui-react/-/ui-react-0.1.0.tgz#09f19018bc06193345dc1724314fed16b69ac91d"
+  integrity sha512-xCp5P+3jHqM0LlZzQwJOAFaTs7AESOAUdePNgFXjO+NR986cxXso0djK0J2eWoTTtIHhL3azWHPSSc4Ib3zw1w==
+  dependencies:
+    "@geckou/ui-core" "^0.1.0"
+
 "@google-cloud/firestore@^7.11.0":
   version "7.11.6"
   resolved "https://registry.yarnpkg.com/@google-cloud/firestore/-/firestore-7.11.6.tgz#0a2b26e215aa4f903267f82370450753b84db16a"
@@ -3480,7 +3492,7 @@
   resolved "https://registry.yarnpkg.com/@types/range-parser/-/range-parser-1.2.7.tgz#50ae4353eaaddc04044279812f52c8c65857dbcb"
   integrity sha512-hKormJbkJqzQGhziax5PItDUTMAM9uE2XXQmM37dyd4hVM+5aVl7oVxMVUiVQn2oCQFN/LKCZdvSM0pFRqbSmQ==
 
-"@types/react-dom@^19.0.0", "@types/react-dom@^19.2.4":
+"@types/react-dom@^19.2.4":
   version "19.2.4"
   resolved "https://registry.yarnpkg.com/@types/react-dom/-/react-dom-19.2.4.tgz#165ab5e97dfb081847b0f6755060cf40a3f6666b"
   integrity sha512-Bsc+QHgp+P/F02XDzNCY9jnZNCUuLki36KT7VKrTXXLdHf+vHMNZnW1rVu5DNW/rCK+fya3DATySbLM4yhtKUw==
