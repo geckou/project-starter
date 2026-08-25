@@ -1,7 +1,6 @@
 'use client'
 
-import type { PopupBoxHandle } from '@geckou/ui'
-import { useRef, useState } from 'react'
+import type { PopupBoxHandle } from '@geckou/ui-react'
 import {
   BasicButton,
   CheckBox,
@@ -26,7 +25,8 @@ import {
   TextArea,
   TextBox,
   ToggleButton,
-} from '@geckou/ui'
+} from '@geckou/ui-react'
+import { useRef, useState } from 'react'
 
 const FRUIT_OPTIONS = [
   { label: 'りんご', value: 'apple' },
@@ -55,7 +55,7 @@ export default function UiDemoPage() {
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-10 p-8">
-      <h1 className="text-2xl font-bold">@geckou/ui デモ</h1>
+      <h1 className="text-2xl font-bold">@geckou/ui-react デモ</h1>
 
       <section className="flex flex-col gap-4" data-demo="text">
         <h2 className="text-lg font-bold">テキスト入力</h2>
