@@ -23,7 +23,7 @@ for task in type-check lint test; do
   log="$log_dir/dod-$task.log"
 
   if ! yarn "$task" >"$log" 2>&1; then
-    failed="$failed $task"
+    failed="${failed:+$failed / }yarn $task"
 
     echo "--- yarn $task 失敗（末尾30行） ---" >&2
     tail -n 30 "$log" >&2
@@ -32,5 +32,5 @@ done
 
 [ -z "$failed" ] && exit 0
 
-echo "DoD 未達: yarn$failed が失敗しています。上記のエラーを修正してから終了してください。修正が大きくなる場合や意図的に途中終了する場合は、その旨をユーザーに報告してください。" >&2
+echo "DoD 未達: $failed が失敗しています。上記のエラーを修正してから終了してください。修正が大きくなる場合や意図的に途中終了する場合は、その旨をユーザーに報告してください。" >&2
 exit 2
