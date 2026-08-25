@@ -16,6 +16,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "sh .claude/hooks/stop-dod-check.sh"
+          },
+          {
+            "type": "command",
             "command": "sh .claude/hooks/stop-roadmap-reminder.sh"
           }
         ]
