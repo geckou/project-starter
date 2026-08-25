@@ -8,6 +8,13 @@ on:
       - production # → production 環境
       - 'release/**' # → staging 環境
       - 'hotfix/**' # → staging 環境
+    # アプリの動作に影響しない変更ではデプロイしない（Actions 分の節約）
+    paths-ignore:
+      - '**/*.md'
+      - '.claude/**'
+      - '.vscode/**'
+      - '.editorconfig'
+      - 'LICENSE'
 
 # 同一ブランチへの連続 push でデプロイが競合しないよう直列化する
 concurrency:
