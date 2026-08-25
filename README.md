@@ -250,7 +250,7 @@ yarn firebase:emulators
 | 機能 | セットアップ |
 |---|---|
 | PR 自動レビュー / `@claude` メンション | リポジトリの Secrets に `ANTHROPIC_API_KEY` を登録（未登録ならスキップされる）。`.github/workflows/claude.yml` |
-| テンプレート更新の取り込み | 親テンプレートがプライベートの場合は `SOURCE_REPO_PAT` を登録。取り込み対象外は `.templatesyncignore` で管理。`.github/workflows/template-sync.yml` |
+| テンプレート更新の取り込み | 追加のシークレット登録は不要（親テンプレートは public）。取り込み対象外は `.templatesyncignore` で管理。`.github/workflows/template-sync.yml` |
 
 ---
 
