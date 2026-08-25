@@ -31,19 +31,15 @@
 
 ### 既存の派生プロジェクトへの導入
 
-**この変更は Template Sync では届かない。** `.templatesyncignore` が `apps/`・
-ルート `package.json`・`yarn.lock` を除外しているため、上記 1〜4 はいずれも同期対象外。
-導入したいプロジェクトで一度だけ手作業で行う。
+**上記 1〜4 は Template Sync では届かない。** `.templatesyncignore` が `apps/`・
+ルート `package.json`・`yarn.lock` を除外しているため、いずれも同期対象外。
+導入したいプロジェクトで一度だけ手作業で設定する。
 
 ```bash
 yarn workspace <web ワークスペース名> add @geckou/ui-react
 ```
 
 そのうえで 2〜4 を設定する。以後の更新は `yarn up @geckou/ui-react` で受け取れる。
-
-なお、テンプレートに同梱していた `packages/ui` は**どの派生プロジェクトにも配布されていなかった**
-（`taros` / `corp-site-v2` / `aumund` のいずれにも存在しない）。したがって削除による影響はなく、
-「使いたければ導入する」だけでよい。
 
 ## shared の構成
 

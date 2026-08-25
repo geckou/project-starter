@@ -29,7 +29,7 @@
 * Copilot レビュー指摘の修正 ([53eee8a](https://github.com/geckou/project-starter/commit/53eee8ac088de6a5905705d3fe875c0a33c49f52))
 * Copilot レビュー指摘の修正 ([9d8589f](https://github.com/geckou/project-starter/commit/9d8589f80b916f63e4bda5229ffecf96fd60583f))
 * Copilot レビュー指摘を反映 ([07e69a4](https://github.com/geckou/project-starter/commit/07e69a46d8758073c230e33be51dcbaffd43bbd2))
-* corp-site-v2 で発覚したテンプレートの問題を修正 ([3c8dead](https://github.com/geckou/project-starter/commit/3c8dead455acdd04538eb045eb11f65e7b861409))
+* 派生プロジェクトで発覚したテンプレートの問題を修正 ([3c8dead](https://github.com/geckou/project-starter/commit/3c8dead455acdd04538eb045eb11f65e7b861409))
 * deploy job でも Expo router 型生成を実行 ([3d0c570](https://github.com/geckou/project-starter/commit/3d0c570e4de8f00feef019f9677dd1ce19f86e41))
 * deploy.sh の firebase deploy に --force を追加 ([6ae4f5e](https://github.com/geckou/project-starter/commit/6ae4f5efac043c218f67b1f3a03a347728d3f9fb))
 * deploy.sh の firebase deploy に --force を追加 ([95d2f0f](https://github.com/geckou/project-starter/commit/95d2f0f783863be0339c5983887de64c8b1e916f))
