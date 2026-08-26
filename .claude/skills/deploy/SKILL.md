@@ -16,13 +16,14 @@ description: マルチ環境（develop / staging / production）への Firebase 
 | production | `yarn deploy:production` | 本番（release/hotfix 後）|
 
 部分デプロイ: `bash scripts/deploy.sh <env> --only functions` / `--only hosting`
+カンマ区切りで複数指定もできる（`--only functions,hosting`）。
 
 Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象外。
 
 ## deploy.sh がやること
 
 1. `scripts/use-env.sh <env>` で `.env.local`（ルート + `apps/web/` + `apps/mobile/`）と Firebase プロジェクトを切り替え
-2. `type-check` / `lint` / `test` / `build` の事前チェック
+2. `type-check` / `lint` / `test` / `build` の事前チェック（`SKIP_CHECKS=1` を渡したときのみ省略。CI 専用の抜け道で、ローカルでは使わない）
 3. workspace 依存（`@geckou/*`）を package.json から一時削除（Cloud Build が npm registry から取得しようとして失敗するため。終了時に自動復元）
 4. functions / firestore をデプロイ後、framework hosting をターゲットごとに個別デプロイ（複数同梱だと next build がハングするため）
 
@@ -56,8 +57,20 @@ develop は CI から自動デプロイしない（複数人の feat/* push が�
 
 CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウント JSON）と `ENV_FILE_STAGING` / `ENV_FILE_PRODUCTION`（.env の内容）が必要。
 
+### Actions 分の節約
+
+ワークフローは 1 ジョブ構成で、チェックとデプロイを同じジョブで実行する（`setup-node` と `yarn install` の二重実行と、ジョブ単位の最低課金 1 分を避けるため）。
+チェックはワークフロー側の step で実行し、`deploy.sh` には `SKIP_CHECKS=1` を渡して二重実行を防いでいる。
+
+デプロイ対象は push の変更差分から判定し、必要なターゲットだけを `--only` で渡す。
+`apps/web/` だけの変更なら hosting だけ、`firestore.rules` だけなら firestore だけがデプロイされる。
+影響範囲を特定できないファイル（ルート設定・`packages/` 等）が含まれる場合は全ターゲットをデプロイする。
+
+**デプロイが失敗した回の変更は、次の push では再送されない。** 取りこぼしたときは
+`workflow_dispatch`（Actions タブから手動実行）で全ターゲットをデプロイして回復する。
+
 ## ルール
 
-- デプロイ前チェック（型・lint・テスト・ビルド）は deploy.sh が自動実行する。スキップしない
+- デプロイ前チェック（型・lint・テスト・ビルド）は deploy.sh が自動実行する。ローカルでスキップしない（`SKIP_CHECKS=1` は CI 専用。CI ではワークフロー側の step が同じチェックを実行済み）
 - Firestore Rules の変更は本番データに即座に影響するため、production へのデプロイ前に差分を必ず確認する
 - 本番環境の `.env.production` の値が最新か確認する

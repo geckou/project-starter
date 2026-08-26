@@ -1,6 +1,6 @@
 name: CI
 
-# production への push は deploy.yml の check ジョブが同内容を実行するため、
+# production への push は deploy.yml の deploy ジョブが同内容のチェックを実行するため、
 # 二重実行を避けて PR のみをトリガーにする
 on:
   pull_request:
@@ -35,6 +35,17 @@ jobs:
           cache: 'yarn'
 
       - run: yarn install --frozen-lockfile
+
+      # turbo のローカルキャッシュを実行間で持ち越し、変更のないパッケージの
+      # 再ビルドを避ける。build の inputs に .env* が含まれているため、
+      # 環境ごとの差はキャッシュキー側で分かれる（turbo.json 参照）
+      - name: Restore Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-
 
       - name: Generate Expo type declarations
         run: yarn workspace @geckou/mobile exec expo customize tsconfig.json
