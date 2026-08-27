@@ -172,15 +172,17 @@ Apple / Google への月次の取引報告（External Purchase Server API / exte
 
 ### ファイル構成
 
+決済ロジックの本体は **[`@geckou/billing`](https://github.com/geckou/kit)**（npm パッケージ）にある。
+権利状態の反映（冪等性・順序制御）・Stripe / RevenueCat Webhook・Checkout / ポータル作成・
+カスタムクレーム同期はパッケージ側で実装され、修正は Dependabot の bump PR として届く。
+リポジトリ内に残るのは配線と、プロジェクトごとに編集するフックのみ。
+
 | 層 | ファイル | 役割 |
 | --- | --- | --- |
-| 共有 | `packages/shared/src/types/index.ts` | `Subscription` 型（両経路で共通） |
-| 共有 | `packages/shared/src/billing/index.ts` | `isSubscriptionActive` / `hasPlan` |
-| Functions | `apps/functions/src/lib/subscription.ts` | 権利状態の反映（冪等性・順序制御） |
-| Functions | `apps/functions/src/lib/stripe.ts` | Stripe クライアント・ステータス変換 |
-| Functions | `apps/functions/src/billing.ts` | `POST /billing/checkout` / `POST /billing/portal` |
-| Functions | `apps/functions/src/stripe-webhook.ts` | Stripe Webhook → Firestore |
-| Functions | `apps/functions/src/revenuecat-webhook.ts` | RevenueCat Webhook → Firestore |
+| 共有 | `packages/shared/src/billing/index.ts` | `@geckou/billing/entitlement` の re-export（`isSubscriptionActive` / `hasPlan` / `Subscription` 型） |
+| Functions | `apps/functions/src/lib/billing.ts` | `createBilling()` の配線（env・firebase-admin・フックの注入） |
+| Functions | `apps/functions/src/lib/entitlement-hooks.ts` | 権利変化フック（**派生プロジェクトが編集する場所**） |
+| Functions | `apps/functions/src/api.ts` | Webhook / `/billing/*` の Express アダプタ |
 | Web | `apps/web/src/lib/billing.ts` | Checkout / カスタマーポータルの起動 |
 | Web | `apps/web/src/app/billing/page.tsx` | 購入・管理画面の参考実装 |
 | Mobile | `apps/mobile/src/lib/revenuecat.ts` | IAP の初期化・Firebase UID との紐付け |
