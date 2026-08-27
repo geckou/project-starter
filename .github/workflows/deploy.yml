@@ -173,7 +173,8 @@ jobs:
               # Mobile は Firebase のデプロイ対象ではない（EAS 経由で配信する）
               apps/mobile/*) ;;
               firestore.rules | firestore.indexes.json) NEED_FIRESTORE=true ;;
-              # storage.rules は deploy.sh の対象外（既存の挙動を変えないため据え置き）
+              # storage.rules は deploy.sh の対象外なので、ここでも対象にしない。
+              # そもそもデプロイされていないこと自体が別の問題（#109）
               storage.rules) ;;
               .github/* | .claude/* | .vscode/*) ;;
               *.md | LICENSE | .editorconfig) ;;

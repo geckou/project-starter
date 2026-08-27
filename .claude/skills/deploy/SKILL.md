@@ -27,6 +27,8 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
 3. workspace 依存（`@geckou/*`）を package.json から一時削除（Cloud Build が npm registry から取得しようとして失敗するため。終了時に自動復元）
 4. functions / firestore をデプロイ後、framework hosting をターゲットごとに個別デプロイ（複数同梱だと next build がハングするため）
 
+> ⚠️ **`storage.rules` はデプロイ対象に含まれていない**（#109）。Storage のルールを変更しても反映されないため、当面は `firebase deploy --only storage` で個別に適用する。
+
 `--force` フラグは上記の理由で意図的に使用している（削除しないこと）。
 
 production へのデプロイは `production` ブランチからのみ実行できるガードが deploy.sh に入っている。
