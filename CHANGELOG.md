@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.1.0](https://github.com/geckou/project-starter/compare/v1.0.0...v1.1.0) (2026-08-27)
+
+
+### Features
+
+* Git 運用ルールを Hook で機械的に強制する ([#113](https://github.com/geckou/project-starter/issues/113)) ([3f78b29](https://github.com/geckou/project-starter/commit/3f78b29891d4bd691e7202f975aa2fd414130a5d))
+* React UI コンポーネント集 @geckou/ui を追加（vue-ui 移植） ([a2a6ee9](https://github.com/geckou/project-starter/commit/a2a6ee938d957a750dec9a3aa97d9696b6abef6c))
+* Stop フックで DoD (type-check/lint/test) を自動判定して停止をブロック ([9ab3def](https://github.com/geckou/project-starter/commit/9ab3def271579f9e5091472753b781eaae7970bd))
+* Stop フックで DoD (type-check/lint/test) を自動判定して停止をブロック ([5852aa7](https://github.com/geckou/project-starter/commit/5852aa73d5290b53d12e676c552a1d2afb5a1324))
+* vue-ui 移植の React UI コンポーネント集 @geckou/ui を追加 ([e7e0298](https://github.com/geckou/project-starter/commit/e7e0298084202e1b9eb825def145c6beb96b364a))
+* Web 決済（Stripe）を追加し、課金の権利状態を一本化 ([b3d2d73](https://github.com/geckou/project-starter/commit/b3d2d73e7a30d71f7936e408dc987620eaf71d5c))
+* カスタムクレーム同期を SYNC_SUBSCRIPTION_CLAIMS で任意化 ([f91374b](https://github.com/geckou/project-starter/commit/f91374b7c056e6f14961bac89ac0fd165cca97e5))
+* 権利変化フック・クレーム同期を追加し、決済の実装手順書を整備 ([e585563](https://github.com/geckou/project-starter/commit/e585563d998c53045b806c0a603ccc605eaf56da))
+* 決済機能の実装（Stripe + RevenueCat） ([f8088c4](https://github.com/geckou/project-starter/commit/f8088c4509a9f104feca4fbf1543855da15d95c9))
+
+
+### Bug Fixes
+
+* branch-guard.yml のシェル注入を修正（head_ref を env 経由で参照） ([5c25bed](https://github.com/geckou/project-starter/commit/5c25bedbe8ce19010ac6dfdf7b2ceec2078773aa))
+* branch-guard.yml のシェル注入を修正（head_ref を env 経由で参照） ([2e3c65f](https://github.com/geckou/project-starter/commit/2e3c65f00b8db39eb32b899e8ca18eb962c95980)), closes [#88](https://github.com/geckou/project-starter/issues/88)
+* CheckBox と ModalBox にアクセシブル名を追加 ([dc0d3eb](https://github.com/geckou/project-starter/commit/dc0d3eb81986e9fed5d56a6ac57612983b1c9093))
+* Copilot レビュー対応 + prettier 設定の明示化 ([58000c6](https://github.com/geckou/project-starter/commit/58000c616e62169be35c800252f8ff610d19a5c7))
+* Dependabot に Expo 依存の ignore ルールを追加 ([1362471](https://github.com/geckou/project-starter/commit/13624712f6bad971560038a12f43d2a694427827))
+* Dependabot に Expo 依存の ignore ルールを追加 ([c065cf6](https://github.com/geckou/project-starter/commit/c065cf65a2b8c0abfdef1b559e5eb9309aa8ed14))
+* Dependabot のメジャー更新を自動 PR の対象から外す ([812e31a](https://github.com/geckou/project-starter/commit/812e31a88d44f76627677bbccad34db9f436b547))
+* Dependabot のメジャー更新を自動 PR の対象から外す ([be4e659](https://github.com/geckou/project-starter/commit/be4e659910cfe58e5993deacf1400c26a0cc97ec))
+* Dependabot 検出の脆弱な推移的依存を更新 ([#101](https://github.com/geckou/project-starter/issues/101)) ([2fe2f64](https://github.com/geckou/project-starter/commit/2fe2f64d82b59df776eecdec033487612d59179b))
+* deploy.yml の ref_name も env 経由の参照に統一（シェル注入対策） ([254a4aa](https://github.com/geckou/project-starter/commit/254a4aa7b11fe8bb6b41918c076e380aeaba983b))
+* prettier の Tailwind クラスソートを環境非依存に ([c0496b9](https://github.com/geckou/project-starter/commit/c0496b924dc68168e5bf4ecbfe609feec1860932))
+* Prettier 実行前に packages/ をビルドし、Tailwind クラスの誤並び替えを防ぐ ([#112](https://github.com/geckou/project-starter/issues/112)) ([d64320d](https://github.com/geckou/project-starter/commit/d64320d4e10382316f5a19c2e82cfcde71510b03)), closes [#110](https://github.com/geckou/project-starter/issues/110)
+* RegExp クローンでフラグを維持し sticky の意味を保つ ([bb21924](https://github.com/geckou/project-starter/commit/bb21924ba8d51232be9c16ef699153908bfb13de))
+* RevenueCat Webhook の冪等性キー衝突とテストモックの不整合を修正 ([8d5d1d0](https://github.com/geckou/project-starter/commit/8d5d1d052d3bc4f96dfe9ca484a7ce7d04e4dd15))
+* storage.rules をデプロイ対象に追加し、ルールテストを整備する ([#111](https://github.com/geckou/project-starter/issues/111)) ([e089361](https://github.com/geckou/project-starter/commit/e089361e3a68a11803530fa8b7b9e09218a51acb))
+* UI バリデーションで数値 0 が必須エラーになる問題と g/y フラグ付き RegExp の判定不安定を修正 ([7702717](https://github.com/geckou/project-starter/commit/7702717590e5bee40a5ff6e6f7db5affb890c36c)), closes [#91](https://github.com/geckou/project-starter/issues/91)
+* UI バリデーションの数値 0 必須エラーと g/y フラグ付き RegExp の判定不安定を修正 ([1a82fed](https://github.com/geckou/project-starter/commit/1a82fed8aaa247dd9ce2532c266eb6a10973e3eb))
+* フォーム部品をキーボード操作可能にする（display:none を sr-only 化） ([d56d255](https://github.com/geckou/project-starter/commit/d56d255759d152591d7ecfe1c39310e73cfcb4c3))
+* フォーム部品をキーボード操作可能にする（display:none を sr-only 化） ([62f88a4](https://github.com/geckou/project-starter/commit/62f88a410f03cf6c967f544ad87d245c876c289d)), closes [#90](https://github.com/geckou/project-starter/issues/90)
+* 失敗タスクの表示を yarn コマンド単位に整形（レビュー指摘対応） ([915b7de](https://github.com/geckou/project-starter/commit/915b7de1af90234cdf44897d178e1098054eeacf))
+* 支払い停止したサブスクの権利が無期限に有効になる問題を修正 ([477b7c3](https://github.com/geckou/project-starter/commit/477b7c3126febf507a3ef6d26b7e74752b0dab14))
+* 支払い停止したサブスクの権利が無期限に有効になる問題を修正 ([240fc3a](https://github.com/geckou/project-starter/commit/240fc3a405dd28843ae53b8966c6cdce4ee40576)), closes [#89](https://github.com/geckou/project-starter/issues/89)
+* 環境切り替えで apps/functions/.env も配布し、本番キーの誤用を防ぐ ([5f6dbe5](https://github.com/geckou/project-starter/commit/5f6dbe57dfa490f8c646ac0d16f5b82ba0d937b0))
+* 環境切り替えで apps/functions/.env も配布し、本番キーの誤用を防ぐ ([90772f2](https://github.com/geckou/project-starter/commit/90772f21cd142c59c528c43c9c3bbc5e9cae9afd))
+* 環境切り替えの firebase use 失敗を握りつぶさない + SENTRY_DSN を Functions に配布 ([da97dd4](https://github.com/geckou/project-starter/commit/da97dd4a991ab884da65f06d9788fb6b96e4d12d))
+* 課金 Webhook が undefined を Firestore に書き込んで失敗する問題を修正 ([73ff3d3](https://github.com/geckou/project-starter/commit/73ff3d3e03a5236cbbba162e138ff8e8f35eb72e))
+* 課金 Webhook の undefined 書き込みと環境切り替えのデプロイ事故リスクを修正 ([02baaad](https://github.com/geckou/project-starter/commit/02baaad8b3929c01ab6ed9ad60ecfb8815f7d70c))
+
 ## 1.0.0 (2026-08-06)
 
 
