@@ -25,9 +25,10 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
 1. `scripts/use-env.sh <env>` で `.env.local`（ルート + `apps/web/` + `apps/mobile/`）と Firebase プロジェクトを切り替え
 2. `type-check` / `lint` / `test` / `build` の事前チェック（`SKIP_CHECKS=1` を渡したときのみ省略。CI 専用の抜け道で、ローカルでは使わない）
 3. workspace 依存（`@geckou/*`）を package.json から一時削除（Cloud Build が npm registry から取得しようとして失敗するため。終了時に自動復元）
-4. functions / firestore をデプロイ後、framework hosting をターゲットごとに個別デプロイ（複数同梱だと next build がハングするため）
-
-> ⚠️ **`storage.rules` はデプロイ対象に含まれていない**（#109）。Storage のルールを変更しても反映されないため、当面は `firebase deploy --only storage` で個別に適用する。
+4. functions / firestore → storage → framework hosting の順にデプロイ
+   - hosting は複数同梱だと next build がハングするため、ターゲットごとに個別デプロイする
+   - storage は Cloud Storage 未有効化時に失敗しうるため個別に実行し、失敗時は対処方法を表示する
+   - storage は `firebase.json` が `storage` を宣言している場合のみ対象になる。Cloud Storage を使わないプロジェクトは `firebase.json` から `storage` を削除する
 
 `--force` フラグは上記の理由で意図的に使用している（削除しないこと）。
 
@@ -74,5 +75,6 @@ CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウ�
 ## ルール
 
 - デプロイ前チェック（型・lint・テスト・ビルド）は deploy.sh が自動実行する。ローカルでスキップしない（`SKIP_CHECKS=1` は CI 専用。CI ではワークフロー側の step が同じチェックを実行済み）
-- Firestore Rules の変更は本番データに即座に影響するため、production へのデプロイ前に差分を必ず確認する
+- Firestore / Storage Rules の変更は本番データに即座に影響するため、production へのデプロイ前に差分を必ず確認する
+- ルールを変更したら `yarn test:rules` を実行する（Firestore / Storage の両方を検証する）
 - 本番環境の `.env.production` の値が最新か確認する
