@@ -106,14 +106,18 @@ deploy_hosting_per_target() {
   fi
 }
 
+# firebase.json が storage を宣言しているか。
+# 宣言がないプロジェクトで firebase deploy --only storage を実行すると
+# 対象が見つからず失敗するため、既定・明示指定の双方でここを見る
+storage_configured() {
+  node -e "process.exit(require('./firebase.json').storage ? 0 : 1)" 2>/dev/null
+}
+
 # デプロイ対象（カンマ区切り）。
 # CI は変更差分から必要なターゲットだけを渡してくる（.github/workflows/deploy.yml）
-#
-# storage は firebase.json が宣言している場合のみ既定の対象に含める。
-# Cloud Storage を使わないプロジェクトは firebase.json の storage を削除すること
 DEFAULT_TARGETS="functions,firestore,hosting"
 
-if node -e "process.exit(require('./firebase.json').storage ? 0 : 1)" 2>/dev/null; then
+if storage_configured; then
   DEFAULT_TARGETS="functions,firestore,storage,hosting"
 fi
 
@@ -121,6 +125,7 @@ TARGETS="${DEPLOY_ONLY:-$DEFAULT_TARGETS}"
 
 DEPLOY_ALL_HOSTING=false
 DEPLOY_STORAGE=false
+SKIPPED_TARGET=false
 HOSTING_TARGETS=()
 OTHER_TARGETS=""
 
@@ -145,8 +150,15 @@ for target in "${REQUESTED_TARGETS[@]}"; do
       HOSTING_TARGETS+=("$target")
       ;;
     storage)
-      # Cloud Storage 未有効化時に失敗しうるため、他とまとめず個別に扱う
-      DEPLOY_STORAGE=true
+      # Cloud Storage 未有効化時に失敗しうるため、他とまとめず個別に扱う。
+      # --only で明示指定された場合もここで firebase.json を確認する
+      # （CI は常に --only を渡すため、既定値側のガードだけでは素通りする）
+      if storage_configured; then
+        DEPLOY_STORAGE=true
+      else
+        echo "[skip] firebase.json に storage の宣言がないため Storage ルールのデプロイを省略します"
+        SKIPPED_TARGET=true
+      fi
       ;;
     *)
       # functions:api のような個別指定はそのまま firebase へ渡す
@@ -159,6 +171,13 @@ if [ -z "$OTHER_TARGETS" ] &&
   [ "$DEPLOY_ALL_HOSTING" = false ] &&
   [ "$DEPLOY_STORAGE" = false ] &&
   [ ${#HOSTING_TARGETS[@]} -eq 0 ]; then
+  # 指定自体はあったが、この構成では対象外だったケース（storage 未宣言など）。
+  # 指定ミスとは区別して正常終了する
+  if [ "$SKIPPED_TARGET" = true ]; then
+    echo "[done] このプロジェクトでデプロイ対象になるものはありませんでした"
+    exit 0
+  fi
+
   echo "[error] デプロイ対象が空です（--only の値を確認してください）"
   exit 1
 fi

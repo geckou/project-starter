@@ -77,4 +77,19 @@ CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウ�
 - デプロイ前チェック（型・lint・テスト・ビルド）は deploy.sh が自動実行する。ローカルでスキップしない（`SKIP_CHECKS=1` は CI 専用。CI ではワークフロー側の step が同じチェックを実行済み）
 - Firestore / Storage Rules の変更は本番データに即座に影響するため、production へのデプロイ前に差分を必ず確認する
 - ルールを変更したら `yarn test:rules` を実行する（Firestore / Storage の両方を検証する）
+
+## 派生プロジェクトへの一度きりの移行
+
+ルールテストの実体は `scripts/test-rules.sh` にあり、CI（`ci.yml` / `deploy.yml`）はこれを直接呼ぶ。
+`scripts/` も `.github/workflows/` も Template Sync の対象なので、**CI 側は同期だけで正しく動く。**
+
+一方 **ルート `package.json` は Template Sync の対象外**（`.templatesyncignore`）なので、
+テンプレート更新を取り込んだ派生プロジェクトでは `yarn test:rules` が古いコマンドのまま残る。
+ローカル実行を CI と揃えるため、一度だけ手で書き換える。
+
+```json
+"test:rules": "bash scripts/test-rules.sh"
+```
+
+書き換えなくても CI は Storage ルールを検証するが、手元では Firestore しか検証されない。
 - 本番環境の `.env.production` の値が最新か確認する
