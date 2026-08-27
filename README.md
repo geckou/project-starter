@@ -559,8 +559,8 @@ btn, msg, noti
 | `chore`    | ビルド・設定変更                 |
 
 commitlint（`.husky/commit-msg`）が検証するが、**規約違反は警告のみでコミットはブロックしない**。
-Release Please が conventional commits を解釈してバージョンと CHANGELOG を決めるため、
-規約から外れたコミットはリリースノートに載らない。
+`release/*` に何が載っているかを `git log` で追う場面が多いため、type が揃っていること自体が
+可読性の担保になる。
 
 ### マージルール
 

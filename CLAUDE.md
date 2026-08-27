@@ -210,8 +210,8 @@ git merge origin/release/<バージョン>     # そのリリースに載せる�
 `<type>: <description>` 形式。type: `feat`, `fix`, `refactor`, `style`, `docs`, `test`, `chore`
 
 commitlint（`.husky/commit-msg`）が検証するが、**規約違反は警告のみでコミットはブロックしない**。
-Release Please が conventional commits を解釈してバージョンと CHANGELOG を決めるため、
-規約から外れたコミットはリリースノートに載らない。守る動機はそこにある。
+派生プロジェクトでは `release/*` に何が載っているかを `git log` で追う場面が多いため、
+type が揃っていること自体が可読性の担保になる。守る動機はそこにある。
 
 ただし **Claude のコミットは `.claude/hooks/pre-git-guard.sh`（PreToolUse）が実行前に検証し、
 規約外のメッセージはブロックする**。人を止めるほどの重みはないが、AI が規約を読み飛ばすのは
@@ -346,7 +346,7 @@ gh issue create \
   --template bug_report.yml          # 改善提案なら improvement.yml
 ```
 
-`bug_report.yml` には「テンプレートのバージョン / コミット」欄があるので、`git log` で派生元のコミットを把握して記入する。
+`bug_report.yml` には「派生元のコミット」欄があるので、`git log` で派生元のコミットハッシュを把握して記入する。
 重複を避けるため、作成前に必ず `gh issue list -R geckou/project-starter --search "<キーワード>"` で既存 Issue を確認する。
 
 `gh` CLI が使えない環境（Claude Code の Web / リモートセッション等）では、GitHub MCP ツール（Issue の検索・作成）で代替する。それも使えない場合は、Issue 本文の下書きを作成してユーザーに起票を依頼する。

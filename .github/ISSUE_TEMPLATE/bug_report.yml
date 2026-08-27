@@ -22,9 +22,9 @@ body:
   - type: input
     id: template-version
     attributes:
-      label: テンプレートのバージョン / コミット
-      description: 派生元のリリースタグ（Releases 参照）。タグ以前の派生ならコミットハッシュ
-      placeholder: 例) v0.3.0（タグ運用前なら production @ a1b2c3d）
+      label: 派生元のコミット
+      description: 派生元となったテンプレートのコミットハッシュ（派生プロジェクトで `git log` から確認）
+      placeholder: 例) production @ a1b2c3d
     validations:
       required: true
 
