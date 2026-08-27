@@ -266,7 +266,7 @@ yarn firebase:emulators
 | `yarn build`                     | 全アプリのビルド            |
 | `yarn build:functions`           | Functions のみビルド        |
 | `yarn test`                      | 全テスト実行                |
-| `yarn test:rules`                | Firestore ルールのテスト（エミュレーター経由） |
+| `yarn test:rules`                | Firestore / Storage ルールのテスト（エミュレーター経由） |
 | `yarn lint`                      | 全アプリの ESLint 実行      |
 | `yarn lint:fix`                  | ESLint の自動修正           |
 | `yarn format`                    | Prettier でフォーマット     |

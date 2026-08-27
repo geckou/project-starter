@@ -370,7 +370,7 @@ export async function onSubscriptionDowngraded(
 
 ```bash
 yarn test        # 型・Webhook・権利判定のユニットテスト
-yarn test:rules  # Firestore ルール（要 Firebase エミュレーター）
+yarn test:rules  # Firestore / Storage ルール（要 Firebase エミュレーター）
 ```
 
 決済まわりに手を入れたら、最低限これらが通ること:

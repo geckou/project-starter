@@ -120,7 +120,7 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 | 対象 | テスト内容 | 必須度 |
 |---|---|---|
 | API エンドポイント | 正常系 + 認証エラーの最低2ケース | 必須 |
-| Firestore ルール | 許可 / 拒否の各パターン（`yarn test:rules` で実行） | 必須 |
+| Firestore / Storage ルール | 許可 / 拒否の各パターン（`yarn test:rules` で実行） | 必須 |
 | 共有ユーティリティ | 入力バリエーション | 必須 |
 | Zustand Store | 状態変更の基本動作 | 推奨 |
 | UI コンポーネント | テスト不要（Figma + 目視確認） | - |

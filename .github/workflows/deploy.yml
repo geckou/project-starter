@@ -123,8 +123,11 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools@14
 
-      - name: Firestore Rules Test
-        run: yarn test:rules
+      # yarn test:rules ではなくスクリプトを直接呼ぶ。
+      # ルート package.json は Template Sync の対象外なので、yarn 経由だと
+      # 派生プロジェクトでは古いコマンド（firestore のみ）のまま実行されてしまう
+      - name: Firestore / Storage Rules Test
+        run: bash scripts/test-rules.sh
 
       # ここでビルドが通ることを確認する。デプロイ時の成果物は
       # firebase deploy 側（functions の predeploy / hosting のフレームワークアダプタ）が
@@ -142,7 +145,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: |
-          ALL="functions,firestore,hosting"
+          ALL="functions,firestore,storage,hosting"
 
           # workflow_dispatch や新規ブランチの初回 push では基準コミットが無い。
           # 判定できないときは絞らずに全部デプロイする（取りこぼしを作らないため）
@@ -161,6 +164,7 @@ jobs:
           NEED_FUNCTIONS=false
           NEED_HOSTING=false
           NEED_FIRESTORE=false
+          NEED_STORAGE=false
           # 影響範囲を特定できないファイル（ルート設定・packages/ 等）が
           # 含まれていたら、絞らずに全部デプロイする
           GLOBAL=false
@@ -173,9 +177,7 @@ jobs:
               # Mobile は Firebase のデプロイ対象ではない（EAS 経由で配信する）
               apps/mobile/*) ;;
               firestore.rules | firestore.indexes.json) NEED_FIRESTORE=true ;;
-              # storage.rules は deploy.sh の対象外なので、ここでも対象にしない。
-              # そもそもデプロイされていないこと自体が別の問題（#109）
-              storage.rules) ;;
+              storage.rules) NEED_STORAGE=true ;;
               .github/* | .claude/* | .vscode/*) ;;
               *.md | LICENSE | .editorconfig) ;;
               *) GLOBAL=true ;;
@@ -187,15 +189,17 @@ jobs:
           if [ "$GLOBAL" = true ]; then
             NEED_FUNCTIONS=true
             NEED_HOSTING=true
-            # firestore.rules 自体が変わっていなくても、firebase.json の
-            # firestore 設定（rules / indexes の参照先）や .firebaserc の変更で
-            # デプロイ内容が変わりうるため、ここでは firestore も対象にする
+            # firestore.rules / storage.rules 自体が変わっていなくても、
+            # firebase.json の設定（rules / indexes の参照先）や .firebaserc の
+            # 変更でデプロイ内容が変わりうるため、ルール系も対象にする
             NEED_FIRESTORE=true
+            NEED_STORAGE=true
           fi
 
           TARGETS=""
           if [ "$NEED_FUNCTIONS" = true ]; then TARGETS="${TARGETS},functions"; fi
           if [ "$NEED_FIRESTORE" = true ]; then TARGETS="${TARGETS},firestore"; fi
+          if [ "$NEED_STORAGE" = true ]; then TARGETS="${TARGETS},storage"; fi
           if [ "$NEED_HOSTING" = true ]; then TARGETS="${TARGETS},hosting"; fi
           TARGETS="${TARGETS#,}"
 

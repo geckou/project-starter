@@ -72,8 +72,11 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools@14
 
-      - name: Firestore Rules Test
-        run: yarn test:rules
+      # yarn test:rules ではなくスクリプトを直接呼ぶ。
+      # ルート package.json は Template Sync の対象外なので、yarn 経由だと
+      # 派生プロジェクトでは古いコマンド（firestore のみ）のまま実行されてしまう
+      - name: Firestore / Storage Rules Test
+        run: bash scripts/test-rules.sh
 
       - name: Build (Web)
         run: yarn build --filter=@geckou/web

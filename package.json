@@ -37,7 +37,7 @@
     "deploy:staging": "bash scripts/deploy.sh staging",
     "deploy:production": "bash scripts/deploy.sh production",
     "prepare": "husky",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-rules-test --config firebase.rules-test.json \"vitest run tests/firestore-rules.test.ts\""
+    "test:rules": "bash scripts/test-rules.sh"
   },
   "resolutions": {
     "tar": ">=7.5.11",
