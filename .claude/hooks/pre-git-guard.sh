@@ -1,12 +1,9 @@
 #!/usr/bin/env sh
 # PreToolUse (Bash) フック: CLAUDE.md「Git ブランチ運用」「コミットメッセージ規約」を
-# 機械的に強制する（memory/evolution.md の Lv.4 = 強制実行）。
+# 実行前に検証する（memory/evolution.md の Lv.4 = 強制実行）。
 #
-# CLAUDE.md に書いてあるだけのルールは読み飛ばされうるため、
-# 違反コマンドが実行される前にブロックして理由を返す。
-#
-# - 機械的に白黒つく違反   -> exit 2 でブロック（Claude が自力で修正して再実行できる）
-# - グレーゾーン（例外あり） -> permissionDecision: ask でユーザーに承認を求める
+# 機械的に白黒つく違反は deny（exit 2 でブロック。Claude が自力で直して再実行できる）、
+# 例外がありうる操作は ask（ユーザーに承認を求める）で扱う。
 
 command -v jq >/dev/null 2>&1 || exit 0
 
@@ -14,19 +11,42 @@ input=$(cat)
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
 
 [ -z "$cmd" ] && exit 0
+
+# heredoc の本文は、他のプログラムへ渡されるデータ（ファイルの中身、スクリプト、
+# ドキュメント）であって実行される git コマンドではないため、検査対象から外す。
+# ここを見てしまうと、コマンド例を含むドキュメントやスクリプトを書けなくなる。
+# 例外は 2 つ:
+#   - commit -m "$(cat <<'EOF' ...)" -> 本文はコミットメッセージそのものなので検査する
+#   - sh / bash <<'EOF' ...          -> 本文は実際に実行されるので検査する
+cmd=$(printf '%s' "$cmd" | awk '
+  in_body {
+    if ($0 == marker) { in_body = 0 }
+    next
+  }
+  {
+    print
+    if (match($0, /<<-?[[:space:]]*"?'"'"'?[A-Za-z_][A-Za-z_0-9]*'"'"'?"?/) &&
+        $0 !~ /git[[:space:]]+commit/ &&
+        $0 !~ /(^|[[:space:]|;&(])(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) {
+      marker = substr($0, RSTART, RLENGTH)
+      sub(/^<<-?[[:space:]]*/, "", marker)
+      gsub(/["'"'"']/, "", marker)
+      in_body = 1
+    }
+  }
+')
+
 printf '%s' "$cmd" | grep -q 'git' || exit 0
 git rev-parse --git-dir >/dev/null 2>&1 || exit 0
 
 TYPES='feat|fix|refactor|style|docs|test|chore'
 DOC='詳細は CLAUDE.md「Git ブランチ運用」/ .claude/docs/git-workflow.md を参照。'
 
-# 実行をブロックし、理由を Claude に返す
 deny() {
   printf '%s\n%s\n' "$1" "$DOC" >&2
   exit 2
 }
 
-# ユーザーに承認を求める（例外がありうる操作）
 ask() {
   jq -n --arg r "$1
 $DOC" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
@@ -39,12 +59,9 @@ current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 
 # --- 検証のスキップ禁止 -------------------------------------------------
 # husky（commitlint / lint-staged）を迂回されるとコミット規約が無力化する
-if has '(^|[[:space:]])git[[:space:]]+(commit|push)' && has '(^|[[:space:]])--no-verify([[:space:]]|$)'; then
-  deny '--no-verify は使用できません。husky の commitlint / lint-staged は規約の実体です。失敗したら迂回せず原因を直してください。'
-fi
-
-if has '(^|[[:space:]])git[[:space:]]+commit[[:space:]]+-n([[:space:]]|$)'; then
-  deny 'git commit -n（--no-verify）は使用できません。commitlint を通るメッセージに修正してください。'
+if { has '(^|[[:space:]])git[[:space:]]+(commit|push)' && has '(^|[[:space:]])--no-verify([[:space:]]|$)'; } ||
+  has '(^|[[:space:]])git[[:space:]]+commit[[:space:]]+-n([[:space:]]|$)'; then
+  deny '--no-verify / commit -n による検証スキップは禁止です。husky の commitlint / lint-staged が規約の実体なので、失敗したら迂回せず原因を直してください。'
 fi
 
 # --- コミット -----------------------------------------------------------
@@ -69,18 +86,13 @@ fi
 
 # --- push ---------------------------------------------------------------
 if has '(^|[[:space:]])git[[:space:]]+push'; then
-  # push 先が production
+  # 明示指定と、production 上での引数なし push（= 現在ブランチへの push）の両方を見る
   if has '(^|[[:space:]])git[[:space:]]+push[^|;&]*[[:space:]]production([[:space:]]|$)' ||
-    has '(^|[[:space:]])git[[:space:]]+push[^|;&]*:production([[:space:]]|$)'; then
+    has '(^|[[:space:]])git[[:space:]]+push[^|;&]*:production([[:space:]]|$)' ||
+    { [ "$current" = "production" ] && has '(^|[[:space:]])git[[:space:]]+push[[:space:]]*($|[&|;])'; }; then
     deny 'production への直接 push は禁止です（PR 必須）。'
   fi
 
-  # 引数なし push（= 現在ブランチへの push）で現在が production
-  if [ "$current" = "production" ] && has '(^|[[:space:]])git[[:space:]]+push[[:space:]]*($|[&|;])'; then
-    deny 'production への直接 push は禁止です（PR 必須）。'
-  fi
-
-  # 共有ブランチへの force push
   if has '(--force([[:space:]]|$)|--force-with-lease|(^|[[:space:]])-f([[:space:]]|$))' &&
     { has '[[:space:]](production|release/[^[:space:]]+)([[:space:]]|$)' || case "$current" in production | release/*) true ;; *) false ;; esac; }; then
     deny 'production / release/* への force push は禁止です。'

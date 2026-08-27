@@ -40,10 +40,6 @@ fi
 if [ -n "$releases" ]; then
   echo "- 進行中のリリースブランチ:"
   printf '%s\n' "$releases" | sed 's/^/  - /'
-  echo "  → 新しく作業ブランチを切るときは、このリリースに載せる作業かどうかを確認すること（載せるなら \`git merge origin/<release>\`）。"
 else
   echo "- 進行中のリリースブランチ: なし"
 fi
-
-echo
-echo "作業ブランチは production から切る。ブランチ／コミットの規約は .claude/hooks/pre-git-guard.sh が実行前に検証する。"
