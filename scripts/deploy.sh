@@ -29,20 +29,27 @@ echo ""
 bash scripts/use-env.sh "${ENV}"
 echo ""
 
-# デプロイ前チェック
-echo "[check] 型チェック..."
-yarn type-check
+# デプロイ前チェック。
+# CI では同じチェックをワークフロー側で実行済みなので SKIP_CHECKS=1 で省略する。
+# ローカル実行では既定で走る（環境変数を明示的に立てない限りスキップされない）
+if [ "${SKIP_CHECKS:-0}" = "1" ]; then
+  echo "[skip] SKIP_CHECKS=1 のためデプロイ前チェックを省略します（CI で実行済み）"
+  echo ""
+else
+  echo "[check] 型チェック..."
+  yarn type-check
 
-echo "[check] Lint..."
-yarn lint
+  echo "[check] Lint..."
+  yarn lint
 
-echo "[check] テスト..."
-yarn test
+  echo "[check] テスト..."
+  yarn test
 
-echo "[check] ビルド..."
-yarn build
+  echo "[check] ビルド..."
+  yarn build
 
-echo ""
+  echo ""
+fi
 
 # workspace 依存を一時削除（Cloud Build が npm registry から取得しようとするのを防ぐ）
 # git checkout での復元はユーザーの未コミット変更ごと破棄してしまうため、
@@ -99,19 +106,61 @@ deploy_hosting_per_target() {
   fi
 }
 
-case "$DEPLOY_ONLY" in
-  hosting)
-    deploy_hosting_per_target
-    ;;
-  "")
-    # 全体デプロイ: hosting 以外を先に、hosting はターゲットごとに
-    firebase deploy --only functions,firestore --force
-    deploy_hosting_per_target
-    ;;
-  *)
-    firebase deploy --only "$DEPLOY_ONLY" --force
-    ;;
-esac
+# デプロイ対象（カンマ区切り）。未指定なら従来どおり functions・firestore・hosting。
+# CI は変更差分から必要なターゲットだけを渡してくる（.github/workflows/deploy.yml）
+TARGETS="${DEPLOY_ONLY:-functions,firestore,hosting}"
+
+DEPLOY_ALL_HOSTING=false
+HOSTING_TARGETS=()
+OTHER_TARGETS=""
+
+IFS=',' read -ra REQUESTED_TARGETS <<< "$TARGETS"
+for target in "${REQUESTED_TARGETS[@]}"; do
+  # 前後の空白を除去する（"functions, hosting" のような指定に備える）
+  target="${target#"${target%%[![:space:]]*}"}"
+  target="${target%"${target##*[![:space:]]}"}"
+  if [ -z "$target" ]; then
+    continue
+  fi
+
+  case "$target" in
+    hosting)
+      # firebase.json のターゲット全部。個別デプロイは下の関数が担当する
+      DEPLOY_ALL_HOSTING=true
+      ;;
+    hosting:*)
+      # hosting:<site> の個別指定。複数まとめて firebase へ渡すと
+      # deploy_hosting_per_target が回避しているハングの条件を満たすため、
+      # ここでも 1 ターゲットずつに分けて実行する
+      HOSTING_TARGETS+=("$target")
+      ;;
+    *)
+      # functions:api のような個別指定はそのまま firebase へ渡す
+      OTHER_TARGETS="${OTHER_TARGETS:+${OTHER_TARGETS},}${target}"
+      ;;
+  esac
+done
+
+if [ -z "$OTHER_TARGETS" ] &&
+  [ "$DEPLOY_ALL_HOSTING" = false ] &&
+  [ ${#HOSTING_TARGETS[@]} -eq 0 ]; then
+  echo "[error] デプロイ対象が空です（--only の値を確認してください）"
+  exit 1
+fi
+
+if [ -n "$OTHER_TARGETS" ]; then
+  echo "[deploy] ${OTHER_TARGETS}..."
+  firebase deploy --only "$OTHER_TARGETS" --force
+fi
+
+if [ "$DEPLOY_ALL_HOSTING" = true ]; then
+  deploy_hosting_per_target
+fi
+
+for hosting_target in ${HOSTING_TARGETS[@]+"${HOSTING_TARGETS[@]}"}; do
+  echo "[deploy] ${hosting_target}..."
+  firebase deploy --only "$hosting_target" --force
+done
 
 echo ""
 echo "=== デプロイ完了: ${ENV} ==="
