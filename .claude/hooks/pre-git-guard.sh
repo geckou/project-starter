@@ -20,7 +20,10 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
 #   - sh / bash <<'EOF' ...          -> 本文は実際に実行されるので検査する
 cmd=$(printf '%s' "$cmd" | awk '
   in_body {
-    if ($0 == marker) { in_body = 0 }
+    line = $0
+    # <<- 形式は終了マーカー行の先頭タブを許容する
+    if (tab_ok) { sub(/^\t+/, "", line) }
+    if (line == marker) { in_body = 0 }
     next
   }
   {
@@ -29,6 +32,7 @@ cmd=$(printf '%s' "$cmd" | awk '
         $0 !~ /git[[:space:]]+commit/ &&
         $0 !~ /(^|[[:space:]|;&(])(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) {
       marker = substr($0, RSTART, RLENGTH)
+      tab_ok = (substr(marker, 1, 3) == "<<-")
       sub(/^<<-?[[:space:]]*/, "", marker)
       gsub(/["'"'"']/, "", marker)
       in_body = 1
@@ -76,12 +80,39 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
       ;;
   esac
 
-  # メッセージをインラインで渡している場合のみ形式を検証する
-  # （--amend --no-edit のようなメッセージ再利用は対象外）
+  msg_ng="コミットメッセージ規約違反です。'<type>: <description>' 形式にしてください（type: feat, fix, refactor, style, docs, test, chore）。例: 'feat: ユーザープロフィール画面を追加'"
+
+  # メッセージの渡し方は -m / --message と -F / --file の 2 通り。
+  # どちらも検証する（--amend --no-edit のようなメッセージ再利用は対象外）。
   if has '(^|[[:space:]])(-m|--message)([[:space:]]|=)'; then
-    if ! has "(^|[[:space:]\"'])($TYPES)(\([^)]+\))?: [^[:space:]]"; then
-      deny "コミットメッセージ規約違反です。'<type>: <description>' 形式にしてください（type: feat, fix, refactor, style, docs, test, chore）。例: 'feat: ユーザープロフィール画面を追加'"
+    has "(^|[[:space:]\"'])($TYPES)(\([^)]+\))?: [^[:space:]]" || deny "$msg_ng"
+  fi
+
+  if has '(^|[[:space:]])(-F|--file)([[:space:]]|=)'; then
+    msg_file=$(printf '%s' "$cmd" |
+      grep -oE '(^|[[:space:]])(-F|--file)[[:space:]=]+[^[:space:];&|]+' |
+      head -1 | sed -E 's/.*(-F|--file)[[:space:]=]+//')
+
+    # フックはコマンド文字列をそのまま見るため、変数や置換を含むパスは展開されない。
+    # 検証できないものを黙って通すと素通りの経路になるので、リテラルのパスを求める。
+    case "$msg_file" in
+      *'$'* | *'`'* | '~'*)
+        deny "コミットメッセージのファイル指定に変数・置換・~ が含まれるため、規約を検証できません。リテラルのパスで渡すか、-m でメッセージを渡してください: $msg_file"
+        ;;
+    esac
+
+    [ -r "$msg_file" ] ||
+      deny "コミットメッセージのファイル '$msg_file' が読めないため規約を検証できません。先にファイルを作成するか、-m でメッセージを渡してください。"
+
+    if ! grep -m1 -v '^[[:space:]]*$' "$msg_file" |
+      grep -Eq "^($TYPES)(\([^)]+\))?: [^[:space:]]"; then
+      deny "$msg_ng（'$msg_file' の1行目）"
     fi
+  fi
+
+  # -t / --template はエディタ起動前提でメッセージを事前に検証できない
+  if has '(^|[[:space:]])(-t|--template)([[:space:]]|=)'; then
+    deny "-t / --template は使用できません。メッセージを事前に検証できないため、-m または -F でメッセージを渡してください。"
   fi
 fi
 
