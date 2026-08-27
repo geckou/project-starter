@@ -27,14 +27,31 @@ function getAllowedPriceIds(): string[] {
     .filter((priceId) => priceId !== '')
 }
 
+/** getBilling が参照する env 一式。テストでの差し替えをキャッシュ無効化で拾う */
+const BILLING_ENV_KEYS = [
+  'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET',
+  'STRIPE_PRICE_IDS',
+  'STRIPE_SUCCESS_URL',
+  'STRIPE_CANCEL_URL',
+  'STRIPE_PORTAL_RETURN_URL',
+  'REVENUECAT_WEBHOOK_AUTH',
+  'SYNC_SUBSCRIPTION_CLAIMS',
+] as const
+
+function currentEnvKey(): string {
+  return BILLING_ENV_KEYS.map((key) => process.env[key] ?? '').join('\u0000')
+}
+
 let cached: Billing | null = null
-let cachedStripeKey: string | null = null
+let cachedEnvKey: string | null = null
 
 export function getBilling(): Billing {
   const secretKey = process.env.STRIPE_SECRET_KEY ?? ''
+  const envKey = currentEnvKey()
 
-  // 環境変数が差し替わった場合（主にテスト）に備えてキーの変化を見る
-  if (cached && cachedStripeKey === secretKey) return cached
+  // 環境変数が差し替わった場合（主にテスト）に備えて変化を見る
+  if (cached && cachedEnvKey === envKey) return cached
 
   cached = createBilling({
     firestore: getFirestore(),
@@ -58,7 +75,7 @@ export function getBilling(): Billing {
     onSubscriptionUpgraded,
     onSubscriptionDowngraded,
   })
-  cachedStripeKey = secretKey
+  cachedEnvKey = envKey
 
   return cached
 }

@@ -29,7 +29,8 @@ yarn setup
 ワークスペース内部のスコープ `@geckou/*` を `@<project-name>/*` に一括置換する。
 
 > ⚠️ **`@geckou/ui-react`・`@geckou/ui-core`・`@geckou/billing` は置換しない。**
-> この 2 つは npm から取得する外部パッケージ（[`geckou/ui`](https://github.com/geckou/ui)）であり、
+> これらは npm から取得する外部パッケージ（`ui-react` / `ui-core` は [`geckou/ui`](https://github.com/geckou/ui)、
+> `billing` は [`geckou/kit`](https://github.com/geckou/kit) 管理）であり、
 > リネームすると依存が解決できなくなる。下の手順はこの 3 つを除外している。
 
 対象は package.json の name / 依存だけでなく、以下すべてに及ぶ:
