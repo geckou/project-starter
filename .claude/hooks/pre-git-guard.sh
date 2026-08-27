@@ -58,10 +58,11 @@ has() { printf '%s' "$cmd" | grep -Eq "$1"; }
 current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 
 # --- 検証のスキップ禁止 -------------------------------------------------
-# husky（commitlint / lint-staged）を迂回されるとコミット規約が無力化する
+# lint-staged（pre-commit のフォーマット / lint）を迂回されると壊れたコードが入る。
+# commitlint 側は警告のみだが、迂回すればメッセージ規約への気付きも失われる。
 if { has '(^|[[:space:]])git[[:space:]]+(commit|push)' && has '(^|[[:space:]])--no-verify([[:space:]]|$)'; } ||
   has '(^|[[:space:]])git[[:space:]]+commit[[:space:]]+-n([[:space:]]|$)'; then
-  deny '--no-verify / commit -n による検証スキップは禁止です。husky の commitlint / lint-staged が規約の実体なので、失敗したら迂回せず原因を直してください。'
+  deny '--no-verify / commit -n による検証スキップは禁止です。pre-commit の lint-staged（フォーマット / lint）まで飛ばしてしまうため、失敗したら迂回せず原因を直してください。'
 fi
 
 # --- コミット -----------------------------------------------------------

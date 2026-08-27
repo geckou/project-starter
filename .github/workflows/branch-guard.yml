@@ -9,13 +9,13 @@ name: Branch Guard
 
 on:
   pull_request:
-    branches: [production, 'release/**']
+    branches: [production]
 
 jobs:
   guard:
     runs-on: ubuntu-latest
     # テンプレート本体（geckou/project-starter）はマージルールの適用外（CLAUDE.md 参照）
-    if: github.base_ref == 'production' && github.repository != 'geckou/project-starter'
+    if: github.repository != 'geckou/project-starter'
 
     steps:
       - name: Check head branch
@@ -33,30 +33,3 @@ jobs:
               exit 1
               ;;
           esac
-
-  # コミットメッセージ規約の最終防衛線。
-  # ローカルの husky（commit-msg）は node_modules 未インストールの環境や
-  # --no-verify で迂回されうるため、CI 側でも PR のコミット全件を検証する。
-  # このジョブはテンプレート本体にも適用する（規約はマージルールと別）。
-  commit-messages:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          # commitlint が base..head の範囲を辿れるよう全履歴を取得する
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-
-      - name: Commit Message Lint
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          npx --yes \
-            --package @commitlint/cli@21 \
-            --package @commitlint/config-conventional@21 \
-            commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose

@@ -24,5 +24,8 @@ CLAUDE.md に書かれている Git 運用ルールが繰り返し無視され�
 - 2026-08-27: ユーザーから「作業内容の確認を最新ブランチでしたり、コミットルールをたびたび無視する。どう徹底させるか」との指摘。
   Lv.4 へ昇格し、`.claude/hooks/pre-git-guard.sh`（PreToolUse でブロック）、
   `.claude/hooks/session-start-git-context.sh`（SessionStart で自動 fetch）、
-  `.claude/hooks/post-git-branch-reminder.sh`（release マージ確認）、
-  および CI の commit-messages ジョブを追加した。
+  `.claude/hooks/post-git-branch-reminder.sh`（release マージ確認）を追加した。
+- 2026-08-27: 上記の作業中に #114 が production へマージされ、コミットメッセージ規約は
+  「人を止めるほどの重みはない」として警告のみに変更された。これを受けて強制範囲を
+  「人間は警告（husky）／AI はブロック（PreToolUse）」に整理し、
+  当初入れた CI の commit-messages ジョブは取り下げた。
