@@ -114,16 +114,36 @@ if [ -n "$newbranch" ]; then
   case "$newbranch" in
     feat/* | fix/* | refactor/* | test/* | docs/* | release/* | hotfix/* | claude/*) ;;
     *)
-      deny "ブランチ命名規則違反です: $newbranch。feat/ fix/ refactor/ test/ docs/ release/ hotfix/ のいずれかで始まるケバブケース名にしてください。"
+      deny "ブランチ命名規則違反です: $newbranch。feat/ fix/ refactor/ test/ docs/ release/ hotfix/ のいずれかで始めてください。"
+      ;;
+  esac
+
+  # プレフィックスの後ろはケバブケース（小文字英数字とハイフン）。
+  # release/hotfix はバージョン表記（1.0.0 / 1.0.0-rc1）を使うためドットも許す。
+  branch_name=${newbranch#*/}
+  case "$newbranch" in
+    claude/*) ;; # ハーネスが生成するリモートセッション用ブランチは対象外
+    release/* | hotfix/*)
+      printf '%s' "$branch_name" | grep -Eq '^[a-z0-9]+([.-][a-z0-9]+)*$' ||
+        deny "ブランチ名が命名規則に合いません: $newbranch。release/ hotfix/ の後ろはバージョン表記（例: release/1.0.0）にしてください。"
+      ;;
+    *)
+      printf '%s' "$branch_name" | grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$' ||
+        deny "ブランチ名はケバブケース（小文字英数字とハイフン区切り）にしてください: $newbranch。例: feat/user-profile、チケット番号があれば feat/123-user-profile"
       ;;
   esac
 
   # 最新の remote 情報を持たずに切ると、進行中の release/* を見落として
   # 何ヶ月も古い土台の上で作業を始めてしまう
   gitdir=$(git rev-parse --git-dir 2>/dev/null)
-  if [ -z "$(find "$gitdir/FETCH_HEAD" -mmin -15 2>/dev/null)" ]; then
-    deny "直近15分以内に fetch していません。git branch -a はローカルの参照しか表示しないため、先に次を実行して進行中のリリースを確認してください:
+  fetch_hint="先に次を実行して、進行中のリリースを確認してください:
   git fetch origin --prune && git branch -r --list 'origin/release/*'"
+
+  if [ ! -e "$gitdir/FETCH_HEAD" ]; then
+    deny "このリポジトリでまだ一度も fetch していません。$fetch_hint"
+  # find が使えない環境では鮮度を判定できないので、ブロックせず通す
+  elif fresh=$(find "$gitdir/FETCH_HEAD" -mmin -15 2>/dev/null) && [ -z "$fresh" ]; then
+    deny "直近15分以内に fetch していません。git branch -a はローカルの参照しか表示しないため、$fetch_hint"
   fi
 
   # 分岐元は production（例外: QA 修正の fix/* は release/* から切る）
@@ -140,7 +160,7 @@ if [ -n "$newbranch" ]; then
   base=${base#refs/heads/}
 
   case "$newbranch" in
-    claude/*) ;; # ハーネスが生成するリモートセッション用ブランチは対象外
+    claude/*) ;;
     fix/*)
       case "$base" in
         production | release/*) ;;
