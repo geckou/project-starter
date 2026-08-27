@@ -11,6 +11,11 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+# emulators:exec は渡したコマンドを /bin/sh で実行するため、yarn 経由の
+# 起動でないと node_modules/.bin が PATH に入らず vitest が見つからない。
+# CI は yarn を介さずこのスクリプトを直接呼ぶので、ここで明示的に通す
+export PATH="$PWD/node_modules/.bin:$PATH"
+
 firebase emulators:exec \
   --only firestore,storage \
   --project demo-rules-test \
