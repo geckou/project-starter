@@ -105,8 +105,11 @@ jobs:
       - name: Lint
         run: yarn lint
 
+      # yarn format:check ではなくスクリプトを直接呼ぶ。
+      # ルート package.json は Template Sync の対象外なので、yarn 経由だと
+      # 派生プロジェクトでは古いコマンド（ビルド前の prettier）のまま実行されてしまう
       - name: Format Check
-        run: yarn format:check
+        run: bash scripts/format.sh --check
 
       - name: Test
         run: yarn test

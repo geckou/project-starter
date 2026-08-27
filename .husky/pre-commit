@@ -1,2 +1,10 @@
 #!/usr/bin/env sh
+
+# lint-staged は prettier を直接呼ぶため（yarn format 経由ではない）、
+# ここで packages/ をビルドしておかないと prettier-plugin-tailwindcss が
+# apps/web/tailwind.config.ts を解決できず、Tailwind のクラスを誤った順序に
+# 書き換えてコミットに混入させる。エラーにはならないので気付けない（#110）。
+# turbo のキャッシュが効くので、変更が無ければ実質ノーコスト
+yarn turbo build --filter='./packages/*'
+
 yarn lint-staged
