@@ -67,7 +67,7 @@ jobs:
 
       # Firestore ルールテスト（turbo のタスクグラフ外なので明示的に実行する）
       # エミュレーターの実行に Java が必要。メジャー更新での破壊を防ぐため firebase-tools は固定
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
