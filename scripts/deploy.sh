@@ -110,7 +110,8 @@ deploy_hosting_per_target() {
 # CI は変更差分から必要なターゲットだけを渡してくる（.github/workflows/deploy.yml）
 TARGETS="${DEPLOY_ONLY:-functions,firestore,hosting}"
 
-DEPLOY_HOSTING=false
+DEPLOY_ALL_HOSTING=false
+HOSTING_TARGETS=()
 OTHER_TARGETS=""
 
 IFS=',' read -ra REQUESTED_TARGETS <<< "$TARGETS"
@@ -122,16 +123,27 @@ for target in "${REQUESTED_TARGETS[@]}"; do
     continue
   fi
 
-  if [ "$target" = "hosting" ]; then
-    # framework-backed hosting はターゲットごとに分けて実行する必要がある
-    DEPLOY_HOSTING=true
-  else
-    # functions:api や hosting:<site> のような個別指定はそのまま firebase へ渡す
-    OTHER_TARGETS="${OTHER_TARGETS:+${OTHER_TARGETS},}${target}"
-  fi
+  case "$target" in
+    hosting)
+      # firebase.json のターゲット全部。個別デプロイは下の関数が担当する
+      DEPLOY_ALL_HOSTING=true
+      ;;
+    hosting:*)
+      # hosting:<site> の個別指定。複数まとめて firebase へ渡すと
+      # deploy_hosting_per_target が回避しているハングの条件を満たすため、
+      # ここでも 1 ターゲットずつに分けて実行する
+      HOSTING_TARGETS+=("$target")
+      ;;
+    *)
+      # functions:api のような個別指定はそのまま firebase へ渡す
+      OTHER_TARGETS="${OTHER_TARGETS:+${OTHER_TARGETS},}${target}"
+      ;;
+  esac
 done
 
-if [ -z "$OTHER_TARGETS" ] && [ "$DEPLOY_HOSTING" = false ]; then
+if [ -z "$OTHER_TARGETS" ] &&
+  [ "$DEPLOY_ALL_HOSTING" = false ] &&
+  [ ${#HOSTING_TARGETS[@]} -eq 0 ]; then
   echo "[error] デプロイ対象が空です（--only の値を確認してください）"
   exit 1
 fi
@@ -141,9 +153,14 @@ if [ -n "$OTHER_TARGETS" ]; then
   firebase deploy --only "$OTHER_TARGETS" --force
 fi
 
-if [ "$DEPLOY_HOSTING" = true ]; then
+if [ "$DEPLOY_ALL_HOSTING" = true ]; then
   deploy_hosting_per_target
 fi
+
+for hosting_target in ${HOSTING_TARGETS[@]+"${HOSTING_TARGETS[@]}"}; do
+  echo "[deploy] ${hosting_target}..."
+  firebase deploy --only "$hosting_target" --force
+done
 
 echo ""
 echo "=== デプロイ完了: ${ENV} ==="

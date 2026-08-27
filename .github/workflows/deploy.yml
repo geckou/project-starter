@@ -185,10 +185,12 @@ jobs:
           EOF
 
           if [ "$GLOBAL" = true ]; then
-            # firestore のルール・インデックスは独立したファイルなので、
-            # 共通ファイルの変更では影響を受けない
             NEED_FUNCTIONS=true
             NEED_HOSTING=true
+            # firestore.rules 自体が変わっていなくても、firebase.json の
+            # firestore 設定（rules / indexes の参照先）や .firebaserc の変更で
+            # デプロイ内容が変わりうるため、ここでは firestore も対象にする
+            NEED_FIRESTORE=true
           fi
 
           TARGETS=""
