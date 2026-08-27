@@ -167,6 +167,8 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 ## Git ブランチ運用
 
+> このセクションのルールは `.claude/hooks/pre-git-guard.sh` が実行前に検証し、違反コマンドはブロックされる（→「フック（強制ルール）」）。
+
 デフォルトブランチは `production`（`main` ではない）。全てのブランチは `production` から切る。
 
 作業開始時は必ず次の順で行う。
@@ -211,6 +213,10 @@ commitlint（`.husky/commit-msg`）が検証するが、**規約違反は警告�
 Release Please が conventional commits を解釈してバージョンと CHANGELOG を決めるため、
 規約から外れたコミットはリリースノートに載らない。守る動機はそこにある。
 
+ただし **Claude のコミットは `.claude/hooks/pre-git-guard.sh`（PreToolUse）が実行前に検証し、
+規約外のメッセージはブロックする**。人を止めるほどの重みはないが、AI が規約を読み飛ばすのは
+機械的に防げるため（→「フック（強制ルール）」）。
+
 ### マージルール
 
 > **このリポジトリ（`geckou/project-starter` 本体）は以下のマージルールに従わない。**
@@ -226,6 +232,27 @@ Release Please が conventional commits を解釈してバージョンと CHANGE
 - `feat/*` 同士のマージは禁止
 
 詳細なリリースフロー・マルチ環境構成は `.claude/docs/git-workflow.md` を参照。
+
+## フック（強制ルール）
+
+CLAUDE.md に書いただけのルールは読み飛ばされうるため、**繰り返し破られるルールは Hook 化して機械的に強制する**（`memory/evolution.md` の Lv.4）。
+実体は `.claude/settings.json` + `.claude/hooks/`。
+
+| タイミング | フック | 内容 |
+|---|---|---|
+| SessionStart | `session-start-git-context.sh` | `git fetch origin --prune` を実行し、現在ブランチ・`origin/production` との差分・進行中の `release/*` を文脈に入れる（古い情報のまま作業を始めるのを防ぐ） |
+| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名・分岐元・fetch 鮮度・コミットメッセージ形式・`--no-verify` 迂回・`production` への直接 push を**実行前にブロック**。`release/*` への push はユーザー承認を求める |
+| PostToolUse (Bash) | `post-git-branch-reminder.sh` | ブランチ作成直後、進行中の `release/*` があればマージ要否の確認を促す |
+| PostToolUse (Edit/Write) | `post-edit-reminder.sh` | `firestore.rules` / `packages/shared` 変更時に検証コマンドをリマインド |
+| Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
+| Stop | `stop-roadmap-reminder.sh` | 作業があるのに `roadmap.md` 未更新ならリマインド |
+
+### ルールを追加したくなったら
+
+「また同じことを言っている」と感じたら、CLAUDE.md に文章を足すのではなく **Hook にする**。
+文章を足しても強制力は上がらない。判定が機械的に書けるなら Hook、手順が長いならスキル（`/new-skill`）にする。
+
+フックを外す・弱めるのは**ユーザーに理由を説明して確認を取ってから**行う。ブロックされたら、迂回ではなく指摘された内容を直す。
 
 ## スキル（スラッシュコマンド）
 

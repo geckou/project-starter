@@ -67,6 +67,16 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 マージせず `production` 起点のまま進める。この場合、対象リリースが決まった
 時点でそのブランチをマージする。
 
+### 機械的な強制
+
+上記の手順は Hook で強制される（`.claude/hooks/pre-git-guard.sh`）。ブランチ作成コマンドは次の場合に実行前ブロックされる。
+
+- 直近 15 分以内に fetch していない（= remote の情報が古い状態で切ろうとしている）
+- ブランチ名が命名規則（`feat/` `fix/` `refactor/` `test/` `docs/` `release/` `hotfix/`）に合わない
+- 分岐元が `production` でない（例外: `fix/*` は `release/*` からも可）
+
+セッション開始時には `.claude/hooks/session-start-git-context.sh` が自動で fetch し、進行中の `release/*` を文脈に載せる。
+
 > ⚠️ **作業開始前に必ず `git fetch origin --prune` を実行すること。**
 > `git branch -a` はローカルが持っている参照しか表示しない。fetch していないと
 > 進行中の `release/*` が見えず、「production しか無い」と誤認して
