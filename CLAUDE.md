@@ -207,6 +207,10 @@ git merge origin/release/<バージョン>     # そのリリースに載せる�
 
 `<type>: <description>` 形式。type: `feat`, `fix`, `refactor`, `style`, `docs`, `test`, `chore`
 
+commitlint（`.husky/commit-msg`）が検証するが、**規約違反は警告のみでコミットはブロックしない**。
+Release Please が conventional commits を解釈してバージョンと CHANGELOG を決めるため、
+規約から外れたコミットはリリースノートに載らない。守る動機はそこにある。
+
 ### マージルール
 
 > **このリポジトリ（`geckou/project-starter` 本体）は以下のマージルールに従わない。**

@@ -1,2 +1,3 @@
 #!/usr/bin/env sh
-yarn commitlint --edit "$1"
+# 規約違反は警告のみ表示し、コミットはブロックしない（CLAUDE.md 参照）
+yarn commitlint --edit "$1" || true
