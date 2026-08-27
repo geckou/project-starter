@@ -1,0 +1,147 @@
+#!/usr/bin/env sh
+# PreToolUse (Bash) フック: CLAUDE.md「Git ブランチ運用」「コミットメッセージ規約」を
+# 機械的に強制する（memory/evolution.md の Lv.4 = 強制実行）。
+#
+# CLAUDE.md に書いてあるだけのルールは読み飛ばされうるため、
+# 違反コマンドが実行される前にブロックして理由を返す。
+#
+# - 機械的に白黒つく違反   -> exit 2 でブロック（Claude が自力で修正して再実行できる）
+# - グレーゾーン（例外あり） -> permissionDecision: ask でユーザーに承認を求める
+
+command -v jq >/dev/null 2>&1 || exit 0
+
+input=$(cat)
+cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
+
+[ -z "$cmd" ] && exit 0
+printf '%s' "$cmd" | grep -q 'git' || exit 0
+git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+
+TYPES='feat|fix|refactor|style|docs|test|chore'
+DOC='詳細は CLAUDE.md「Git ブランチ運用」/ .claude/docs/git-workflow.md を参照。'
+
+# 実行をブロックし、理由を Claude に返す
+deny() {
+  printf '%s\n%s\n' "$1" "$DOC" >&2
+  exit 2
+}
+
+# ユーザーに承認を求める（例外がありうる操作）
+ask() {
+  jq -n --arg r "$1
+$DOC" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
+  exit 0
+}
+
+has() { printf '%s' "$cmd" | grep -Eq "$1"; }
+
+current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+# --- 検証のスキップ禁止 -------------------------------------------------
+# husky（commitlint / lint-staged）を迂回されるとコミット規約が無力化する
+if has '(^|[[:space:]])git[[:space:]]+(commit|push)' && has '(^|[[:space:]])--no-verify([[:space:]]|$)'; then
+  deny '--no-verify は使用できません。husky の commitlint / lint-staged は規約の実体です。失敗したら迂回せず原因を直してください。'
+fi
+
+if has '(^|[[:space:]])git[[:space:]]+commit[[:space:]]+-n([[:space:]]|$)'; then
+  deny 'git commit -n（--no-verify）は使用できません。commitlint を通るメッセージに修正してください。'
+fi
+
+# --- コミット -----------------------------------------------------------
+if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
+  case "$current" in
+    production)
+      deny "production への直接コミットは禁止です（PR 必須）。作業ブランチを切ってください。"
+      ;;
+    release/*)
+      deny "release/* への直接コミットは禁止です（push が staging への自動デプロイを発火するため）。fix/* を切って release へ PR でマージしてください。現在: $current"
+      ;;
+  esac
+
+  # メッセージをインラインで渡している場合のみ形式を検証する
+  # （--amend --no-edit のようなメッセージ再利用は対象外）
+  if has '(^|[[:space:]])(-m|--message)([[:space:]]|=)'; then
+    if ! has "(^|[[:space:]\"'])($TYPES)(\([^)]+\))?: [^[:space:]]"; then
+      deny "コミットメッセージ規約違反です。'<type>: <description>' 形式にしてください（type: feat, fix, refactor, style, docs, test, chore）。例: 'feat: ユーザープロフィール画面を追加'"
+    fi
+  fi
+fi
+
+# --- push ---------------------------------------------------------------
+if has '(^|[[:space:]])git[[:space:]]+push'; then
+  # push 先が production
+  if has '(^|[[:space:]])git[[:space:]]+push[^|;&]*[[:space:]]production([[:space:]]|$)' ||
+    has '(^|[[:space:]])git[[:space:]]+push[^|;&]*:production([[:space:]]|$)'; then
+    deny 'production への直接 push は禁止です（PR 必須）。'
+  fi
+
+  # 引数なし push（= 現在ブランチへの push）で現在が production
+  if [ "$current" = "production" ] && has '(^|[[:space:]])git[[:space:]]+push[[:space:]]*($|[&|;])'; then
+    deny 'production への直接 push は禁止です（PR 必須）。'
+  fi
+
+  # 共有ブランチへの force push
+  if has '(--force([[:space:]]|$)|--force-with-lease|(^|[[:space:]])-f([[:space:]]|$))' &&
+    { has '[[:space:]](production|release/[^[:space:]]+)([[:space:]]|$)' || case "$current" in production | release/*) true ;; *) false ;; esac; }; then
+    deny 'production / release/* への force push は禁止です。'
+  fi
+
+  # release/* への push は「ブランチ作成時」と「PR マージ」のみ許可（判別できないため確認する）
+  if has '(^|[[:space:]])git[[:space:]]+push[^|;&]*[[:space:]]release/' ||
+    { case "$current" in release/*) has '(^|[[:space:]])git[[:space:]]+push[[:space:]]*($|[&|;])' ;; *) false ;; esac; }; then
+    ask "release/* への push は staging への自動デプロイを発火します。ブランチ作成時または PR マージ以外の push は禁止です。実行してよいかユーザーに確認してください。"
+  fi
+fi
+
+# --- ブランチ作成 -------------------------------------------------------
+newbranch=$(printf '%s' "$cmd" |
+  grep -oE '(^|[[:space:]])git[[:space:]]+(checkout[[:space:]]+-b|switch[[:space:]]+-c)[[:space:]]+[^[:space:];&|]+' |
+  head -1 | awk '{print $NF}')
+
+if [ -n "$newbranch" ]; then
+  case "$newbranch" in
+    feat/* | fix/* | refactor/* | test/* | docs/* | release/* | hotfix/* | claude/*) ;;
+    *)
+      deny "ブランチ命名規則違反です: $newbranch。feat/ fix/ refactor/ test/ docs/ release/ hotfix/ のいずれかで始まるケバブケース名にしてください。"
+      ;;
+  esac
+
+  # 最新の remote 情報を持たずに切ると、進行中の release/* を見落として
+  # 何ヶ月も古い土台の上で作業を始めてしまう
+  gitdir=$(git rev-parse --git-dir 2>/dev/null)
+  if [ -z "$(find "$gitdir/FETCH_HEAD" -mmin -15 2>/dev/null)" ]; then
+    deny "直近15分以内に fetch していません。git branch -a はローカルの参照しか表示しないため、先に次を実行して進行中のリリースを確認してください:
+  git fetch origin --prune && git branch -r --list 'origin/release/*'"
+  fi
+
+  # 分岐元は production（例外: QA 修正の fix/* は release/* から切る）
+  base=$(printf '%s' "$cmd" |
+    grep -oE "(checkout[[:space:]]+-b|switch[[:space:]]+-c)[[:space:]]+$newbranch[[:space:]]+[^[:space:];&|]+" |
+    head -1 | awk '{print $NF}')
+  # 同一コマンド内で production へ切り替えてから分岐する（ドキュメントの手順）ケースを
+  # 現在ブランチ起点と誤判定しないよう、チェーンの前半を分岐元として扱う
+  if [ -z "$base" ] && has '(^|[[:space:]])git[[:space:]]+(checkout|switch)[[:space:]]+production([[:space:]]|$|&|;)'; then
+    base="production"
+  fi
+  [ -z "$base" ] && base="$current"
+  base=${base#origin/}
+  base=${base#refs/heads/}
+
+  case "$newbranch" in
+    claude/*) ;; # ハーネスが生成するリモートセッション用ブランチは対象外
+    fix/*)
+      case "$base" in
+        production | release/*) ;;
+        *) deny "fix/* は production または release/* から切ってください（現在の分岐元: $base）。" ;;
+      esac
+      ;;
+    *)
+      if [ "$base" != "production" ]; then
+        deny "作業ブランチは production から切ってください（現在の分岐元: $base）。release/* から切るとそのリリース行きに固定され、次のリリースへ回す選択ができなくなります。
+  git checkout production && git pull && git checkout -b $newbranch"
+      fi
+      ;;
+  esac
+fi
+
+exit 0

@@ -167,6 +167,9 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 ## Git ブランチ運用
 
+> このセクションのルールは **Hook で機械的に強制される**（`.claude/hooks/pre-git-guard.sh`）。
+> 違反したコマンドは実行前にブロックされ、理由が返る。詳細は「フック（強制ルール）」を参照。
+
 デフォルトブランチは `production`（`main` ではない）。全てのブランチは `production` から切る。
 
 作業開始時は必ず次の順で行う。
@@ -207,6 +210,14 @@ git merge origin/release/<バージョン>     # そのリリースに載せる�
 
 `<type>: <description>` 形式。type: `feat`, `fix`, `refactor`, `style`, `docs`, `test`, `chore`
 
+3層で強制する。**`--no-verify` による迂回は Hook でブロックされる。**
+
+| 層 | 実体 | 効く場面 |
+|---|---|---|
+| 実行前 | `.claude/hooks/pre-git-guard.sh`（PreToolUse） | Claude が commit コマンドを組み立てた瞬間 |
+| コミット時 | `.husky/commit-msg` → commitlint | 人間・AI 問わずローカルのコミット全般 |
+| PR 時 | `.github/workflows/branch-guard.yml` の `commit-messages` ジョブ | ローカルを迂回された場合の最終防衛線 |
+
 ### マージルール
 
 > **このリポジトリ（`geckou/project-starter` 本体）は以下のマージルールに従わない。**
@@ -222,6 +233,30 @@ git merge origin/release/<バージョン>     # そのリリースに載せる�
 - `feat/*` 同士のマージは禁止
 
 詳細なリリースフロー・マルチ環境構成は `.claude/docs/git-workflow.md` を参照。
+
+## フック（強制ルール）
+
+CLAUDE.md に書いただけのルールは読み飛ばされうるため、**繰り返し破られるルールは Hook 化して機械的に強制する**（`memory/evolution.md` の Lv.4）。
+実体は `.claude/settings.json` + `.claude/hooks/`。
+
+| タイミング | フック | 内容 |
+|---|---|---|
+| SessionStart | `session-start-git-context.sh` | `git fetch origin --prune` を実行し、現在ブランチ・`origin/production` との差分・進行中の `release/*` を文脈に入れる（古い情報のまま作業を始めるのを防ぐ） |
+| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名・分岐元・fetch 鮮度・コミットメッセージ形式・`--no-verify` 迂回・`production` への直接 push を**実行前にブロック**。`release/*` への push はユーザー承認を求める |
+| PostToolUse (Bash) | `post-git-branch-reminder.sh` | ブランチ作成直後、進行中の `release/*` があればマージ要否の確認を促す |
+| PostToolUse (Edit/Write) | `post-edit-reminder.sh` | `firestore.rules` / `packages/shared` 変更時に検証コマンドをリマインド |
+| Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
+| Stop | `stop-roadmap-reminder.sh` | 作業があるのに `roadmap.md` 未更新ならリマインド |
+
+### ルールを追加したくなったら
+
+「また同じことを言っている」と感じたら、CLAUDE.md に文章を足すのではなく **Hook にする**。
+文章を足しても強制力は上がらない。判定が機械的に書けるなら Hook、手順が長いならスキル（`/new-skill`）にする。
+
+### 注意
+
+- `pre-git-guard.sh` はコマンド文字列全体を検査するため、**シェルの heredoc でドキュメントを書く際に git のコマンド例を含めるとブロックされることがある**。ドキュメントの編集は Bash ではなく Edit / Write ツールで行う
+- フックを一時的に外したい場合は `.claude/settings.json` の該当エントリをコメントアウトするのではなく、**まずユーザーに理由を説明して確認を取る**
 
 ## スキル（スラッシュコマンド）
 

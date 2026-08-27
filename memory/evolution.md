@@ -75,4 +75,4 @@ status: active
 
 | 日付 | 元ファイル | 昇格先 | ルール内容 |
 |---|---|---|---|
-| - | - | - | - |
+| 2026-08-27 | `memory/long-term/git-and-commit-rules-ignored.md` | Hook（Lv.4） | Git のブランチ運用・コミットメッセージ規約を `.claude/hooks/pre-git-guard.sh` 等で実行前に強制する |
