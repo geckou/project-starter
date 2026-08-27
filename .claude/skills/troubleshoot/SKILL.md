@@ -39,6 +39,14 @@ yarn build         # ビルドエラー
 | `server-only` エラー    | サーバー専用モジュール違反   | import パスを確認。`firebase-admin` はサーバー専用                      |
 | `Module not found`      | パッケージ未インストール     | `yarn install` を実行。import パスを確認                                |
 
+#### フォーマット（Prettier / Tailwind）
+
+| 症状 | 原因 | 対処 |
+| ---- | ---- | ---- |
+| 触っていない `.tsx` で `format:check` が落ちる / コミットに `className` の並び替えだけの差分が混入する | `packages/shared` 未ビルド。`prettier-plugin-tailwindcss` が `apps/web/tailwind.config.ts`（`@geckou/shared/theme` を import）を解決できず、既定の Tailwind 設定にフォールバックしてクラスを別の順序に並べ替える | `yarn turbo build --filter='./packages/*'` を実行する。`yarn format` / `scripts/format.sh` / pre-commit フックはこれを自動で行う |
+
+`MODULE_NOT_FOUND` は Prettier の終了コードに影響しないため、**設定を解決できなかったことはエラーにならず、黙って誤った結果が返る**。ログに `code: 'MODULE_NOT_FOUND'` が出ていたらこれを疑う。
+
 #### テスト失敗
 
 | エラー                         | 原因                      | 対処                                                        |

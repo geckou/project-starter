@@ -209,13 +209,13 @@ git merge origin/release/<バージョン>     # そのリリースに載せる�
 
 `<type>: <description>` 形式。type: `feat`, `fix`, `refactor`, `style`, `docs`, `test`, `chore`
 
-3層で強制する。**`--no-verify` による迂回は Hook でブロックされる。**
+commitlint（`.husky/commit-msg`）が検証するが、**規約違反は警告のみでコミットはブロックしない**。
+Release Please が conventional commits を解釈してバージョンと CHANGELOG を決めるため、
+規約から外れたコミットはリリースノートに載らない。守る動機はそこにある。
 
-| 層 | 実体 | 効く場面 |
-|---|---|---|
-| 実行前 | `.claude/hooks/pre-git-guard.sh`（PreToolUse） | Claude が commit コマンドを組み立てた瞬間 |
-| コミット時 | `.husky/commit-msg` → commitlint | 人間・AI 問わずローカルのコミット全般 |
-| PR 時 | `.github/workflows/branch-guard.yml` の `commit-messages` ジョブ | ローカルを迂回された場合の最終防衛線 |
+ただし **Claude のコミットは `.claude/hooks/pre-git-guard.sh`（PreToolUse）が実行前に検証し、
+規約外のメッセージはブロックする**。人を止めるほどの重みはないが、AI が規約を読み飛ばすのは
+機械的に防げるため（→「フック（強制ルール）」）。
 
 ### マージルール
 

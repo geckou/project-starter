@@ -558,6 +558,10 @@ btn, msg, noti
 | `test`     | テスト追加・修正                 |
 | `chore`    | ビルド・設定変更                 |
 
+commitlint（`.husky/commit-msg`）が検証するが、**規約違反は警告のみでコミットはブロックしない**。
+Release Please が conventional commits を解釈してバージョンと CHANGELOG を決めるため、
+規約から外れたコミットはリリースノートに載らない。
+
 ### マージルール
 
 - `production` への直接 push は禁止（PR 必須）
