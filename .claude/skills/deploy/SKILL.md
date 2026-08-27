@@ -88,8 +88,15 @@ CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウ�
 ローカル実行を CI と揃えるため、一度だけ手で書き換える。
 
 ```json
-"test:rules": "bash scripts/test-rules.sh"
+"test:rules": "bash scripts/test-rules.sh",
+"format": "bash scripts/format.sh",
+"format:check": "bash scripts/format.sh --check"
 ```
 
-書き換えなくても CI は Storage ルールを検証するが、手元では Firestore しか検証されない。
+書き換えなくても CI は正しく動く（`ci.yml` / `deploy.yml` がスクリプトを直接呼ぶため）が、
+手元では `yarn test:rules` が Firestore しか検証せず、`yarn format` は
+`packages/` のビルド前に走って Tailwind のクラスを誤った順序に並べ替える（#110）。
+
+なお pre-commit フック（`.husky/pre-commit`）は同期対象なので、
+書き換えなくてもコミット時の書き換え事故は起きない。
 - 本番環境の `.env.production` の値が最新か確認する
