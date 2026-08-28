@@ -280,9 +280,13 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 
 ### フックを変更したら
 
-`pre-git-guard.sh` には回帰テストがある。フックを変更したら `yarn test:hooks`
-（実体は `scripts/test-hooks.sh`）を実行する。node_modules に依存しないので
-`yarn install` なしでも `bash scripts/test-hooks.sh` で走る。CI でも実行される。
+`pre-git-guard.sh` / `post-edit-reminder.sh` / `stop-dod-check.sh` には回帰テストがある。
+フックを変更したら `yarn test:hooks`（実体は `scripts/test-hooks.sh`）を実行する。
+node_modules に依存しないので `yarn install` なしでも `bash scripts/test-hooks.sh` で走る。
+CI でも実行される。
+
+**フックを追加・変更したらテストも足す。** 設定で挙動が変わるフックは、
+設定が効くことと `config.sh` が無くても既定値で動くことの両方を検証する。
 
 ### ルールを追加したくなったら
 
