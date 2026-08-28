@@ -7,6 +7,21 @@
 Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Functions。
 共有コードは `packages/shared` に集約。
 
+このテンプレートは2つの層でできている。
+
+- **第0層（制約層）** — `.claude/hooks/`、本ファイルの規約、`memory/`、プロセス系スキル
+  （`/kickoff` `/next` `/wrap-up` `/new-skill`）、commitlint・ESLint 共通ルール・Prettier。
+  **スタックに依存しない。** AI と人間に規約を機械的に強制するのがこの層の役割
+- **スタック層** — 上記の Turborepo 構成・Firebase・課金。参照実装であり、案件によって差し替わる
+
+共有できる実装は npm パッケージとして外部リポジトリへ切り出している
+（`@geckou/billing` は [`geckou/kit`](https://github.com/geckou/kit)、
+`@geckou/ui-*` は [`geckou/ui`](https://github.com/geckou/ui)）。
+このリポジトリに残るのは**規約を強制する仕組みと、組み立て方**。
+
+**第0層をスタックから独立に保つ**のがこのテンプレートの設計方針。
+スタック依存の値をフック本体に直書きしないこと（→「スタック依存の値は `config.sh` に置く」）。
+
 ## プロダクトの目的（北極星）
 
 > ⚠️ scaffold 後、`planning.md` の「一言で言うと」「目的・ゴール」から転記する。企画書側を更新したら必ずここも更新する。
@@ -292,6 +307,10 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 | `/review` | プロジェクト構成を前提としたコードレビュー |
 | `/deploy` | デプロイ手順ガイド |
 | `/troubleshoot` | ビルドエラー・型エラーの診断と修正 |
+
+`/kickoff` `/next` `/wrap-up` `/new-skill` は**第0層**（進め方のスキル。スタックに依存しない）。
+`/new-*` の scaffold 系と `/init-project` `/deploy` は**スタック層**（生成物がスタックに直結する）。
+スキルを追加するときは、どちらに属するかを意識して書く。
 
 ## よく使うコマンド
 
