@@ -28,9 +28,10 @@ yarn setup
 
 ワークスペース内部のスコープ `@geckou/*` を `@<project-name>/*` に一括置換する。
 
-> ⚠️ **`@geckou/ui-react` と `@geckou/ui-core` は置換しない。**
-> この 2 つは npm から取得する外部パッケージ（[`geckou/ui`](https://github.com/geckou/ui)）であり、
-> リネームすると依存が解決できなくなる。下の手順はこの 2 つを除外している。
+> ⚠️ **`@geckou/ui-react`・`@geckou/ui-core`・`@geckou/billing` は置換しない。**
+> これらは npm から取得する外部パッケージ（`ui-react` / `ui-core` は [`geckou/ui`](https://github.com/geckou/ui)、
+> `billing` は [`geckou/kit`](https://github.com/geckou/kit) 管理）であり、
+> リネームすると依存が解決できなくなる。下の手順はこの 3 つを除外している。
 
 対象は package.json の name / 依存だけでなく、以下すべてに及ぶ:
 
@@ -50,7 +51,7 @@ yarn setup
 一括置換（macOS の BSD sed。Linux では `sed -i ''` を `sed -i` にする）:
 
 > ⚠️ **このファイル（`SKILL.md`）自身は置換対象から外すこと。**
-> 下の `sed` の正規表現リテラル `@geckou/(ui-react|ui-core)` も `@geckou/` を含むため、
+> 下の `sed` の正規表現リテラル `@geckou/(ui-react|ui-core|billing)` も `@geckou/` を含むため、
 > 自身に適用するとコマンドが書き換わり、次回以降の手順が壊れる。
 > 以下のコマンドは `grep -v` でこのファイルを除外している。
 
@@ -64,7 +65,7 @@ grep -rl '@geckou/' $EXCLUDES . | grep -v "$SELF"
 # 一括置換（@geckou/ui-react と @geckou/ui-core は温存する）
 # デリミタは # を使う。| だと正規表現の選択と衝突する
 grep -rl '@geckou/' $EXCLUDES . | grep -v "$SELF" \
-  | xargs sed -i '' -E 's#@geckou/(ui-react|ui-core)#@@KEEP@@\1#g; s#@geckou/#@<project-name>/#g; s#@@KEEP@@#@geckou/#g'
+  | xargs sed -i '' -E 's#@geckou/(ui-react|ui-core|billing)#@@KEEP@@\1#g; s#@geckou/#@<project-name>/#g; s#@@KEEP@@#@geckou/#g'
 
 # 置換漏れの確認
 # （@geckou/ui-react と @geckou/ui-core、および SKILL.md 内の記述だけが残っていれば完了）
@@ -101,7 +102,7 @@ grep -rn '@geckou/' $EXCLUDES .
 
 - [ ] `yarn setup` を実行した（.firebaserc / .env.*）
 - [ ] ルート `package.json` の `name` を変更した
-- [ ] `@geckou/` の grep が `@geckou/ui-react` / `@geckou/ui-core`（外部パッケージ）と
+- [ ] `@geckou/` の grep が `@geckou/ui-react` / `@geckou/ui-core` / `@geckou/billing`（外部パッケージ）と
       `.claude/skills/init-project/SKILL.md`（この手順書自身）以外 0 件になった
 - [ ] `yarn install` 後に `yarn type-check` / `yarn test` が通る
 - [ ] `apps/mobile/app.config.ts` の識別子を変更した

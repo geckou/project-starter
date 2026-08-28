@@ -57,6 +57,7 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
+    "@geckou/billing": "^0.1.3",
     "firebase": "^11.0.0",
     "zustand": "^5.0.15"
   },
