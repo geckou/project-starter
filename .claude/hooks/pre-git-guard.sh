@@ -41,7 +41,145 @@ cmd=$(printf '%s' "$cmd" | awk '
 ')
 
 printf '%s' "$cmd" | grep -q 'git' || exit 0
-git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+
+# --- 検査対象の絞り込み -------------------------------------------------
+# このフックはこのリポジトリのブランチ運用を守るためのもので、別リポジトリの
+# 運用には関知しない。コマンド文字列だけを見て判定すると、先頭の cd や
+# git -C を無視して「隣のリポジトリへの commit」までこのリポジトリのルールで
+# ブロックしてしまうため、実行ディレクトリを解釈して対象を絞る。
+
+session_gitdir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0
+session_gitdir=$(cd "$session_gitdir" 2>/dev/null && pwd -P) || exit 0
+
+# git のグローバルオプション（サブコマンドより前に置くもの）
+GIT_OPT_WITH_VALUE='-C|-c|--git-dir|--work-tree|--namespace|--exec-path|--super-prefix'
+GIT_OPT_BOOL='--no-pager|--paginate|--bare|--no-replace-objects|--literal-pathspecs|--no-optional-locks'
+
+# パスを絶対パスへ解決する。解決できなければ何も出力せず 1 を返す（= 判定不能）
+resolve_dir() {
+  _path=$1
+  case $_path in
+    '~') _path=$HOME ;;
+    '~/'*) _path=$HOME/${_path#'~/'} ;;
+    # 変数・コマンド置換はフックからは展開できない
+    *'$'* | *'`'*) return 1 ;;
+  esac
+  case $_path in
+    /*) (cd "$_path" 2>/dev/null && pwd -P) ;;
+    *) (cd "$2" 2>/dev/null && cd "$_path" 2>/dev/null && pwd -P) ;;
+  esac
+}
+
+# 指定パスが属するリポジトリの共通 git dir（worktree でも本体を指す）
+gitdir_of() {
+  (cd "$1" 2>/dev/null &&
+    _g=$(git rev-parse --git-common-dir 2>/dev/null) &&
+    cd "$_g" 2>/dev/null && pwd -P)
+}
+
+unquote() { printf '%s' "$1" | sed -e "s/^'\(.*\)'$/\1/" -e 's/^"\(.*\)"$/\1/'; }
+
+# コマンドを区切り文字（; & && | || 改行 括弧）で分割する。クォートの中の
+# 区切り文字は無視する（コミットメッセージ中の ; で切らないため）。
+segments=$(printf '%s' "$cmd" | awk '
+  BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
+  { all = all $0 "\n" }
+  END {
+    q = ""; seg = ""; n = length(all)
+    for (i = 1; i <= n; i++) {
+      c = substr(all, i, 1)
+      if (q == sq) { seg = seg c; if (c == sq) q = ""; continue }
+      if (q == dq) {
+        if (c == bs) { seg = seg c substr(all, i + 1, 1); i++; continue }
+        seg = seg c
+        if (c == dq) q = ""
+        continue
+      }
+      if (c == bs) { seg = seg c substr(all, i + 1, 1); i++; continue }
+      if (c == sq || c == dq) { q = c; seg = seg c; continue }
+      if (c == ";" || c == "\n" || c == "&" || c == "|" || c == "(" || c == ")") {
+        print seg; seg = ""
+        if ((c == "&" || c == "|") && substr(all, i + 1, 1) == c) i++
+        continue
+      }
+      seg = seg c
+    }
+    print seg
+  }
+')
+
+# このリポジトリを対象にした git 呼び出しだけを残す。cd の効果は後続の
+# セグメントへ引き継ぐ（サブシェルのスコープまでは追わない）。
+cmd=$(printf '%s\n' "$segments" | {
+  work_dir=$(pwd -P)
+  prev_dir=$work_dir
+
+  while IFS= read -r seg; do
+    seg=${seg#"${seg%%[![:space:]]*}"}
+    seg=${seg%"${seg##*[![:space:]]}"}
+    [ -z "$seg" ] && continue
+
+    case $seg in
+      cd | cd[[:space:]]*)
+        target=${seg#cd}
+        target=${target#"${target%%[![:space:]]*}"}
+        target=${target%%[[:space:]]*}
+        target=$(unquote "$target")
+        last_dir=$work_dir
+        case $target in
+          '') work_dir=$HOME ;;
+          '-') work_dir=$prev_dir ;;
+          *) work_dir=$(resolve_dir "$target" "$work_dir") || work_dir='' ;;
+        esac
+        prev_dir=$last_dir
+        continue
+        ;;
+    esac
+
+    printf '%s' "$seg" | grep -Eq '(^|[[:space:]])git([[:space:]]|$)' || continue
+
+    # git -C / --git-dir はセグメント単位で実行ディレクトリを上書きする
+    git_dir_opt=$(printf '%s' "$seg" | awk '
+      {
+        for (i = 1; i <= NF; i++) {
+          if ($i != "git") continue
+          for (j = i + 1; j <= NF; j++) {
+            t = $j
+            if (substr(t, 1, 1) != "-") break
+            if (t == "-C" || t == "--git-dir") { print $(j + 1); exit }
+            if (t ~ /^--git-dir=/) { sub(/^--git-dir=/, "", t); print t; exit }
+            if (t == "-c" || t == "--work-tree" || t == "--namespace" ||
+                t == "--exec-path" || t == "--super-prefix") j++
+          }
+        }
+      }
+    ')
+
+    target_dir=$work_dir
+    if [ -n "$git_dir_opt" ]; then
+      target_dir=$(resolve_dir "$(unquote "$git_dir_opt")" "$work_dir") || target_dir=''
+    fi
+
+    # 実行ディレクトリを特定できないときは安全側に倒して検査対象に残す
+    if [ -n "$target_dir" ] && [ "$(gitdir_of "$target_dir")" != "$session_gitdir" ]; then
+      continue
+    fi
+
+    # 以降の判定が `git <サブコマンド>` の形だけを見ればよいよう、
+    # サブコマンドより前のグローバルオプションを取り除く
+    while :; do
+      next=$(printf '%s' "$seg" | sed -E \
+        -e "s/(^|[[:space:]])git[[:space:]]+($GIT_OPT_WITH_VALUE)([[:space:]]+|=)[^[:space:]]+[[:space:]]+/\1git /" \
+        -e "s/(^|[[:space:]])git[[:space:]]+($GIT_OPT_BOOL)[[:space:]]+/\1git /")
+      [ "$next" = "$seg" ] && break
+      seg=$next
+    done
+
+    printf '%s\n' "$seg"
+  done
+})
+
+[ -n "$cmd" ] || exit 0
 
 TYPES='feat|fix|refactor|style|docs|test|chore'
 DOC='詳細は CLAUDE.md「Git ブランチ運用」/ .claude/docs/git-workflow.md を参照。'
@@ -179,9 +317,13 @@ if [ -n "$newbranch" ]; then
   fi
 
   # 分岐元は production（例外: QA 修正の fix/* は release/* から切る）
+  # 分岐元はブランチ名より後ろの「最初の非フラグトークン」。そう決めないと
+  # git checkout -b docs/example -q の -q を分岐元と誤認してしまう。
+  newbranch_re=$(printf '%s' "$newbranch" | sed 's|[^a-zA-Z0-9_/-]|\\&|g')
   base=$(printf '%s' "$cmd" |
-    grep -oE "(checkout[[:space:]]+-b|switch[[:space:]]+-c)[[:space:]]+$newbranch[[:space:]]+[^[:space:];&|]+" |
-    head -1 | awk '{print $NF}')
+    grep -oE "(checkout[[:space:]]+-b|switch[[:space:]]+-c)[[:space:]]+$newbranch_re([[:space:]]+[^[:space:];&|]+)*" |
+    head -1 |
+    awk '{ for (i = 4; i <= NF; i++) if (substr($i, 1, 1) != "-") { print $i; exit } }')
   # 同一コマンド内で production へ切り替えてから分岐する（ドキュメントの手順）ケースを
   # 現在ブランチ起点と誤判定しないよう、チェーンの前半を分岐元として扱う
   if [ -z "$base" ] && has '(^|[[:space:]])git[[:space:]]+(checkout|switch)[[:space:]]+production([[:space:]]|$|&|;)'; then
