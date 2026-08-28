@@ -81,8 +81,17 @@ unquote() { printf '%s' "$1" | sed -e "s/^'\(.*\)'$/\1/" -e 's/^"\(.*\)"$/\1/'; 
 
 # コマンドを区切り文字（; & && | || 改行 括弧）で分割する。クォートの中の
 # 区切り文字は無視する（コミットメッセージ中の ; で切らないため）。
+# 括弧はサブシェルの開始・終了として印を出す（cd の効果を閉じ括弧で戻すため）。
+NL='
+'
+SUB_OPEN=$(printf '\001(')
+SUB_CLOSE=$(printf '\001)')
+
 segments=$(printf '%s' "$cmd" | awk '
-  BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
+  BEGIN {
+    sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92)
+    sub_open = sprintf("%c(", 1); sub_close = sprintf("%c)", 1)
+  }
   { all = all $0 "\n" }
   END {
     q = ""; seg = ""; n = length(all)
@@ -97,7 +106,12 @@ segments=$(printf '%s' "$cmd" | awk '
       }
       if (c == bs) { seg = seg c substr(all, i + 1, 1); i++; continue }
       if (c == sq || c == dq) { q = c; seg = seg c; continue }
-      if (c == ";" || c == "\n" || c == "&" || c == "|" || c == "(" || c == ")") {
+      if (c == "(" || c == ")") {
+        print seg; seg = ""
+        print (c == "(") ? sub_open : sub_close
+        continue
+      }
+      if (c == ";" || c == "\n" || c == "&" || c == "|") {
         print seg; seg = ""
         if ((c == "&" || c == "|") && substr(all, i + 1, 1) == c) i++
         continue
@@ -109,12 +123,31 @@ segments=$(printf '%s' "$cmd" | awk '
 ')
 
 # このリポジトリを対象にした git 呼び出しだけを残す。cd の効果は後続の
-# セグメントへ引き継ぐ（サブシェルのスコープまでは追わない）。
+# セグメントへ引き継ぐが、サブシェルを抜けたら元へ戻す。戻さないと
+# `(cd /other && git status) && git commit` の commit まで別リポジトリ扱いになり、
+# production への直接コミットを素通しする抜け道になる。
 cmd=$(printf '%s\n' "$segments" | {
   work_dir=$(pwd -P)
   prev_dir=$work_dir
+  dir_stack=''
 
   while IFS= read -r seg; do
+    case $seg in
+      "$SUB_OPEN")
+        dir_stack="$work_dir$NL$prev_dir$NL$dir_stack"
+        continue
+        ;;
+      "$SUB_CLOSE")
+        if [ -n "$dir_stack" ]; then
+          work_dir=${dir_stack%%"$NL"*}
+          dir_stack=${dir_stack#*"$NL"}
+          prev_dir=${dir_stack%%"$NL"*}
+          dir_stack=${dir_stack#*"$NL"}
+        fi
+        continue
+        ;;
+    esac
+
     seg=${seg#"${seg%%[![:space:]]*}"}
     seg=${seg%"${seg##*[![:space:]]}"}
     [ -z "$seg" ] && continue
@@ -123,8 +156,14 @@ cmd=$(printf '%s\n' "$segments" | {
       cd | cd[[:space:]]*)
         target=${seg#cd}
         target=${target#"${target%%[![:space:]]*}"}
-        target=${target%%[[:space:]]*}
-        target=$(unquote "$target")
+        # クォート付きのパスは閉じクォートまでを 1 引数として取る。
+        # 空白までで切ると `cd "/path/with spaces"` が解決できず、
+        # 別リポジトリなのに検査対象に残ってしまう
+        case $target in
+          \'*) target=${target#\'}; target=${target%%\'*} ;;
+          \"*) target=${target#\"}; target=${target%%\"*} ;;
+          *) target=${target%%[[:space:]]*} ;;
+        esac
         last_dir=$work_dir
         case $target in
           '') work_dir=$HOME ;;
@@ -140,13 +179,29 @@ cmd=$(printf '%s\n' "$segments" | {
 
     # git -C / --git-dir はセグメント単位で実行ディレクトリを上書きする
     git_dir_opt=$(printf '%s' "$seg" | awk '
+      BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34) }
+      # クォート付きの値は閉じクォートまで連結して 1 引数として返す
+      function argval(j,   v, q, n) {
+        v = $(j + 1)
+        q = substr(v, 1, 1)
+        if (q != sq && q != dq) return v
+        n = j + 1
+        while (!(length(v) > 1 && substr(v, length(v), 1) == q) && n < NF) {
+          n++
+          v = v " " $n
+        }
+        if (length(v) > 1 && substr(v, length(v), 1) == q) {
+          v = substr(v, 2, length(v) - 2)
+        }
+        return v
+      }
       {
         for (i = 1; i <= NF; i++) {
           if ($i != "git") continue
           for (j = i + 1; j <= NF; j++) {
             t = $j
             if (substr(t, 1, 1) != "-") break
-            if (t == "-C" || t == "--git-dir") { print $(j + 1); exit }
+            if (t == "-C" || t == "--git-dir") { print argval(j); exit }
             if (t ~ /^--git-dir=/) { sub(/^--git-dir=/, "", t); print t; exit }
             if (t == "-c" || t == "--work-tree" || t == "--namespace" ||
                 t == "--exec-path" || t == "--super-prefix") j++
@@ -169,7 +224,7 @@ cmd=$(printf '%s\n' "$segments" | {
     # サブコマンドより前のグローバルオプションを取り除く
     while :; do
       next=$(printf '%s' "$seg" | sed -E \
-        -e "s/(^|[[:space:]])git[[:space:]]+($GIT_OPT_WITH_VALUE)([[:space:]]+|=)[^[:space:]]+[[:space:]]+/\1git /" \
+        -e "s/(^|[[:space:]])git[[:space:]]+($GIT_OPT_WITH_VALUE)([[:space:]]+|=)(\"[^\"]*\"|'[^']*'|[^[:space:]]+)[[:space:]]+/\1git /" \
         -e "s/(^|[[:space:]])git[[:space:]]+($GIT_OPT_BOOL)[[:space:]]+/\1git /")
       [ "$next" = "$seg" ] && break
       seg=$next

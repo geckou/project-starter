@@ -26,6 +26,8 @@ trap 'rm -rf "$SANDBOX"' EXIT
 
 SESSION=$SANDBOX/session-repo
 OTHER=$SANDBOX/other-repo
+# 空白を含むパスの扱いを検証するためのリポジトリ
+SPACED="$SANDBOX/other repo"
 
 # 既定ブランチ名の指定に init -b / init.defaultBranch を使わないのは、
 # 古い git（< 2.28）でも動かすため
@@ -43,6 +45,7 @@ git -C "$SESSION" branch feat/existing
 git -C "$SESSION" branch release/1.0.0
 
 init_repo "$OTHER" main
+init_repo "$SPACED" main
 
 pass=0
 fail=0
@@ -94,6 +97,21 @@ run 0 'cd 先でブランチ作成（命名規則も分岐元も見ない）' \
 run 0 'cd 先で production へ push' "cd $OTHER && git push origin production"
 run 0 'git -C で別リポジトリを指定' "git -C $OTHER commit -m 'wip'"
 run 0 'cd したまま戻らずに git' "cd $OTHER; git checkout -b x"
+run 0 'cd のパスに空白がある（ダブルクォート）' \
+  "cd \"$SPACED\" && git commit -m 'なにか'"
+run 0 'cd のパスに空白がある（シングルクォート）' \
+  "cd '$SPACED' && git commit -m 'なにか'"
+run 0 'git -C のパスに空白がある' "git -C \"$SPACED\" commit -m 'なにか'"
+run 0 'サブシェル内で別リポジトリへ cd' "(cd $OTHER && git commit -m 'なにか')"
+
+echo
+echo '=== サブシェルの cd は親スコープへ漏らさない ==='
+run 2 'サブシェルを抜けた後の production 直コミット' \
+  "(cd $OTHER && git status) && git commit -m 'feat: x'"
+run 2 'サブシェルを抜けた後のブランチ命名規則違反' \
+  "(cd $OTHER && git status) && git checkout -b wip"
+run 0 'サブシェル内の cd は閉じ括弧まで有効' \
+  "(cd $OTHER && git checkout -b feature_x)"
 
 echo
 echo '=== セッションのリポジトリへの操作は検査する ==='
@@ -110,6 +128,8 @@ run 2 'cd で戻ってきた後の production コミット' \
 run 2 'git -C でセッションのリポジトリを指定' \
   "cd $OTHER && git -C $SESSION commit -m 'なにか'"
 run 2 'git -C . での production 直コミット' "git -C . commit -m 'feat: x'"
+run 2 'git -C のパスがクォート付き（セッションのリポジトリ）' \
+  "git -C \"$SESSION\" commit -m 'なにか'"
 run 2 '解決できないパスへの cd は安全側（検査対象に残す）' \
   'cd "$OTHER_REPO" && git commit -m "なにか"'
 
