@@ -1,11 +1,16 @@
 #!/bin/bash
 set -u
 
-# .claude/hooks/pre-git-guard.sh の回帰テスト。
+# .claude/hooks/ の回帰テスト。
 #
 # サンドボックスに「セッションのリポジトリ」と「別リポジトリ」を作り、
-# フックへ PreToolUse の入力 JSON を直接流して終了コードを検証する。
-# deny は exit 2、許可（ask を含む）は exit 0。
+# フックへ入力 JSON を直接流して終了コードを検証する。
+# ブロックは exit 2、許可（ask を含む）は exit 0。
+#
+# 対象:
+#   pre-git-guard.sh      PreToolUse(Bash)   git 操作の検証
+#   post-edit-reminder.sh PostToolUse(Edit)  監視パスのリマインド
+#   stop-dod-check.sh     Stop               DoD の自動実行
 #
 # node_modules に依存しないので yarn install なしで実行できる。
 # 実体を package.json ではなくこのスクリプトに置いている理由は
@@ -165,6 +170,128 @@ EOF
 run 0 'git を含まないコマンド' 'echo hello'
 run 0 'コミットメッセージ中の ; では分割しない' \
   "git commit -m 'feat: a; b を追加'" feat/existing
+
+# ---- post-edit-reminder.sh / stop-dod-check.sh ----
+#
+# この2つは config.sh からスタック依存の値を読む。設定が効くことと、
+# config.sh が無くても既定値で動くこと（CLAUDE.md「スタック依存の値は
+# config.sh に置く」）の両方を検証する。
+
+EDIT_HOOK=$REPO/.claude/hooks/post-edit-reminder.sh
+DOD_HOOK=$REPO/.claude/hooks/stop-dod-check.sh
+
+# config.sh を読めない状態を再現するため、フック本体だけを別ディレクトリへ複製する
+NOCONFIG=$SANDBOX/hooks-noconfig
+mkdir -p "$NOCONFIG"
+cp "$EDIT_HOOK" "$DOD_HOOK" "$NOCONFIG/"
+
+# タスクの成否を制御できる偽のランナー。lint だけ失敗する。
+# run サブコマンド経由で呼ばれることも検証する（npm はこれが無いと動かない）
+mkdir -p "$SANDBOX/bin"
+cat > "$SANDBOX/bin/fakerunner" <<'RUNNER'
+#!/bin/sh
+[ "$1" = run ] || { echo "run サブコマンドが渡されていない: $*"; exit 1; }
+[ "$2" = lint ] && { echo "lint error"; exit 1; }
+exit 0
+RUNNER
+chmod +x "$SANDBOX/bin/fakerunner"
+# set -u のため、PATH が未定義でも落ちない形で追記する
+PATH=$SANDBOX/bin:${PATH:-}
+
+# run_edit <期待する終了コード> <説明> <file_path> [フック本体のパス]
+run_edit() {
+  want=$1
+  desc=$2
+  file=$3
+  hook=${4:-$EDIT_HOOK}
+
+  LAST_OUT=$(jq -n --arg f "$file" '{tool_input:{file_path:$f}}' | sh "$hook" 2>&1)
+  status=$?
+
+  if [ "$status" = "$want" ]; then
+    pass=$((pass + 1))
+    printf 'ok   [%s] %s\n' "$status" "$desc"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL [want %s got %s] %s\n     file: %s\n     out: %s\n' \
+      "$want" "$status" "$desc" "$file" "$LAST_OUT"
+  fi
+}
+
+# run_dod <期待する終了コード> <説明> <入力 JSON> [フック本体のパス]
+# セッションのリポジトリで実行する（git status の結果を見るため）
+run_dod() {
+  want=$1
+  desc=$2
+  input=$3
+  hook=${4:-$DOD_HOOK}
+
+  LAST_OUT=$(cd "$SESSION" && printf '%s' "$input" | sh "$hook" 2>&1)
+  status=$?
+
+  if [ "$status" = "$want" ]; then
+    pass=$((pass + 1))
+    printf 'ok   [%s] %s\n' "$status" "$desc"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL [want %s got %s] %s\n     out: %s\n' \
+      "$want" "$status" "$desc" "$LAST_OUT"
+  fi
+}
+
+echo
+echo '=== post-edit-reminder: 監視パスの判定 ==='
+run_edit 2 '監視ファイル（リポジトリ相対パス）' 'firestore.rules'
+run_edit 2 '監視ファイル（絶対パス）' "$REPO/firestore.rules"
+run_edit 2 '監視ディレクトリの配下' 'packages/shared/src/index.ts'
+run_edit 2 '監視ディレクトリの配下（絶対パス）' "$REPO/packages/shared/src/index.ts"
+run_edit 0 '監視対象外のファイル' 'apps/web/src/app/page.tsx'
+run_edit 0 'file_path が無い入力' ''
+run_edit 0 '監視ファイル名を含むだけの別ファイル' 'docs/firestore.rules.md'
+
+echo
+echo '=== post-edit-reminder: 設定で監視パスを差し替えられる ==='
+HOOK_WATCH_PATHS=$(printf 'db/schema.sql\tスキーマを変更した')
+export HOOK_WATCH_PATHS
+run_edit 2 '差し替えた監視パスにマッチする' 'db/schema.sql'
+run_edit 0 '既定の監視パスは効かなくなる' 'firestore.rules'
+unset HOOK_WATCH_PATHS
+
+echo
+echo '=== post-edit-reminder: config.sh が無くても既定値で動く ==='
+run_edit 2 '既定の監視ファイル' 'firestore.rules' "$NOCONFIG/post-edit-reminder.sh"
+run_edit 0 '既定でも対象外は素通り' 'apps/web/src/app/page.tsx' \
+  "$NOCONFIG/post-edit-reminder.sh"
+
+echo
+echo '=== stop-dod-check: 実行条件 ==='
+HOOK_RUNNER=fakerunner
+export HOOK_RUNNER
+run_dod 0 'フック起因の継続中は再度ブロックしない' '{"stop_hook_active":true}'
+run_dod 0 'コードの未コミット変更が無ければ走らせない' '{}'
+
+# コードファイルの未コミット変更を作る
+echo 'export const x = 1' > "$SESSION/probe.ts"
+
+run_dod 2 'コード変更があり DoD が失敗したらブロックする' '{}'
+HOOK_DOD_TASKS='type-check'
+export HOOK_DOD_TASKS
+run_dod 0 '成功するタスクだけなら通す' '{}'
+unset HOOK_DOD_TASKS
+HOOK_CODE_EXTENSIONS='rules'
+export HOOK_CODE_EXTENSIONS
+run_dod 0 '対象拡張子から外れていれば走らせない' '{}'
+unset HOOK_CODE_EXTENSIONS
+run_dod 0 'stop_hook_active はコード変更があっても優先される' '{"stop_hook_active":true}'
+
+echo
+echo '=== stop-dod-check: config.sh が無くても既定値で動く ==='
+# 既定のランナー（yarn）が無い環境では何もせず終了する
+run_dod 0 '既定値でも入力の判定は変わらない' '{"stop_hook_active":true}' \
+  "$NOCONFIG/stop-dod-check.sh"
+
+rm -f "$SESSION/probe.ts"
+unset HOOK_RUNNER
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

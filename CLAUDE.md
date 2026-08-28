@@ -7,6 +7,21 @@
 Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Functions。
 共有コードは `packages/shared` に集約。
 
+このテンプレートは2つの層でできている。
+
+- **第0層（制約層）** — `.claude/hooks/`、本ファイルの規約、`memory/`、プロセス系スキル
+  （`/kickoff` `/next` `/wrap-up` `/new-skill`）、commitlint・ESLint 共通ルール・Prettier。
+  **スタックに依存しない。** AI と人間に規約を機械的に強制するのがこの層の役割
+- **スタック層** — 上記の Turborepo 構成・Firebase・課金。参照実装であり、案件によって差し替わる
+
+共有できる実装は npm パッケージとして外部リポジトリへ切り出している
+（`@geckou/billing` は [`geckou/kit`](https://github.com/geckou/kit)、
+`@geckou/ui-*` は [`geckou/ui`](https://github.com/geckou/ui)）。
+このリポジトリに残るのは**規約を強制する仕組みと、組み立て方**。
+
+**第0層をスタックから独立に保つ**のがこのテンプレートの設計方針。
+スタック依存の値をフック本体に直書きしないこと（→「スタック依存の値は `config.sh` に置く」）。
+
 ## プロダクトの目的（北極星）
 
 > ⚠️ scaffold 後、`planning.md` の「一言で言うと」「目的・ゴール」から転記する。企画書側を更新したら必ずここも更新する。
@@ -247,11 +262,31 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
 | Stop | `stop-roadmap-reminder.sh` | 作業があるのに `roadmap.md` 未更新ならリマインド |
 
+### スタック依存の値は `config.sh` に置く
+
+フック本体（`.claude/hooks/*.sh`）は**スタック非依存**に保つ。`yarn` / `firestore.rules` /
+`packages/shared` のような、このプロジェクトの構成に依存する値は `.claude/hooks/config.sh` に集める。
+
+| 設定項目 | 用途 |
+|---|---|
+| `HOOK_RUNNER` | DoD を実行するパッケージマネージャ |
+| `HOOK_DOD_TASKS` | DoD として実行するタスク |
+| `HOOK_CODE_EXTENSIONS` | DoD の対象になるコードファイルの拡張子 |
+| `HOOK_WATCH_PATHS` | 変更時にリマインドするパスと文言 |
+
+`config.sh` は `.templatesyncignore` に登録してあり、テンプレート更新で上書きされない。
+逆にテンプレート側で設定項目が増えても自動では流れてこないため、**フック本体は
+その項目が無くても既定値で動く**ように書く。フックを追加するときも同じ方針に従う。
+
 ### フックを変更したら
 
-`pre-git-guard.sh` には回帰テストがある。フックを変更したら `yarn test:hooks`
-（実体は `scripts/test-hooks.sh`）を実行する。node_modules に依存しないので
-`yarn install` なしでも `bash scripts/test-hooks.sh` で走る。CI でも実行される。
+`pre-git-guard.sh` / `post-edit-reminder.sh` / `stop-dod-check.sh` には回帰テストがある。
+フックを変更したら `yarn test:hooks`（実体は `scripts/test-hooks.sh`）を実行する。
+node_modules に依存しないので `yarn install` なしでも `bash scripts/test-hooks.sh` で走る。
+CI でも実行される。
+
+**フックを追加・変更したらテストも足す。** 設定で挙動が変わるフックは、
+設定が効くことと `config.sh` が無くても既定値で動くことの両方を検証する。
 
 ### ルールを追加したくなったら
 
@@ -282,6 +317,10 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 | `/review` | プロジェクト構成を前提としたコードレビュー |
 | `/deploy` | デプロイ手順ガイド |
 | `/troubleshoot` | ビルドエラー・型エラーの診断と修正 |
+
+`/kickoff` `/next` `/wrap-up` `/new-skill` は**第0層**（進め方のスキル。スタックに依存しない）。
+`/new-*` の scaffold 系と `/init-project` `/deploy` は**スタック層**（生成物がスタックに直結する）。
+スキルを追加するときは、どちらに属するかを意識して書く。
 
 ## よく使うコマンド
 

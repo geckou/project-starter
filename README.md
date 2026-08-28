@@ -2,7 +2,29 @@
 
 合同会社Geckou のプロジェクトテンプレート。
 
-Turborepo によるモノレポ構成で、1つのリポジトリから Web・モバイル・Cloud Functions をそれぞれ独立してデプロイできる。
+**AI に開発させるための制約層**と、その**参照実装スタック**（Turborepo モノレポ）で構成される。
+1つのリポジトリから Web・モバイル・Cloud Functions をそれぞれ独立してデプロイできる。
+
+---
+
+## このリポジトリの層
+
+このテンプレートは「実装の詰め合わせ」から「組み立て機」へ移行している最中にある。
+共有できる実装は npm パッケージとして外部リポジトリへ切り出し
+（[`geckou/kit`](https://github.com/geckou/kit) / [`geckou/ui`](https://github.com/geckou/ui)）、
+このリポジトリには**規約を強制する仕組みと、組み立て方**が残る。
+
+| 層 | 中身 | スタック依存 |
+| --- | --- | --- |
+| **第0層（制約層）** | `.claude/hooks/`、`CLAUDE.md` の規約、`memory/`、プロセス系スキル（`/kickoff` `/next` `/wrap-up` `/new-skill`）、commitlint・ESLint 共通ルール・Prettier | **なし** |
+| **スタック層** | Next.js + Firebase Hosting + CI/deploy + 環境切替、Firebase（Auth/Firestore/Storage）、Expo、課金 | あり |
+
+**第0層はスタック層に属さない。** スタックが変わっても、規約を機械的に強制する仕組みはそのまま使える。
+スタックに依存する値（パッケージマネージャ、監視パス等）はフック本体に直書きせず
+[`.claude/hooks/config.sh`](.claude/hooks/config.sh) に集める。
+
+スタック層を core / opt-in（firebase・mobile・billing）に分割する設計は
+[#105](https://github.com/geckou/project-starter/issues/105) で進行中。現状は全部入り。
 
 ---
 
