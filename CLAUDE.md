@@ -247,6 +247,12 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
 | Stop | `stop-roadmap-reminder.sh` | 作業があるのに `roadmap.md` 未更新ならリマインド |
 
+### フックを変更したら
+
+`pre-git-guard.sh` には回帰テストがある。フックを変更したら `yarn test:hooks`
+（実体は `scripts/test-hooks.sh`）を実行する。node_modules に依存しないので
+`yarn install` なしでも `bash scripts/test-hooks.sh` で走る。CI でも実行される。
+
 ### ルールを追加したくなったら
 
 「また同じことを言っている」と感じたら、CLAUDE.md に文章を足すのではなく **Hook にする**。

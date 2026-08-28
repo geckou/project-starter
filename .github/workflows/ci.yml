@@ -5,10 +5,15 @@ name: CI
 on:
   pull_request:
     branches: [production, 'release/**']
-    # アプリの動作に影響しない変更では回さない（Actions 分の節約）
+    # アプリの動作に影響しない変更では回さない（Actions 分の節約）。
+    # .claude/ を丸ごと除外しないのは、hooks/ と settings.json が
+    # scripts/test-hooks.sh の検証対象だから（paths-ignore は ! による
+    # 除外の打ち消しができないため、無視する側を個別に列挙する）
     paths-ignore:
       - '**/*.md'
-      - '.claude/**'
+      - '.claude/docs/**'
+      - '.claude/skills/**'
+      - '.claude/launch.json'
       - '.vscode/**'
       - '.editorconfig'
       - 'LICENSE'
@@ -28,6 +33,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      # Claude Code のフック（.claude/hooks/）の回帰テスト。
+      # node_modules に依存しないので依存インストールより先に回す
+      - name: Hook Test
+        run: bash scripts/test-hooks.sh
 
       - uses: actions/setup-node@v7
         with:
