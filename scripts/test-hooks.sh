@@ -185,15 +185,18 @@ NOCONFIG=$SANDBOX/hooks-noconfig
 mkdir -p "$NOCONFIG"
 cp "$EDIT_HOOK" "$DOD_HOOK" "$NOCONFIG/"
 
-# タスクの成否を制御できる偽のランナー。lint だけ失敗する
+# タスクの成否を制御できる偽のランナー。lint だけ失敗する。
+# run サブコマンド経由で呼ばれることも検証する（npm はこれが無いと動かない）
 mkdir -p "$SANDBOX/bin"
 cat > "$SANDBOX/bin/fakerunner" <<'RUNNER'
 #!/bin/sh
-[ "$1" = lint ] && { echo "lint error"; exit 1; }
+[ "$1" = run ] || { echo "run サブコマンドが渡されていない: $*"; exit 1; }
+[ "$2" = lint ] && { echo "lint error"; exit 1; }
 exit 0
 RUNNER
 chmod +x "$SANDBOX/bin/fakerunner"
-PATH=$SANDBOX/bin:$PATH
+# set -u のため、PATH が未定義でも落ちない形で追記する
+PATH=$SANDBOX/bin:${PATH:-}
 
 # run_edit <期待する終了コード> <説明> <file_path> [フック本体のパス]
 run_edit() {

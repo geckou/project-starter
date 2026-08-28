@@ -31,10 +31,12 @@ log_dir="${TMPDIR:-/tmp}"
 for task in $tasks; do
   log="$log_dir/dod-$task.log"
 
-  if ! "$runner" "$task" >"$log" 2>&1; then
-    failed="${failed:+$failed / }$runner $task"
+  # npm はスクリプト名を直接渡せないため run 経由で統一する
+  # （yarn / pnpm / bun は直接でも動くが、run はいずれでも通る）
+  if ! "$runner" run "$task" >"$log" 2>&1; then
+    failed="${failed:+$failed / }$runner run $task"
 
-    echo "--- $runner $task 失敗（末尾30行） ---" >&2
+    echo "--- $runner run $task 失敗（末尾30行） ---" >&2
     tail -n 30 "$log" >&2
   fi
 done

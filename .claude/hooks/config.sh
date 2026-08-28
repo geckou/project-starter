@@ -11,7 +11,8 @@
 #
 # 各項目は環境変数で一時的に上書きできる（例: HOOK_RUNNER=npm）。テスト用途にも使う。
 
-# 実行するパッケージマネージャ（npm / pnpm / bun 等に変更可）
+# 実行するパッケージマネージャ（npm / pnpm / bun 等に変更可）。
+# タスクは `<HOOK_RUNNER> run <タスク名>` の形で呼ばれるため、run を解釈できるものを指定する
 HOOK_RUNNER=${HOOK_RUNNER:-'yarn'}
 
 # DoD（機能の完了条件）として stop-dod-check.sh が実行するタスク。空白区切り
