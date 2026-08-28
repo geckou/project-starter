@@ -256,7 +256,7 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 | タイミング | フック | 内容 |
 |---|---|---|
 | SessionStart | `session-start-git-context.sh` | `git fetch origin --prune` を実行し、現在ブランチ・`origin/production` との差分・進行中の `release/*` を文脈に入れる（古い情報のまま作業を始めるのを防ぐ） |
-| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名・分岐元・fetch 鮮度・コミットメッセージ形式・`--no-verify` 迂回・`production` への直接 push を**実行前にブロック**。`release/*` への push はユーザー承認を求める |
+| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名・分岐元・fetch 鮮度・コミットメッセージ形式・`--no-verify` 迂回・`production` への直接 push を**実行前にブロック**。`release/*` への push はユーザー承認を求める。検査対象は**このリポジトリへの git 操作だけ**（コマンド中の `cd` / `git -C` を解釈し、別リポジトリへの操作は素通しする） |
 | PostToolUse (Bash) | `post-git-branch-reminder.sh` | ブランチ作成直後、進行中の `release/*` があればマージ要否の確認を促す |
 | PostToolUse (Edit/Write) | `post-edit-reminder.sh` | `firestore.rules` / `packages/shared` 変更時に検証コマンドをリマインド |
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
@@ -277,6 +277,12 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 `config.sh` は `.templatesyncignore` に登録してあり、テンプレート更新で上書きされない。
 逆にテンプレート側で設定項目が増えても自動では流れてこないため、**フック本体は
 その項目が無くても既定値で動く**ように書く。フックを追加するときも同じ方針に従う。
+
+### フックを変更したら
+
+`pre-git-guard.sh` には回帰テストがある。フックを変更したら `yarn test:hooks`
+（実体は `scripts/test-hooks.sh`）を実行する。node_modules に依存しないので
+`yarn install` なしでも `bash scripts/test-hooks.sh` で走る。CI でも実行される。
 
 ### ルールを追加したくなったら
 
