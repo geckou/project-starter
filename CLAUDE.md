@@ -247,6 +247,22 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
 | Stop | `stop-roadmap-reminder.sh` | 作業があるのに `roadmap.md` 未更新ならリマインド |
 
+### スタック依存の値は `config.sh` に置く
+
+フック本体（`.claude/hooks/*.sh`）は**スタック非依存**に保つ。`yarn` / `firestore.rules` /
+`packages/shared` のような、このプロジェクトの構成に依存する値は `.claude/hooks/config.sh` に集める。
+
+| 設定項目 | 用途 |
+|---|---|
+| `HOOK_RUNNER` | DoD を実行するパッケージマネージャ |
+| `HOOK_DOD_TASKS` | DoD として実行するタスク |
+| `HOOK_CODE_EXTENSIONS` | DoD の対象になるコードファイルの拡張子 |
+| `HOOK_WATCH_PATHS` | 変更時にリマインドするパスと文言 |
+
+`config.sh` は `.templatesyncignore` に登録してあり、テンプレート更新で上書きされない。
+逆にテンプレート側で設定項目が増えても自動では流れてこないため、**フック本体は
+その項目が無くても既定値で動く**ように書く。フックを追加するときも同じ方針に従う。
+
 ### ルールを追加したくなったら
 
 「また同じことを言っている」と感じたら、CLAUDE.md に文章を足すのではなく **Hook にする**。
