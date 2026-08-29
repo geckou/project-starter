@@ -38,7 +38,8 @@
     "deploy:production": "bash scripts/deploy.sh production",
     "prepare": "husky",
     "test:rules": "bash scripts/test-rules.sh",
-    "test:hooks": "bash scripts/test-hooks.sh"
+    "test:hooks": "bash scripts/test-hooks.sh",
+    "check:docs": "bash scripts/check-docs.sh"
   },
   "resolutions": {
     "tar": ">=7.5.11",

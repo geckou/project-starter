@@ -1,0 +1,27 @@
+name: Docs Check
+
+# ドキュメントが実在しないファイルを指していないかを検査する。
+#
+# ci.yml と分けている理由:
+#   - ci.yml は `**/*.md` を paths-ignore しているため、ドキュメントだけの PR では走らない
+#   - この検査はコード側の移動でも壊れる（ファイルを移すとドキュメントが取り残される）ので、
+#     ドキュメント・コードのどちらの変更でも走らせる必要がある
+#   - yarn install が不要で数秒で終わるため、全 PR で回してもコストにならない
+
+on:
+  pull_request:
+    branches: [production, 'release/**']
+
+concurrency:
+  group: docs-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check documentation references
+        run: bash scripts/check-docs.sh
