@@ -83,9 +83,13 @@ project-starter/
 │   └── shared/
 │       └── src/
 │           ├── types/           # 共通の型定義（User, Subscription, ApiResponse 等）
-│           ├── billing/         # 権利判定ヘルパー（isSubscriptionActive 等）
+│           ├── billing/         # @geckou/billing/entitlement の re-export
 │           ├── utils/           # ユーティリティ関数（formatDate 等）
 │           ├── firebase/        # Firebase クライアント SDK の初期化
+│           ├── firestore/       # Firestore の CRUD・クエリ・購読
+│           ├── storage/         # Firebase Storage のアップロード・削除
+│           ├── stores/          # Zustand ストア（認証状態等）
+│           ├── i18n/            # 翻訳キーとロケール（ja / en）
 │           ├── theme/           # デザイントークン（色・フォント・角丸）
 │           └── index.ts         # 一括エクスポート
 │
@@ -394,15 +398,10 @@ Web でしか売らないなら `STRIPE_*` だけ、アプリ内課金だけな�
 
 ### 構成
 
-| 層 | ファイル | 役割 |
-| --- | --- | --- |
-| 共有 | `packages/shared/src/billing/index.ts` | `isSubscriptionActive` / `hasPlan` |
-| Functions | `apps/functions/src/billing.ts` | `POST /billing/checkout` / `POST /billing/portal` |
-| Functions | `apps/functions/src/stripe-webhook.ts` | Stripe Webhook → Firestore |
-| Functions | `apps/functions/src/revenuecat-webhook.ts` | RevenueCat Webhook → Firestore |
-| Functions | `apps/functions/src/lib/subscription.ts` | 権利状態の反映（冪等性・順序制御） |
-| Web | `apps/web/src/app/billing/page.tsx` | 購入・管理画面の参考実装 |
-| Mobile | `apps/mobile/src/lib/revenuecat.ts` | IAP の初期化・Firebase UID との紐付け |
+決済ロジックの本体は [`@geckou/billing`](https://github.com/geckou/kit)（npm パッケージ）にあり、
+このリポジトリに残るのは配線と、プロジェクトごとに編集する権利変化フックだけ。
+ファイル単位の一覧は [.claude/docs/architecture.md](.claude/docs/architecture.md) の
+「課金 > ファイル構成」を参照。
 
 ### 権利判定
 
@@ -417,52 +416,12 @@ if (isSubscriptionActive(user.subscription)) {
 `status` は `active` / `in_grace_period` / `cancelled` / `expired` の4種類。
 `cancelled` は自動更新が止まっただけで `currentPeriodEnd` までは利用できる（ヘルパーが吸収する）。
 
-### 環境変数
+### セットアップ
 
-| 変数 | 用途 | 設定場所 |
-| --- | --- | --- |
-| `STRIPE_SECRET_KEY` | Stripe のシークレットキー | `apps/functions/.env` |
-| `STRIPE_WEBHOOK_SECRET` | Webhook の署名シークレット | `apps/functions/.env` |
-| `STRIPE_PRICE_IDS` | 購入を許可する price ID の許可リスト | `apps/functions/.env` |
-| `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` | Checkout の戻り先 | `apps/functions/.env` |
-| `STRIPE_PORTAL_RETURN_URL` | カスタマーポータルの戻り先 | `apps/functions/.env` |
-| `SYNC_SUBSCRIPTION_CLAIMS` | 権利状態をカスタムクレームに同期するか（任意・`true` で有効） | `apps/functions/.env` |
-| `NEXT_PUBLIC_STRIPE_PRICE_ID` | Web が購入する price ID | `.env.local` |
-| `REVENUECAT_API_KEY_APPLE` / `_GOOGLE` | Mobile の IAP 用 | `.env.local`（`app.config.ts` の extra 経由） |
-| `REVENUECAT_WEBHOOK_AUTH` | RevenueCat Webhook の検証値 | `apps/functions/.env` |
-
-### Stripe の設定
-
-1. Firebase Functions をデプロイする
-2. Stripe Dashboard > 開発者 > Webhook でエンドポイントを追加:
-   ```
-   https://<region>-<project-id>.cloudfunctions.net/api/webhooks/stripe
-   ```
-3. 送信するイベントに以下を選ぶ:
-   `checkout.session.completed` / `customer.subscription.created` /
-   `customer.subscription.updated` / `customer.subscription.deleted`
-4. 表示された署名シークレット（`whsec_...`）を `STRIPE_WEBHOOK_SECRET` に設定
-5. 販売する price ID を `STRIPE_PRICE_IDS` に列挙する（許可リスト外の price は 400 で拒否される）
-
-### RevenueCat の設定
-
-1. RevenueCat Dashboard > Integrations > Webhooks を開く
-2. Webhook URL に以下を設定:
-   ```
-   https://<region>-<project-id>.cloudfunctions.net/api/webhooks/revenuecat
-   ```
-3. Authorization header value（任意の文字列。例: `Bearer xxxxx`）を設定し、
-   同じ値を `apps/functions/.env` の `REVENUECAT_WEBHOOK_AUTH` に設定
-
-> RevenueCat の Webhook は HMAC 署名ではなく、Dashboard で設定した
-> Authorization ヘッダー値をそのまま送信する方式。
-
-### セキュリティ
-
-- `subscription` と `stripeCustomerId` は `firestore.rules` でクライアントからの書き込みを拒否している
-  （自己申告で有料ユーザーになれないようにするため）
-- Webhook は処理済みイベントを `billing_events` に記録して冪等に処理する。
-  再送の二重適用も、古いイベントによる巻き戻しも起きない
+環境変数の一覧、Stripe / RevenueCat 側の設定手順、テストモードの分け方は
+[.claude/docs/billing.md](.claude/docs/billing.md) に順を追ってまとめてある。
+権利状態の保護（`firestore.rules` での書き込み拒否、`billing_events` による冪等化）の方針は
+[.claude/docs/architecture.md](.claude/docs/architecture.md) の「課金 > セキュリティ上の要点」。
 
 ---
 
@@ -679,12 +638,12 @@ Firebase Console で iOS アプリ登録時の**バンドル ID は変更でき�
 
 `web/` や `mobile/` はテンプレートの仮名。実プロジェクトに合わせて変更可。
 
-例: CustomJapan プロジェクトの場合
+例: `<プロジェクト名>` に置き換える場合
 
 ```
 apps/
-├── customjapan/        # メインサイト
-├── customjapan-admin/  # 社内管理画面
+├── <プロジェクト名>/        # メインサイト
+├── <プロジェクト名>-admin/  # 社内管理画面
 └── functions/
 ```
 
@@ -692,7 +651,7 @@ apps/
 
 ```json
 {
-  "name": "@geckou/customjapan"
+  "name": "@geckou/<プロジェクト名>"
 }
 ```
 

@@ -7,7 +7,7 @@
 
 | ディレクトリ | 説明                                                                        |
 | ------------ | --------------------------------------------------------------------------- |
-| `shared/`    | 共有の型定義・ユーティリティ・Firebase クライアント初期化・デザイントークン |
+| `shared/`    | 共有の型定義・ユーティリティ・Firebase クライアント（初期化 / Firestore / Storage）・状態管理・i18n・デザイントークン |
 
 ## UI コンポーネント
 
@@ -46,10 +46,15 @@ yarn workspace <web ワークスペース名> add @geckou/ui-react
 ```
 shared/src/
 ├── types/      # 共通の型定義（User, ApiResponse 等）
+├── billing/    # @geckou/billing/entitlement の re-export（権利判定）
 ├── utils/      # ユーティリティ関数（formatDate, sleep 等）
 ├── firebase/   # Firebase クライアント SDK の初期化（"use client"）
+├── firestore/  # Firestore の CRUD・クエリ・購読（"use client"）
+├── storage/    # Firebase Storage のアップロード・削除（"use client"）
+├── stores/     # Zustand ストア（認証状態等）
+├── i18n/       # 翻訳キーとロケール（ja / en）
 ├── theme/      # デザイントークン（色・フォント・角丸等）
-└── index.ts    # 一括エクスポート
+└── index.ts    # 環境非依存のモジュールだけを一括エクスポート
 ```
 
 ## インポート方法
