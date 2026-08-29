@@ -1,56 +1,32 @@
+import {
+  sendPushNotification as sendOne,
+  sendPushNotificationBatch as sendBatch,
+  type PushNotificationPayload,
+} from '@geckou/firebase-server'
 import { getMessaging } from 'firebase-admin/messaging'
 
-type PushNotificationPayload = {
-  title: string
-  body: string
-  data?: Record<string, string>
-}
+/**
+ * FCM によるプッシュ通知の送信。
+ * 実装は @geckou/firebase-server（geckou/kit）にあり、ここは firebase-admin の
+ * Messaging を注入するだけ
+ */
 
 /**
  * 単一デバイスにプッシュ通知を送信
  */
-export async function sendPushNotification(
+export function sendPushNotification(
   fcmToken: string,
   payload: PushNotificationPayload
 ): Promise<string> {
-  const message = {
-    token: fcmToken,
-    notification: {
-      title: payload.title,
-      body: payload.body,
-    },
-    data: payload.data,
-  }
-
-  return getMessaging().send(message)
+  return sendOne(getMessaging(), fcmToken, payload)
 }
 
 /**
  * 複数デバイスにプッシュ通知を一括送信
  */
-export async function sendPushNotificationBatch(
+export function sendPushNotificationBatch(
   fcmTokens: string[],
   payload: PushNotificationPayload
 ): Promise<{ successCount: number; failureCount: number }> {
-  if (fcmTokens.length === 0) {
-    return { successCount: 0, failureCount: 0 }
-  }
-
-  const message = {
-    notification: {
-      title: payload.title,
-      body: payload.body,
-    },
-    data: payload.data,
-  }
-
-  const response = await getMessaging().sendEachForMulticast({
-    tokens: fcmTokens,
-    ...message,
-  })
-
-  return {
-    successCount: response.successCount,
-    failureCount: response.failureCount,
-  }
+  return sendBatch(getMessaging(), fcmTokens, payload)
 }
