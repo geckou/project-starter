@@ -7,7 +7,7 @@
 
 | ディレクトリ | 説明                                                                        |
 | ------------ | --------------------------------------------------------------------------- |
-| `shared/`    | 共有の型定義・ユーティリティ・Firebase クライアント初期化・デザイントークン |
+| `shared/`    | 共有の型定義・ユーティリティ・Firebase クライアント（初期化 / Firestore / Storage）・状態管理・i18n・デザイントークン |
 
 ## UI コンポーネント
 
@@ -46,10 +46,15 @@ yarn workspace <web ワークスペース名> add @geckou/ui-react
 ```
 shared/src/
 ├── types/      # 共通の型定義（User, ApiResponse 等）
+├── billing/    # @geckou/billing/entitlement の re-export（権利判定）
 ├── utils/      # ユーティリティ関数（formatDate, sleep 等）
 ├── firebase/   # Firebase クライアント SDK の初期化（"use client"）
+├── firestore/  # Firestore の CRUD・クエリ・購読（"use client"）
+├── storage/    # Firebase Storage のアップロード・削除（"use client"）
+├── stores/     # Zustand ストア（認証状態等）
+├── i18n/       # 翻訳キーとロケール（ja / en）
 ├── theme/      # デザイントークン（色・フォント・角丸等）
-└── index.ts    # 一括エクスポート
+└── index.ts    # 環境非依存のモジュールだけを一括エクスポート
 ```
 
 ## インポート方法
@@ -68,14 +73,21 @@ shared/src/
 実際にはダウンロードされるわけではなく、yarn のワークスペース機能で `packages/shared/src/` を直接参照している。
 
 ```typescript
-// 全部まとめて
-import { formatDate, initFirebase } from '@geckou/shared'
+// ルートのバレルが出すのは環境非依存のもの（types / billing / utils / theme / i18n）だけ
+import { formatDate } from '@geckou/shared'
 import type { User } from '@geckou/shared'
 
-// 個別に（Firebase クライアント SDK を含めたくない場合）
-import type { User } from '@geckou/shared/types'
-import { formatDate } from '@geckou/shared/utils'
+// firebase / zustand に依存するものはサブパスから取る
+import { initFirebase } from '@geckou/shared/firebase'
+import { getDocument } from '@geckou/shared/firestore'
+import { uploadFile } from '@geckou/shared/storage'
+import { useAuthStore } from '@geckou/shared/stores'
 ```
+
+**`initFirebase` をルートから import することはできない。** バレルが Firebase クライアント
+SDK を巻き込むと、`firebase-admin` しか依存に持たない `apps/functions` が
+`@geckou/shared` を import しただけで `firebase` / `zustand` の型解決を要求されるため、
+意図的に除外している（`packages/shared/src/index.ts` の冒頭コメント参照）。
 
 ## Tailwind CSS / デザイントークンの仕組み
 

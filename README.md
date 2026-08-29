@@ -83,9 +83,13 @@ project-starter/
 │   └── shared/
 │       └── src/
 │           ├── types/           # 共通の型定義（User, Subscription, ApiResponse 等）
-│           ├── billing/         # 権利判定ヘルパー（isSubscriptionActive 等）
+│           ├── billing/         # @geckou/billing/entitlement の re-export
 │           ├── utils/           # ユーティリティ関数（formatDate 等）
 │           ├── firebase/        # Firebase クライアント SDK の初期化
+│           ├── firestore/       # Firestore の CRUD・クエリ・購読
+│           ├── storage/         # Firebase Storage のアップロード・削除
+│           ├── stores/          # Zustand ストア（認証状態等）
+│           ├── i18n/            # 翻訳キーとロケール（ja / en）
 │           ├── theme/           # デザイントークン（色・フォント・角丸）
 │           └── index.ts         # 一括エクスポート
 │
@@ -394,15 +398,10 @@ Web でしか売らないなら `STRIPE_*` だけ、アプリ内課金だけな�
 
 ### 構成
 
-| 層 | ファイル | 役割 |
-| --- | --- | --- |
-| 共有 | `packages/shared/src/billing/index.ts` | `isSubscriptionActive` / `hasPlan` |
-| Functions | `apps/functions/src/billing.ts` | `POST /billing/checkout` / `POST /billing/portal` |
-| Functions | `apps/functions/src/stripe-webhook.ts` | Stripe Webhook → Firestore |
-| Functions | `apps/functions/src/revenuecat-webhook.ts` | RevenueCat Webhook → Firestore |
-| Functions | `apps/functions/src/lib/subscription.ts` | 権利状態の反映（冪等性・順序制御） |
-| Web | `apps/web/src/app/billing/page.tsx` | 購入・管理画面の参考実装 |
-| Mobile | `apps/mobile/src/lib/revenuecat.ts` | IAP の初期化・Firebase UID との紐付け |
+決済ロジックの本体は [`@geckou/billing`](https://github.com/geckou/kit)（npm パッケージ）にあり、
+このリポジトリに残るのは配線と、プロジェクトごとに編集する権利変化フックだけ。
+ファイル単位の一覧は [.claude/docs/architecture.md](.claude/docs/architecture.md) の
+「課金 > ファイル構成」を参照。
 
 ### 権利判定
 
@@ -417,76 +416,22 @@ if (isSubscriptionActive(user.subscription)) {
 `status` は `active` / `in_grace_period` / `cancelled` / `expired` の4種類。
 `cancelled` は自動更新が止まっただけで `currentPeriodEnd` までは利用できる（ヘルパーが吸収する）。
 
-### 環境変数
+### セットアップ
 
-| 変数 | 用途 | 設定場所 |
-| --- | --- | --- |
-| `STRIPE_SECRET_KEY` | Stripe のシークレットキー | `apps/functions/.env` |
-| `STRIPE_WEBHOOK_SECRET` | Webhook の署名シークレット | `apps/functions/.env` |
-| `STRIPE_PRICE_IDS` | 購入を許可する price ID の許可リスト | `apps/functions/.env` |
-| `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` | Checkout の戻り先 | `apps/functions/.env` |
-| `STRIPE_PORTAL_RETURN_URL` | カスタマーポータルの戻り先 | `apps/functions/.env` |
-| `SYNC_SUBSCRIPTION_CLAIMS` | 権利状態をカスタムクレームに同期するか（任意・`true` で有効） | `apps/functions/.env` |
-| `NEXT_PUBLIC_STRIPE_PRICE_ID` | Web が購入する price ID | `.env.local` |
-| `REVENUECAT_API_KEY_APPLE` / `_GOOGLE` | Mobile の IAP 用 | `.env.local`（`app.config.ts` の extra 経由） |
-| `REVENUECAT_WEBHOOK_AUTH` | RevenueCat Webhook の検証値 | `apps/functions/.env` |
-
-### Stripe の設定
-
-1. Firebase Functions をデプロイする
-2. Stripe Dashboard > 開発者 > Webhook でエンドポイントを追加:
-   ```
-   https://<region>-<project-id>.cloudfunctions.net/api/webhooks/stripe
-   ```
-3. 送信するイベントに以下を選ぶ:
-   `checkout.session.completed` / `customer.subscription.created` /
-   `customer.subscription.updated` / `customer.subscription.deleted`
-4. 表示された署名シークレット（`whsec_...`）を `STRIPE_WEBHOOK_SECRET` に設定
-5. 販売する price ID を `STRIPE_PRICE_IDS` に列挙する（許可リスト外の price は 400 で拒否される）
-
-### RevenueCat の設定
-
-1. RevenueCat Dashboard > Integrations > Webhooks を開く
-2. Webhook URL に以下を設定:
-   ```
-   https://<region>-<project-id>.cloudfunctions.net/api/webhooks/revenuecat
-   ```
-3. Authorization header value（任意の文字列。例: `Bearer xxxxx`）を設定し、
-   同じ値を `apps/functions/.env` の `REVENUECAT_WEBHOOK_AUTH` に設定
-
-> RevenueCat の Webhook は HMAC 署名ではなく、Dashboard で設定した
-> Authorization ヘッダー値をそのまま送信する方式。
-
-### セキュリティ
-
-- `subscription` と `stripeCustomerId` は `firestore.rules` でクライアントからの書き込みを拒否している
-  （自己申告で有料ユーザーになれないようにするため）
-- Webhook は処理済みイベントを `billing_events` に記録して冪等に処理する。
-  再送の二重適用も、古いイベントによる巻き戻しも起きない
+環境変数の一覧、Stripe / RevenueCat 側の設定手順、テストモードの分け方は
+[.claude/docs/billing.md](.claude/docs/billing.md) に順を追ってまとめてある。
+権利状態の保護（`firestore.rules` での書き込み拒否、`billing_events` による冪等化）の方針は
+[.claude/docs/architecture.md](.claude/docs/architecture.md) の「課金 > セキュリティ上の要点」。
 
 ---
 
 ## Tailwind CSS / デザイントークン
 
-### Web と Mobile でバージョンが違う理由
+デザイントークンは `packages/shared/src/theme/index.ts` に集約し、Web（Tailwind v4）と
+Mobile（NativeWind + Tailwind v3）の両方の設定から読み込んでいる。色を変えるときはこの1ファイルだけ触る。
 
-- **Web**: Tailwind CSS **v4**（最新。CSS ベースの設定方式）
-- **Mobile**: Tailwind CSS **v3** + NativeWind（NativeWind が v3 を必要とするため）
-
-書き方（`className="text-primary-500"` 等）はどちらも同じ。
-
-### デザイントークンの共有
-
-色・フォント・角丸等のデザイントークンは `packages/shared/src/theme/index.ts` で一元管理している。
-
-```
-packages/shared/src/theme/index.ts    ← 単一の情報源
-        │
-        ├── apps/web/tailwind.config.ts       ← import で読み込み
-        └── apps/mobile/tailwind.config.js    ← require で読み込み
-```
-
-色やフォントを変えたいときは `theme/index.ts` を編集するだけで両方に反映される。
+- 設定ファイルの流れと各ファイルの役割 → [packages/README.md](packages/README.md)
+- バージョンが違う理由と方針 → [.claude/docs/architecture.md](.claude/docs/architecture.md)
 
 ---
 
@@ -519,109 +464,21 @@ yarn dev:web
 
 ## 命名規則
 
-| 対象                         | ケース             | 例                        |
-| ---------------------------- | ------------------ | ------------------------- |
-| ファイル名（通常）           | ケバブケース       | `user-profile.ts`         |
-| ファイル名（コンポーネント） | パスカルケース     | `UserProfile.tsx`         |
-| 変数・関数                   | キャメルケース     | `userName`, `fetchData`   |
-| 定数                         | コンスタントケース | `MAX_RETRY_COUNT`         |
-| 型名                         | パスカルケース     | `ChatRoom`, `ApiResponse` |
-| CSS クラス名                 | スネークケース     | `user_icon`               |
-
-略語は避け、誰が見ても意味が明確な命名にする:
-
-```
-// Good
-button, message, notification
-
-// Bad
-btn, msg, noti
-```
+ファイル名・変数・型名・CSS クラス名のケースは
+[CLAUDE.md](CLAUDE.md) の「コーディング規約 > 命名規則」を参照。
+ESLint / Prettier で強制できる範囲は各ワークスペースの設定に入っている。
 
 ---
 
 ## Git ブランチ運用
 
-### デフォルトブランチ
+**デフォルトブランチは `production`**（`main` ではない）。全てのブランチは `production` から切る。
 
-`production`（`main` ではない）。全てのブランチは `production` から切る。
-
-### ブランチ命名規則
-
-| 種類       | パターン               | 例                      | 切る元       | デプロイ先 |
-| ---------- | ---------------------- | ----------------------- | ------------ | ---------- |
-| 機能開発   | `feat/<名前>`          | `feat/user-profile`     | `production` | develop    |
-| リリース   | `release/<バージョン>` | `release/1.0.0`         | `production` | staging    |
-| 緊急修正   | `hotfix/<バージョン>`  | `hotfix/1.0.1`          | `production` | staging    |
-| リファクタ | `refactor/<名前>`      | `refactor/api-client`   | `production` | develop    |
-| バグ修正   | `fix/<名前>`           | `fix/login-error`       | `production` | develop    |
-| ドキュメント | `docs/<名前>`        | `docs/api-spec`         | `production` | -          |
-| テスト     | `test/<名前>`          | `test/webhook`          | `production` | develop    |
-
-### ブランチ名のルール
-
-- **ケバブケースで書く**（`feat/user-profile`、`feat/UserProfile` は NG）
-- **短く、何をするか分かる名前にする**（`feat/update` は NG）
-- **チケット番号があれば先頭に付ける**（`feat/123-user-profile`）
-
-### コミットメッセージ規約
-
-```
-<type>: <description>
-```
-
-| type       | 用途                             |
-| ---------- | -------------------------------- |
-| `feat`     | 新機能                           |
-| `fix`      | バグ修正                         |
-| `refactor` | リファクタリング（機能変更なし） |
-| `style`    | コードスタイル修正（動作変更なし） |
-| `docs`     | ドキュメントのみ                 |
-| `test`     | テスト追加・修正                 |
-| `chore`    | ビルド・設定変更                 |
-
-commitlint（`.husky/commit-msg`）が検証するが、**規約違反は警告のみでコミットはブロックしない**。
-`release/*` に何が載っているかを `git log` で追う場面が多いため、type が揃っていること自体が
-可読性の担保になる。
-
-### マージルール
-
-- `production` への直接 push は禁止（PR 必須）
-- **`release/*` への直接コミット・push は禁止**（`release/*` への push は staging への自動デプロイを発火するため）。QA で見つかった修正も `fix/*` を切って `release/*` へ PR でマージする。例外は、ブランチ作成時（`production` から切って `feat/*` をマージした結果）の push と、PR マージによる更新のみ
-- `release/*` → `production` は PR + レビュー必須
-- `hotfix/*` → `production` は PR 必須（緊急時はセルフマージ可）
-- `feat/*` → `release/*` へのマージは自由
-- `feat/*` 同士のマージは禁止（依存関係を作らない）
-
-### リリースフロー
-
-```bash
-# 1. 機能開発
-git checkout production
-git checkout -b feat/user-profile
-# ... 開発・push → develop で動作確認 ...
-
-# 2. リリース準備（出したい機能だけ選ぶ）
-git checkout production
-git checkout -b release/1.0.0
-git merge feat/user-profile
-git merge feat/posts
-git push origin release/1.0.0  # → staging で QA（push = staging へ自動デプロイ）
-
-# 2.5. QA で見つかった不具合の修正（release に直接コミットしない）
-git checkout -b fix/login-error release/1.0.0
-# ... 修正・push → develop で動作確認 ...
-gh pr create --base release/1.0.0
-
-# 3. リリース
-gh pr create --base production
-# QA OK → merge → production に自動デプロイ
-git tag v1.0.0
-
-# 4. 緊急修正
-git checkout -b hotfix/1.0.1 production
-# ... 修正 → staging で確認 → production に merge ...
-```
+- ブランチ命名規則・コミットメッセージ規約・マージルール →
+  [CLAUDE.md](CLAUDE.md) の「Git ブランチ運用」。
+  `.claude/hooks/pre-git-guard.sh` が実行前に検証し、違反はブロックされる
+- リリースフロー・マルチ環境構成・GitHub Secrets の登録 →
+  [.claude/docs/git-workflow.md](.claude/docs/git-workflow.md)
 
 ---
 
@@ -677,29 +534,14 @@ Firebase Console で iOS アプリ登録時の**バンドル ID は変更でき�
 
 ### ディレクトリ名・パッケージ名の変更
 
-`web/` や `mobile/` はテンプレートの仮名。実プロジェクトに合わせて変更可。
-
-例: CustomJapan プロジェクトの場合
-
-```
-apps/
-├── customjapan/        # メインサイト
-├── customjapan-admin/  # 社内管理画面
-└── functions/
-```
-
-変更時は `package.json` の `name` も合わせて更新する:
-
-```json
-{
-  "name": "@geckou/customjapan"
-}
-```
+`web/` や `mobile/` はテンプレートの仮名で、実プロジェクトに合わせて変更してよい。
+改名の手順と例は [apps/README.md](apps/README.md) を参照。
 
 ### リネームチェックリスト
 
 テンプレートには `geckou` 名がハードコードされている箇所がある。
-プロジェクト開始時に以下を実プロジェクト名に置換する:
+`/init-project` がまとめて置換するので通常は手作業不要だが、確認用に主な箇所を挙げる
+（除外すべきパッケージなど網羅的な一覧はスキル側にある）:
 
 | 箇所 | ファイル |
 |---|---|

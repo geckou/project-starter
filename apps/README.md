@@ -16,21 +16,21 @@
 `web/` や `mobile/` はテンプレートとしての仮名。
 実プロジェクトではわかりやすい名前に変更して構わない。
 
-例: CustomJapan プロジェクトの場合
+例: `<プロジェクト名>` に置き換える場合
 
 ```
 apps/
-├── customjapan/        # メインサイト
-├── customjapan-admin/  # 社内管理画面
-├── mobile/             # モバイルアプリ
-└── functions/          # Cloud Functions
+├── <プロジェクト名>/        # メインサイト
+├── <プロジェクト名>-admin/  # 社内管理画面
+├── mobile/                  # モバイルアプリ
+└── functions/               # Cloud Functions
 ```
 
 名前を変更したら `package.json` の `name` も合わせて変更する。
 
 ```json
 {
-  "name": "@geckou/customjapan"
+  "name": "@geckou/<プロジェクト名>"
 }
 ```
 
