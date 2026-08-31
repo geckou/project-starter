@@ -31,7 +31,10 @@
         "packages/shared/src/i18n/index.ts",
         "scripts/deploy.sh",
         "scripts/use-env.sh",
-        "turbo.json"
+        "turbo.json",
+        "renovate.json5",
+        "renovate/default.json",
+        "renovate/automerge.json"
       ],
       "env": [
         "BASIC_AUTH_CREDENTIALS",

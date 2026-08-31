@@ -325,9 +325,10 @@ CI でも実行される。
 
 依存更新のルールは `renovate/*.json`（テンプレート側の preset）にあり、各プロジェクトは
 `renovate.json5` から `extends` するだけ。**設定のコピーを配らない**ので、ルールの変更は
-preset の1コミットで全派生へ届く。判断（メジャーは自動 PR を作らない、Expo 系は触らせない等）の
-理由は各ルールの `description` に残す。詳細と、preset では配れないもの（ルート `package.json` の
-`resolutions`）は `.claude/docs/dependencies.md` を参照。
+preset の1コミットで全派生へ届く。判断（メジャーは Dashboard 承認待ちにする、Expo 系は
+触らせない、自動マージは opt-in 等）の理由は各ルールの `description` に残す。
+詳細と、preset では配れないもの（ルート `package.json` の `resolutions`）は
+`.claude/docs/dependencies.md` を参照。
 
 ### ドキュメントの参照切れは CI が検出する
 

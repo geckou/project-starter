@@ -124,6 +124,10 @@ mobile 層を外した場合はこの手順を飛ばす。
 `.github/workflows/ci.yml` を追加する（テンプレートの実体で上書きされないようにするため）。
 置き換える内容と理由は `.claude/docs/git-workflow.md`「CI の配布（reusable workflow）」を参照。
 
+**Ruleset を取り込む場合は required status check の名前を `ci / ci` に変える。**
+reusable workflow を呼ぶとチェック名が変わるため、`.github/rulesets/production.json` の
+`{ "context": "ci" }` のままだと出力されないチェックを待ち続けてマージできなくなる。
+
 **依存更新（Renovate）**
 
 `renovate.json5` はテンプレートから配られるのでそのまま使う。**Renovate の GitHub App を

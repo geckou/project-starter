@@ -6,16 +6,20 @@ name: Release Tag
 # このタグを指す。production へマージするたびにタグが進むので、チェック内容の修正は
 # 各派生での取り込み作業ゼロで行き渡る（詳細は .claude/docs/git-workflow.md）。
 #
-# タグを進めない = 派生に配らない、という判断もこの仕組みで表現できる。
-# 互換性を壊す変更をしたときは v1 を進めず、v2 を切って派生側の参照を更新する。
+# **互換性を壊す変更では v1 を進めない。** コミットメッセージに BREAKING CHANGE
+# （または conventional commits の `type!:`）が含まれていたら昇格を止め、
+# v2 を切って派生側の参照を更新する、という判断を促す。
+#
+# 対象を .github/workflows/ に限っているのは、reusable workflow から呼ばれる
+# scripts/ は**呼び出し元のリポジトリのもの**が実行されるため（checkout は呼び出し元を
+# チェックアウトする）。スクリプトはこのタグでは配られず、Template Sync で届く。
 
 on:
   push:
     branches: [production]
-    # 参照される側（ワークフローと、そこから呼ぶスクリプト）が変わったときだけ進める
+    # このタグで実際に配られるのはワークフローだけ
     paths:
       - '.github/workflows/**'
-      - 'scripts/**'
   workflow_dispatch:
 
 concurrency:
@@ -30,8 +34,26 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # 破壊的変更の判定にコミットメッセージを読む
+          fetch-depth: 1
+
+      # 互換性を壊す変更では v1 を進めない（進めると、参照している派生プロジェクトの
+      # CI が予告なく壊れる）。止まったら v2 を切って派生側の参照を更新する
+      - name: Check for breaking changes
+        id: gate
+        run: |
+          MESSAGE=$(git log -1 --pretty=%B)
+
+          if printf '%s' "$MESSAGE" | grep -qE 'BREAKING CHANGE|^[a-z]+(\([^)]*\))?!:'; then
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::破壊的変更のため v1 を進めません。v2 を切り、派生プロジェクトの参照（uses: ...@v1）を更新してください"
+          else
+            echo "promote=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Move v1 to the current commit
+        if: steps.gate.outputs.promote == 'true'
         env:
           # 互換性を壊す変更をするときは、ここを増やすのではなく
           # 新しいタグ（v2）を切り、派生側の参照を更新する

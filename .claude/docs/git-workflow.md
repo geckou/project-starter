@@ -260,8 +260,20 @@ Template Sync のファイルコピーと違い、コンフリクトも発生し
 1. `.github/workflows/ci.yml` を上記の参照だけの内容に置き換える
 2. `.templatesyncignore` に `.github/workflows/ci.yml` を追加する
    （テンプレート側の実体で上書きされないようにするため）
+3. **Required status check の名前を `ci / ci` に変える。** reusable workflow を呼ぶと
+   チェック名が `<呼び出し側のジョブ ID> / <呼ばれる側のジョブ ID>` になる。
+   `.github/rulesets/production.json` を取り込んでいる場合、`{ "context": "ci" }` のままだと
+   **出力されないチェックを待ち続けてマージできなくなる**
 
 `/init-project` の手順に含めてある。
+
+### 依存更新（Renovate）の PR は branch-guard の例外
+
+`renovate/*` から `production` への PR は `branch-guard.yml` が許可する。依存更新は
+プロダクトの機能変更ではなく、リリース単位に束ねる意味が薄いため。
+
+ただし **`production` へのマージは本番デプロイを発火する**ので、マージのタイミングは人が選ぶ
+（自動マージは既定で無効。`.claude/docs/dependencies.md` 参照）。
 
 ### バージョンの進み方
 
@@ -270,6 +282,16 @@ Template Sync のファイルコピーと違い、コンフリクトも発生し
 
 **互換性を壊す変更をするときは `v1` を進めず、`v2` を切って派生側の参照を更新する。**
 「タグを進めない = 派生に配らない」という判断をこの仕組みで表現できる。
+
+### 配られるのはワークフローだけ（スクリプトは呼び出し元のもの）
+
+reusable workflow の `actions/checkout` は**呼び出し元のリポジトリ**をチェックアウトする。
+つまり `bash scripts/test-hooks.sh` のようなステップが実行するのは、**派生プロジェクト側の
+`scripts/`**（Template Sync で配られたもの）であって、`@v1` が指すテンプレートのものではない。
+
+- `release-tag.yml` が `v1` を進める対象を `.github/workflows/**` に限っているのはこのため
+- 新しいスクリプトに依存するワークフローの変更は、**スクリプトの同期が先**になる。
+  `ci.yml` はスクリプトが無くても落ちないよう `hashFiles` で存在を見てから実行する
 
 ### 層構成の違いは実行時に判定する
 

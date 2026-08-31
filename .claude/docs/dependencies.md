@@ -12,6 +12,7 @@
 | `renovate.json5` | 各プロジェクトが持つ参照だけの設定。Template Sync で配る |
 | `renovate/default.json` | 共通ルール（グルーピング・automerge・メジャーの扱い・脆弱性） |
 | `renovate/mobile.json` | mobile 層のルール（Expo 系の全面 ignore、React / Tailwind のメジャー固定） |
+| `renovate/automerge.json` | minor / patch の自動マージ（**opt-in**。既定では extends しない） |
 
 `renovate.json5` が JSON5 なのは、**理由をコメントで残すため**と、mobile 層のマーカーを
 書けるようにするため（JSON にはコメントが書けず、範囲を囲めない）。preset 側は JSON なので、
@@ -19,12 +20,16 @@
 
 ## 決めていること
 
-- **minor / patch は1本にまとめ、CI が緑なら自動マージする。** 派生数ぶんの週次 PR を
-  人力で捌かないための本体。テンプレートの `ci.yml` が型チェック・Lint・テスト・
-  ルールテスト・ビルドまで回しているので、自動マージの判断材料は揃っている
-- **メジャーは自動 PR を作らない。** CI が緑でも壊れていることがあるため
-  （NativeWind と Tailwind の組み合わせは CI で検証されない）。必要になったら
-  Dependency Dashboard（Renovate が自動生成する Issue）から手動で上げる
+- **minor / patch は1本にまとめる。自動マージは既定で無効。** `production` へのマージは
+  本番デプロイを発火するため、自動マージを既定にすると依存更新が staging を経ずに本番へ出る。
+  自動マージしたい構成（`production` への push が本番デプロイに繋がらない、あるいは
+  その形で流してよいと判断した場合）は `renovate.json5` の `extends` に
+  `github>geckou/project-starter//renovate/automerge` を足す
+- **メジャーは自動では PR を作らない。** CI が緑でも壊れていることがあるため
+  （NativeWind と Tailwind の組み合わせは CI で検証されない）。Dependency Dashboard
+  （Renovate が自動生成する Issue）に承認待ちで並ぶので、必要なタイミングでチェックを入れて上げる。
+  `enabled: false` ではなく `dependencyDashboardApproval: true` を使うのは、
+  無効化すると Dashboard にも出てこなくなるため
 - **GitHub Actions のメジャーは対象に残す。** 失敗すれば CI が即座に赤くなり検知できる
 - **Firebase SDK は自動マージしない。** 認証・課金の挙動に直結するため目視で確認する
 - **脆弱性の修正は常に PR を作る。** メジャー全面 ignore の対象外。自動マージはしない
@@ -39,6 +44,9 @@
 3. Dependabot とは**併存させない**。同じ更新で PR が二重に立つため、
    Dependabot の設定ファイル（`.github/` 配下）が残っていれば削除する
    （テンプレート側では削除済み）
+4. `renovate/*` から `production` への PR は `branch-guard.yml` が例外として許可する
+   （依存更新はリリース単位に束ねる意味が薄いため）。マージ = 本番デプロイになる点は
+   変わらないので、タイミングは人が選ぶ
 
 ## 配れないもの（構造的な死角）
 
