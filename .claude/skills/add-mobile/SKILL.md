@@ -50,8 +50,11 @@ yarn format
 
 ```bash
 yarn workspace @geckou/mobile exec expo customize tsconfig.json   # 型定義の生成（CI でも実行される）
-yarn workspace @geckou/mobile exec eas init                       # EAS プロジェクトの作成
+cd apps/mobile && npx eas-cli@latest init                         # EAS プロジェクトの作成
 ```
+
+`eas-cli` は依存に含めていない（グローバル / 都度実行が Expo の想定のため）。
+`npx eas-cli@latest` で都度実行するか、`npm i -g eas-cli` を入れる。
 
 - `eas init` が発行する `projectId` を `app.config.ts` の `extra.eas.projectId` に入れる
   （プッシュ通知が参照する）

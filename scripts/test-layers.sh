@@ -524,6 +524,74 @@ else
 fi
 rm -rf "$subtracted" "$added" "$pristine_for_add"
 
+# 足していない層のディレクトリにローカルのファイルがあっても消さない。
+# 手本の側で先に落とすため、ローカルには「足す層の内容」しか入らない
+untouched=$(make_variant)
+pristine_untouched=$(make_variant)
+node "$REPO_ROOT/scripts/remove-layer.mjs" --target "$untouched" firebase > /dev/null 2>&1
+mkdir -p "$untouched/apps/mobile/src"
+printf 'ローカルで作ったファイル\n' > "$untouched/apps/mobile/custom.txt"
+add_layers "$untouched" "$pristine_untouched" firebase > /dev/null 2>&1
+if [ -f "$untouched/apps/mobile/custom.txt" ]; then
+  pass "足さない層のディレクトリにあるローカルのファイルを消さない"
+else
+  fail "加算が無関係なローカルのファイルを消した"
+fi
+if [ ! -e "$untouched/apps/mobile/package.json" ]; then
+  pass "足さない層（mobile）の中身は入らない"
+else
+  fail "要求していない層の中身が入った"
+fi
+rm -rf "$untouched" "$pristine_untouched"
+
+# --dry-run の報告が、実際に適用したときの変更と一致する
+dry=$(make_variant)
+wet=$(make_variant)
+pristine_dry=$(make_variant)
+node "$REPO_ROOT/scripts/remove-layer.mjs" --target "$dry" firebase > /dev/null 2>&1
+node "$REPO_ROOT/scripts/remove-layer.mjs" --target "$wet" firebase > /dev/null 2>&1
+dry_changes=$(node "$REPO_ROOT/scripts/add-layer.mjs" --target "$dry" --from "$pristine_dry" \
+  --dry-run firebase functions 2>&1 | grep -E '^  (create|merge|conflict|dep|script|json|manifest)')
+wet_changes=$(add_layers "$wet" "$pristine_dry" firebase functions |
+  grep -E '^  (create|merge|conflict|dep|script|json|manifest)')
+if [ "$dry_changes" = "$wet_changes" ]; then
+  pass "--dry-run の報告が実際の変更と一致する"
+else
+  fail "--dry-run の報告が実際の変更と食い違う" "$(diff <(echo "$dry_changes") <(echo "$wet_changes"))"
+fi
+rm -rf "$dry" "$wet" "$pristine_dry"
+
+# スコープをリネーム済みの派生プロジェクト（/init-project 後）へ足せる
+renamed=$(make_variant)
+pristine_renamed=$(make_variant)
+node "$REPO_ROOT/scripts/remove-layer.mjs" --target "$renamed" firebase > /dev/null 2>&1
+# 内部ワークスペースのスコープだけを @myapp/* に変える（外部パッケージはそのまま）
+while IFS= read -r target; do
+  sed -i 's#@geckou/web#@myapp/web#g; s#@geckou/shared#@myapp/shared#g' "$target"
+done < <(grep -rl "@geckou/\(web\|shared\)" "$renamed/apps" "$renamed/packages" "$renamed/package.json" 2>/dev/null)
+add_layers "$renamed" "$pristine_renamed" firebase functions > /dev/null 2>&1
+
+if grep -q '"@myapp/shared"' "$renamed/apps/functions/package.json" &&
+  ! grep -q '@geckou/shared' "$renamed/apps/functions/package.json"; then
+  pass "取り込んだ内容の内部スコープをローカルに合わせる"
+else
+  fail "内部スコープが @geckou のまま残っている" \
+    "$(grep -n '@geckou\|@myapp' "$renamed/apps/functions/package.json" 2>&1)"
+fi
+
+if grep -q '"@geckou/firebase-server"' "$renamed/apps/functions/package.json"; then
+  pass "npm から取る外部パッケージ（@geckou/firebase-server）は書き換えない"
+else
+  fail "外部パッケージまで書き換えた"
+fi
+
+if json_has "$renamed/apps/functions/package.json" "json.name === '@myapp/functions'"; then
+  pass "取り込んだワークスペース自身の name もローカルのスコープになる"
+else
+  fail "取り込んだワークスペースの name が @geckou のまま"
+fi
+rm -rf "$renamed" "$pristine_renamed"
+
 # ローカルの変更は 3-way マージで保たれる
 printf '\n// ローカルの追記\n' >> "$variant/packages/shared/src/index.ts"
 add_layers "$variant" "$pristine" mobile > /dev/null 2>&1

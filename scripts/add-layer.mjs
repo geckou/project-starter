@@ -117,26 +117,152 @@ function prepareSource(root, options) {
   }
 }
 
-function copyRecursive(from, to) {
+const COPY_SKIP = new Set([
+  '.git',
+  'node_modules',
+  'dist',
+  '.next',
+  '.turbo',
+  'coverage',
+])
+
+/**
+ * テンプレートを一時ディレクトリへ写し、**今回足さない層をそこで落とす**。
+ *
+ * ローカルに対して後から落とすと、派生プロジェクトが独自に置いたファイルまで
+ * 巻き込む（core に自作の apps/mobile/ がある状態で firebase を足すと、mobile 層の
+ * 定義に従って apps/mobile ごと消える）。取り込む前に手本の側を整えておけば、
+ * ローカルには「足す層の内容」しか入らない。
+ */
+function stageSource(sourceDir, sourceManifest, remaining) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'layer-stage-'))
+
+  fs.cpSync(sourceDir, dir, {
+    recursive: true,
+    filter: (from) => !COPY_SKIP.has(path.basename(from)),
+  })
+
+  if (remaining.length > 0) applyRemoval(dir, sourceManifest, remaining)
+
+  return {
+    dir,
+    cleanup: () => fs.rmSync(dir, { recursive: true, force: true }),
+  }
+}
+
+/** ワークスペース（apps/* と packages/*）の package.json の name を集める */
+function workspacePackageNames(root) {
+  const names = []
+
+  for (const group of ['apps', 'packages']) {
+    const dir = path.join(root, group)
+
+    if (!fs.existsSync(dir)) continue
+
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue
+
+      const manifest = path.join(dir, entry.name, 'package.json')
+
+      if (!fs.existsSync(manifest)) continue
+
+      const { name } = readJson(manifest)
+
+      if (typeof name === 'string') names.push(name)
+    }
+  }
+
+  return names
+}
+
+/**
+ * テンプレートと派生プロジェクトでワークスペースのスコープが違う場合の対応表を作る。
+ *
+ * /init-project は内部のスコープを `@<プロジェクト名>/*` にリネームする。
+ * 取り込む内容をそのまま置くと `@geckou/shared` 等が再混入して依存が解決できないため、
+ * **ワークスペースの名前だけ**を置き換える（npm から取る `@geckou/billing` 等は対象外）。
+ */
+function detectScopeRename(stageDir, root) {
+  const scopeOf = (name) => name.match(/^@([^/]+)\//)?.[1]
+  const baseOf = (name) => name.replace(/^@[^/]+\//, '')
+
+  const sourceNames = workspacePackageNames(stageDir)
+  const localNames = workspacePackageNames(root)
+
+  const sourceScope = sourceNames.map(scopeOf).find(Boolean)
+  const localScope = localNames.map(scopeOf).find(Boolean)
+
+  if (!sourceScope || !localScope || sourceScope === localScope) return null
+
+  // テンプレート側のワークスペース名（＝内部パッケージ）だけを置き換え対象にする
+  const internal = new Set(sourceNames.map(baseOf))
+
+  return { sourceScope, localScope, internal }
+}
+
+function applyScopeRename(content, rename) {
+  if (!rename || typeof content !== 'string') return content
+
+  let renamed = content
+
+  for (const name of rename.internal) {
+    renamed = renamed
+      .split(`@${rename.sourceScope}/${name}`)
+      .join(`@${rename.localScope}/${name}`)
+  }
+
+  return renamed
+}
+
+/** 拡張子から、スコープの置換をかけてよいテキストかを判定する */
+function isRenamableText(file) {
+  return (
+    /\.(json|ts|tsx|js|jsx|mjs|cjs|md|ya?ml|sh|css|rules)$/.test(file) ||
+    path.basename(file).startsWith('.env')
+  )
+}
+
+/** ディレクトリ・ファイルを写す。テキストはスコープを置き換えながら書く */
+function copyRecursive(from, to, rename) {
+  const stat = fs.statSync(from)
+
+  if (stat.isDirectory()) {
+    fs.mkdirSync(to, { recursive: true })
+
+    for (const entry of fs.readdirSync(from)) {
+      copyRecursive(path.join(from, entry), path.join(to, entry), rename)
+    }
+
+    return
+  }
+
   fs.mkdirSync(path.dirname(to), { recursive: true })
-  fs.cpSync(from, to, { recursive: true })
+
+  if (rename && isRenamableText(from)) {
+    fs.writeFileSync(
+      to,
+      applyScopeRename(fs.readFileSync(from, 'utf8'), rename)
+    )
+    return
+  }
+
+  fs.copyFileSync(from, to)
 }
 
 /**
  * 層を足したファイルの内容を、ローカルの変更を保ったまま作る。
  *
- * base   = テンプレートから「ローカルに無い層」を全て外したもの（＝ローカルの出自）
+ * base   = 手本から今回足す層を外したもの（＝ローカルのファイルの出自）
  * ours   = ローカルのファイル
- * theirs = テンプレートのファイル
+ * theirs = 手本のファイル（今回足さない層は既に落としてある）
  *
  * の 3-way マージ。ローカルに手が入っていなければ theirs がそのまま採用される。
- * theirs には今回足さない層の内容も混ざるが、最後に applyRemoval で落とす。
  */
-function mergeWithLayer(localContent, sourceContent, absent, absentLayers) {
-  let base = stripBlocks(sourceContent, absent)
+function mergeWithLayer(localContent, sourceContent, addition, additionLayers) {
+  let base = stripBlocks(sourceContent, addition)
 
   // 減算が置換で消していた箇所（replace）も base 側に反映しておく
-  for (const layer of absentLayers) {
+  for (const layer of additionLayers) {
     for (const rule of layer.replace ?? []) {
       base = base.split(rule.find).join(rule.with)
     }
@@ -243,6 +369,7 @@ function main() {
 
   const root = options.target
   const source = prepareSource(root, options)
+  let stage = null
 
   try {
     const sourceManifest = loadManifest(source.dir)
@@ -274,21 +401,28 @@ function main() {
 
     const layers = addition.map((name) => layerByName(sourceManifest, name))
 
-    // ローカルに無い層（今回足すものを含む）。base の計算に使う
-    const absent = sourceManifest.layers
+    // ローカルに無く、今回も足さない層。手本の側から先に落としておく
+    const remaining = sourceManifest.layers
       .map((layer) => layer.name)
-      .filter((name) => !present.has(name))
-    const absentLayers = absent.map((name) => layerByName(sourceManifest, name))
+      .filter((name) => !present.has(name) && !addition.includes(name))
 
-    // 今回足さない層。テンプレートから紛れ込んだ分を最後に落とす
-    const remaining = absent.filter((name) => !addition.includes(name))
+    stage = stageSource(source.dir, sourceManifest, remaining)
+
+    const rename = detectScopeRename(stage.dir, root)
+
+    if (rename) {
+      console.log(
+        `[info] ワークスペースのスコープを合わせます: @${rename.sourceScope}/* → @${rename.localScope}/*`
+      )
+    }
+
     const changes = []
     const conflicts = []
 
     // 1. ファイル・ディレクトリ
     for (const layer of layers) {
       for (const relative of layer.files ?? []) {
-        const from = path.join(source.dir, relative)
+        const from = path.join(stage.dir, relative)
         const to = path.join(root, relative)
 
         if (!fs.existsSync(from)) {
@@ -304,7 +438,7 @@ function main() {
 
         changes.push(`create  ${relative}`)
 
-        if (!options.dryRun) copyRecursive(from, to)
+        if (!options.dryRun) copyRecursive(from, to, rename)
       }
     }
 
@@ -317,7 +451,7 @@ function main() {
     }
 
     for (const relative of [...mergeTargets].sort()) {
-      const from = path.join(source.dir, relative)
+      const from = path.join(stage.dir, relative)
 
       if (!fs.existsSync(from)) {
         console.log(`[warn] テンプレートに存在しません: ${relative}`)
@@ -325,7 +459,10 @@ function main() {
       }
 
       const to = path.join(root, relative)
-      const sourceContent = fs.readFileSync(from, 'utf8')
+      const sourceContent = applyScopeRename(
+        fs.readFileSync(from, 'utf8'),
+        rename
+      )
       const localContent = fs.existsSync(to)
         ? fs.readFileSync(to, 'utf8')
         : null
@@ -333,8 +470,8 @@ function main() {
       const { content, conflicted } = mergeWithLayer(
         localContent,
         sourceContent,
-        absent,
-        absentLayers
+        addition,
+        layers
       )
 
       if (content === localContent) continue
@@ -351,8 +488,8 @@ function main() {
 
     // 3. 依存・スクリプト・設定のキー（テンプレートの値をそのまま戻す）
     for (const layer of layers) {
-      const restoreValue = (relative, keys, kind) => {
-        const from = path.join(source.dir, relative)
+      const restoreValue = (relative, keys, kind, { localKeys } = {}) => {
+        const from = path.join(stage.dir, relative)
         const to = path.join(root, relative)
 
         if (!fs.existsSync(from) || !fs.existsSync(to)) return
@@ -365,11 +502,18 @@ function main() {
           return
         }
 
-        const localEntry = ensureJsonPath(localJson, keys)
+        const localEntry = ensureJsonPath(localJson, localKeys ?? keys)
 
         if (localEntry.parent[localEntry.key] !== undefined) return
 
-        localEntry.parent[localEntry.key] = sourceEntry.parent[sourceEntry.key]
+        localEntry.parent[localEntry.key] = rename
+          ? JSON.parse(
+              applyScopeRename(
+                JSON.stringify(sourceEntry.parent[sourceEntry.key]),
+                rename
+              )
+            )
+          : sourceEntry.parent[sourceEntry.key]
         restoreKeyOrder(localEntry.parent, sourceEntry.parent)
 
         changes.push(`${kind} ${relative}: ${keys.join('.')}`)
@@ -379,7 +523,7 @@ function main() {
 
       for (const [relative, names] of Object.entries(layer.deps ?? {})) {
         for (const dependency of names) {
-          const from = path.join(source.dir, relative)
+          const from = path.join(stage.dir, relative)
 
           if (!fs.existsSync(from)) continue
 
@@ -390,7 +534,9 @@ function main() {
 
           if (!field) continue
 
-          restoreValue(relative, [field, dependency], 'dep    ')
+          restoreValue(relative, [field, dependency], 'dep    ', {
+            localKeys: [field, applyScopeRename(dependency, rename)],
+          })
         }
       }
 
@@ -405,20 +551,7 @@ function main() {
       }
     }
 
-    // 4. まだ足していない層の内容を落とす。
-    // テンプレートから持ち込んだファイル（apps/functions/package.json の課金依存、
-    // api.ts の課金ルート等）には、今回足さない層の内容も混ざっている
-    if (remaining.length > 0 && !options.dryRun) {
-      const cleaned = applyRemoval(root, sourceManifest, remaining)
-
-      if (cleaned.length > 0) {
-        changes.push(
-          `clean   まだ足していない層を除去: ${remaining.join(', ')}`
-        )
-      }
-    }
-
-    // 5. マニフェストに層の定義を戻す。
+    // 4. マニフェストに層の定義を戻す。
     // 足した層はテンプレートの定義をそのまま入れ、既にある層は
     // 層の交点（billing の RevenueCat 等）で削られていた項目をテンプレートから補う。
     // 最後に実態へ合わせて刈り込む
@@ -467,6 +600,7 @@ function main() {
       '  → 環境変数・外部サービスの設定など、判断が要る手順は /add-<層名> スキルを参照'
     )
   } finally {
+    stage?.cleanup()
     source.cleanup()
   }
 }

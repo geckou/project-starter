@@ -72,9 +72,14 @@ node scripts/add-layer.mjs functions --dry-run          # 変更内容だけ表�
 - **前提の層（`requires`）は遡って一緒に入る。** billing を足すと firebase / functions も入る
 - **要求していない層は入らない。** テンプレートから持ち込んだファイルに混ざる他層の内容
   （`api.ts` の課金ルート等）は、減算と同じ処理で落とす
-- **ローカルの変更は 3-way マージで保たれる。** base は「テンプレートからその層を外したもの」＝
+- **ローカルの変更は 3-way マージで保たれる。** base は「手本からその層を外したもの」＝
   ローカルのファイルの出自にあたるため、手を入れていない箇所だけが更新される。
   衝突したファイルは実行結果に列挙されるので、マージマーカーを解消する
+- **足さない層のディレクトリにあるローカルのファイルは消さない。** 今回足さない層は
+  ローカルではなく**手本の一時コピー側で先に落とす**ため、ローカルには足す層の内容しか入らない
+- **ワークスペースのスコープはローカルに合わせる。** `/init-project` で `@<プロジェクト名>/*` に
+  リネーム済みなら、取り込む内容も同じスコープに書き換える（npm から取る `@geckou/billing` 等の
+  外部パッケージは対象外）
 - 実行後は `yarn install` と `yarn format`
 
 スクリプトが担当するのは**機械的な配線だけ**。アカウント作成・キーの発行・
@@ -135,9 +140,9 @@ bash scripts/test-layers.sh     # 減算スクリプトの回帰テスト（CI �
 ```
 
 さらに `.github/workflows/layer-matrix.yml` が、減算で作った 6 構成
-（`core` / `+firebase` / `+functions` / `+functions+billing` / `+functions+mobile` / 全部入り）を
-それぞれインストールして型チェック・Lint・テスト・ビルドまで通す。
-層の仕組みに触る PR と手動実行（workflow_dispatch）で回る。
+（`core` / `+firebase` / `+functions` / `+functions+billing` / `+functions+mobile` / 全部入り）と、
+core から加算で組み直した構成を、それぞれインストールして型チェック・Lint・テスト・ビルドまで通す。
+実装に触る PR と手動実行（workflow_dispatch）で回る。
 
 `check-layers.mjs` は `files` の実在、マーカーの対応と `blocks` との一致、`deps` / `scripts` /
 `json` / `replace` / `env` の実在を検査する。どちらも node_modules に依存しないので
@@ -158,6 +163,3 @@ bash scripts/test-layers.sh     # 減算スクリプトの回帰テスト（CI �
 - 派生プロジェクトでの実地検証。`layers.json` を `.templatesyncignore` に載せているため、
   既存の派生プロジェクトは自分のマニフェストを持たない。`/init-project` の手順で
   層を選ぶところから一度通す
-- スコープのリネーム（`@geckou/*` → 派生プロジェクトのスコープ）。加算はテンプレートの
-  ファイルをそのまま持ち込むため、リネーム済みのプロジェクトでは手当てが要る
-  （現状は各 `/add-*` スキルの確認項目で拾う）
