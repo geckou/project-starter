@@ -21,6 +21,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import {
+  DEPENDENCY_FIELDS,
   findBlocks,
   isTextFile,
   listFiles,
@@ -158,11 +159,10 @@ for (const layer of manifest.layers) {
     const json = readJson(target)
 
     for (const dependency of dependencies) {
-      const found = [
-        'dependencies',
-        'devDependencies',
-        'peerDependencies',
-      ].some((field) => json[field]?.[dependency] !== undefined)
+      // 減算が落とす対象と同じフィールドを見る（optionalDependencies を含む）
+      const found = DEPENDENCY_FIELDS.some(
+        (field) => json[field]?.[dependency] !== undefined
+      )
 
       if (!found) {
         fail(

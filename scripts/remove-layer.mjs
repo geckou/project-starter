@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import {
+  DEPENDENCY_FIELDS,
   isTextFile,
   layerByName,
   listFiles,
@@ -26,13 +27,6 @@ import {
   stripBlocks,
   writeJson,
 } from './lib/layers.mjs'
-
-const DEPENDENCY_FIELDS = [
-  'dependencies',
-  'devDependencies',
-  'peerDependencies',
-  'optionalDependencies',
-]
 
 function parseArguments(argv) {
   const options = { target: process.cwd(), dryRun: false, layers: [] }

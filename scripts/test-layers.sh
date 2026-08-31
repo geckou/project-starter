@@ -9,12 +9,41 @@ set -u
 #   3. 減算後も残ったファイルが構文として壊れていないこと
 #   4. 減算後のリポジトリに、外した層への参照が残っていないこと
 #
+# このスクリプトが検証するのは「全部入りのテンプレートからの減算」なので、
+# 各層が揃っていることを前提にする。減算済みの構成や、層マニフェストを持たない
+# 派生プロジェクトでは検証対象そのものが無いため、先頭でスキップする
+# （スクリプトは Template Sync で配られ、CI から無条件に呼ばれるため）。
+#
 # 実体を package.json ではなくこのスクリプトに置いている理由は
 # scripts/test-hooks.sh と同じ（ルート package.json は Template Sync の対象外）。
 # node_modules に依存しないので yarn install なしで実行できる。
 
 cd "$(dirname "$0")/.."
 REPO_ROOT=$(pwd)
+
+# 対象のマニフェストにその層が定義されているか
+manifest_has_layer() {
+  node -e "
+    const fs = require('node:fs');
+    const [file, name] = process.argv.slice(1);
+    if (!fs.existsSync(file)) process.exit(1);
+    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+    process.exit(manifest.layers.some((layer) => layer.name === name) ? 0 : 1);
+  " "$REPO_ROOT/layers.json" "$1"
+}
+
+if [ ! -f "$REPO_ROOT/layers.json" ]; then
+  echo "[skip] layers.json が無いため層の回帰テストをスキップします"
+  exit 0
+fi
+
+for required_layer in firebase functions mobile billing; do
+  if ! manifest_has_layer "$required_layer"; then
+    echo "[skip] この構成には ${required_layer} 層が無いため、全部入り前提の回帰テストをスキップします"
+    echo "       （減算済みの構成では、層の検証は check-layers.mjs が担当する）"
+    exit 0
+  fi
+done
 
 passed=0
 failed=0
@@ -168,6 +197,21 @@ if grep -q "ALLOWED_ORIGINS" "$variant/.env.example"; then
   pass ".env.example の functions の env は残る"
 else
   fail ".env.example から functions の env まで消えた"
+fi
+
+# Functions 側のリファレンス（apps/functions/.env.example）も課金の記述を落とす。
+# 残ると「消えたはずの環境変数の設定手順」が生成物に残る
+if ! grep -q "STRIPE_SECRET_KEY\|REVENUECAT_WEBHOOK_AUTH\|SYNC_SUBSCRIPTION_CLAIMS" \
+  "$variant/apps/functions/.env.example"; then
+  pass "apps/functions/.env.example から課金の記述が消える"
+else
+  fail "apps/functions/.env.example に課金の記述が残っている"
+fi
+
+if grep -q "ALLOWED_ORIGINS" "$variant/apps/functions/.env.example"; then
+  pass "apps/functions/.env.example の functions の記述は残る"
+else
+  fail "apps/functions/.env.example から functions の記述まで消えた"
 fi
 
 if bash -n "$variant/scripts/use-env.sh" 2>/dev/null && node --check "$variant/lint-staged.config.cjs" 2>/dev/null; then
@@ -391,9 +435,14 @@ else
   pass "未定義の層はエラーになる"
 fi
 
-before=$(find "$variant" -type f | wc -l)
+# ファイル数だけでは中身の書き換えを見逃すため、全ファイルのチェックサムで比べる
+tree_checksum() {
+  find "$1" -type f -exec sha1sum {} + | sed "s|$1||" | sort | sha1sum
+}
+
+before=$(tree_checksum "$variant")
 remove_layers "$variant" --dry-run mobile > /dev/null 2>&1
-after=$(find "$variant" -type f | wc -l)
+after=$(tree_checksum "$variant")
 if [ "$before" = "$after" ]; then
   pass "--dry-run はファイルを変更しない"
 else

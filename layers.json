@@ -222,7 +222,8 @@
         "apps/mobile/app.config.ts",
         ".env.example",
         "scripts/use-env.sh",
-        "packages/README.md"
+        "packages/README.md",
+        "apps/functions/.env.example"
       ],
       "deps": {
         "packages/shared/package.json": ["@geckou/billing"],

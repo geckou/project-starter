@@ -7,6 +7,14 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
+/** package.json のうち、層の依存を探す / 落とすフィールド */
+export const DEPENDENCY_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'peerDependencies',
+  'optionalDependencies',
+]
+
 /** マーカーの構文: <コメント記号> layer:<層名>[,<層名>...]:start | :end */
 export const MARKER_PATTERN = /layer:([a-zA-Z0-9,_-]+):(start|end)/
 

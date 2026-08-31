@@ -15,13 +15,18 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [production, 'release/**']
-    # 層の仕組みに触る変更でのみ回す（全 PR で 6 構成を回すと Actions 分が重い）
-    paths:
-      - 'layers.json'
-      - 'scripts/remove-layer.mjs'
-      - 'scripts/check-layers.mjs'
-      - 'scripts/lib/layers.mjs'
-      - '.github/workflows/layer-matrix.yml'
+    # 減算後の構成は、層に属する「あらゆるファイル」の変更で壊れうる
+    # （マーカーの付いていない依存が残ったファイルに増えると、全部入りのビルドは
+    # 通るのに減算後だけ落ちる）。対象を層の仕組みに絞らず、ci.yml と同じく
+    # アプリの動作に影響しない変更だけを除外する
+    paths-ignore:
+      - '**/*.md'
+      - '.claude/docs/**'
+      - '.claude/skills/**'
+      - '.claude/launch.json'
+      - '.vscode/**'
+      - '.editorconfig'
+      - 'LICENSE'
 
 concurrency:
   group: layer-matrix-${{ github.ref }}
