@@ -39,27 +39,50 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # 検査対象の有無を install より先に確かめる。設定を外している派生プロジェクトや、
+      # PR のコンテキストが無い呼ばれ方（workflow_call）で yarn install まで走らせると、
+      # 何もしないジョブに数十秒かけることになる
+      - name: Check preconditions
+        id: pre
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [ ! -f commitlint.config.cjs ]; then
+            echo "::notice::commitlint.config.cjs が無いため検査をスキップします"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -z "$PR_TITLE" ]; then
+            echo "::notice::PR のコンテキストが無いため検査をスキップします（PR 以外から workflow_call で呼ばれた場合）"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@v7
+        if: steps.pre.outputs.run == 'true'
         with:
           node-version-file: '.nvmrc'
           cache: 'yarn'
 
       # type の一覧は commitlint.config.cjs が持っている。ここで正規表現を書き直すと
       # 同じ規約の4つ目の写しになるため、実際の設定をそのまま使う
-      - run: yarn install --frozen-lockfile
+      - name: Install dependencies
+        if: steps.pre.outputs.run == 'true'
+        run: yarn install --frozen-lockfile
 
       - name: Lint PR title
+        if: steps.pre.outputs.run == 'true'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          if [ ! -f commitlint.config.cjs ]; then
-            echo "::notice::commitlint.config.cjs が無いため検査をスキップします"
-            exit 0
-          fi
-
           echo "PR タイトル: $PR_TITLE"
 
-          if printf '%s\n' "$PR_TITLE" | npx commitlint --config commitlint.config.cjs; then
+          # --no-install: 上で入れた devDependencies の commitlint を使う。
+          # 落ちてきた別バージョンで検査結果が変わらないようにする
+          if printf '%s\n' "$PR_TITLE" | npx --no-install commitlint --config commitlint.config.cjs; then
             exit 0
           fi
 
