@@ -23,6 +23,7 @@ updates:
       - dependency-name: '*'
         update-types: ['version-update:semver-major']
 
+      # layer:mobile:start
       # Expo はバージョン整合が厳しく `expo install` 前提のため
       # minor / patch も含めて全面的に手動更新とする
       # （こちらは全面 ignore のためセキュリティ更新も止まる点に注意）
@@ -44,6 +45,7 @@ updates:
       # tailwindcss: NativeWind v4 が Tailwind v4 未対応のため mobile は v3 固定
       - dependency-name: 'tailwindcss'
         update-types: ['version-update:semver-major']
+      # layer:mobile:end
 
   # GitHub Actions のメジャーは Node ランタイム更新が中心で、失敗すれば
   # CI が即座に赤くなり検知できるため、メジャーも自動更新の対象に残す

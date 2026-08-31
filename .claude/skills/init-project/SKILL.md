@@ -10,7 +10,28 @@ description: テンプレートから派生プロジェクトを初期化する�
 
 ## 手順
 
-### 1. scripts/setup.sh の実行
+### 1. 使う層を決める
+
+このテンプレートは core + opt-in 層で構成されている（`layers.json` / `.claude/docs/layers.md`）。
+
+```
+core → firebase → functions → mobile / billing
+```
+
+ユーザーにプロジェクトの形（Web だけか / モバイルがあるか / 課金があるか / API・トリガーが要るか）を
+確認し、**要らない層は依存インストールの前に外す**。後から外すより、最初から無い方が
+Expo や課金の維持コストを払わずに済む。
+
+```bash
+node scripts/remove-layer.mjs --dry-run mobile   # 何が消えるか先に見る
+node scripts/remove-layer.mjs mobile billing     # 例: Web のみ・課金なし
+```
+
+外したあとは `yarn format` で整形する（`yarn install` は次の手順で走る）。
+判断がつかない層は残しておいてよい。**外した層を後から戻す加算スキル（`/add-*`）は未実装**のため、
+迷ったら残す方が安全（`layers.json` に定義は残っている）。
+
+### 2. scripts/setup.sh の実行
 
 ```bash
 yarn setup
@@ -20,11 +41,11 @@ yarn setup
 - `.env.develop` / `.env.staging` / `.env.production` / `.env.local` を `.env.example` から作成
 - Node.js / yarn / Firebase CLI のチェック、production ブランチ保護の設定、依存インストール
 
-### 2. ルート package.json の name 変更
+### 3. ルート package.json の name 変更
 
 `package.json` の `"name": "geckou-monorepo"` を `"<project-name>-monorepo"` 等に変更する。
 
-### 3. `@geckou/*` スコープの一括リネーム
+### 4. `@geckou/*` スコープの一括リネーム
 
 ワークスペース内部のスコープ `@geckou/*` を `@<project-name>/*` に一括置換する。
 
@@ -74,7 +95,9 @@ grep -rn '@geckou/' $EXCLUDES .
 
 置換後に `yarn install` を実行し直し、`yarn type-check` が通ることを確認する。
 
-### 4. apps/mobile/app.config.ts のアプリ識別子変更
+### 5. apps/mobile/app.config.ts のアプリ識別子変更
+
+mobile 層を外した場合はこの手順を飛ばす。
 
 `apps/mobile/app.config.ts` の以下を変更する:
 
@@ -86,12 +109,12 @@ grep -rn '@geckou/' $EXCLUDES .
 | `ios.bundleIdentifier` | `com.geckou.app` | iOS バンドル ID |
 | `android.package` | `com.geckou.app` | Android パッケージ名 |
 
-### 5. CLAUDE.md のプレースホルダ設定
+### 6. CLAUDE.md のプレースホルダ設定
 
 - プロジェクトドキュメント表の `<Figma URL>` を実際の Figma URL に置き換える
 - 「テンプレート起因の問題を親リポジトリに報告」セクションはそのまま残す（派生プロジェクトで使うルール）
 
-### 6. ドキュメント・メモリの初期化
+### 7. ドキュメント・メモリの初期化
 
 - `.claude/docs/planning.md` / `spec.md` / `roadmap.md` のプレースホルダ
   （空のテーブル・コメント）を確認し、プロダクトの内容を記入する
@@ -100,11 +123,13 @@ grep -rn '@geckou/' $EXCLUDES .
 
 ## 確認事項
 
+- [ ] 使う層を決め、不要な層を `scripts/remove-layer.mjs` で外した
+- [ ] `node scripts/check-layers.mjs` が通る（層マニフェストと実態が一致している）
 - [ ] `yarn setup` を実行した（.firebaserc / .env.*）
 - [ ] ルート `package.json` の `name` を変更した
 - [ ] `@geckou/` の grep が `@geckou/ui-react` / `@geckou/ui-core` / `@geckou/billing`（外部パッケージ）と
       `.claude/skills/init-project/SKILL.md`（この手順書自身）以外 0 件になった
 - [ ] `yarn install` 後に `yarn type-check` / `yarn test` が通る
-- [ ] `apps/mobile/app.config.ts` の識別子を変更した
+- [ ] `apps/mobile/app.config.ts` の識別子を変更した（mobile 層を残した場合）
 - [ ] CLAUDE.md の Figma URL を設定した
 - [ ] `.claude/docs/` と `memory/` を初期化した

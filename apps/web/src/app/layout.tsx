@@ -4,7 +4,9 @@ import {
   GoogleTagManager,
   GoogleTagManagerNoscript,
 } from '@/components/GoogleTagManager'
+// layer:firebase:start
 import { AuthProvider } from '@/components/auth/AuthProvider'
+// layer:firebase:end
 import '@/styles/globals.css'
 
 export const metadata: Metadata = {

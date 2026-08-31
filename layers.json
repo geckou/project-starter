@@ -1,0 +1,265 @@
+{
+  "$comment": "テンプレートの層マニフェスト（機械可読な層定義）。scripts/remove-layer.mjs が減算に、scripts/check-layers.mjs が実態との整合検証に使う。仕様は .claude/docs/layers.md を参照。",
+  "markers": {
+    "syntax": "<コメント記号> layer:<層名>[,<層名>...]:start / :end",
+    "rule": "列挙した層のいずれかが外れたら、その範囲を削除する（複数列挙は層の交点を表す）"
+  },
+  "layers": [
+    {
+      "name": "core",
+      "title": "LP が作れる最小構成",
+      "requires": null,
+      "removable": false,
+      "summary": "Next.js + Firebase Hosting + CI/deploy + 環境切替。apps/web の骨格・Basic 認証・デザイントークン・i18n・共有ユーティリティまで。ここから先は全て opt-in。",
+      "files": [
+        "apps/web/src/app/layout.tsx",
+        "apps/web/src/app/page.tsx",
+        "apps/web/src/app/error.tsx",
+        "apps/web/src/app/ui-demo/page.tsx",
+        "apps/web/src/components/GoogleTagManager.tsx",
+        "apps/web/src/lib/sentry.ts",
+        "apps/web/src/middleware.ts",
+        "apps/web/src/styles/globals.css",
+        "packages/shared/src/types/index.ts",
+        "packages/shared/src/utils/index.ts",
+        "packages/shared/src/theme/index.ts",
+        "packages/shared/src/i18n/index.ts",
+        "scripts/deploy.sh",
+        "scripts/use-env.sh",
+        "turbo.json"
+      ],
+      "env": [
+        "BASIC_AUTH_CREDENTIALS",
+        "NEXT_PUBLIC_GTM_ID",
+        "NEXT_PUBLIC_SENTRY_DSN"
+      ],
+      "notes": [
+        "hosting.frameworksBackend の SSR 用関数は framework アダプタが自動生成して Cloud Functions (2nd gen) にデプロイする。リポジトリにコードを持たないため core に属する（functions 層とは別物）。",
+        "apps/web/src/app/ui-demo/ は @geckou/ui-react だけに依存する参考ページ。層ではなく scaffold の削除対象（/init-project で消す類）として扱う。"
+      ]
+    },
+    {
+      "name": "firebase",
+      "title": "Auth + Firestore + Storage",
+      "requires": "core",
+      "removable": true,
+      "summary": "Firebase の認証・DB・ストレージと、そのルール・エミュレーター・ルールテスト・Admin SDK。外すと apps/web はサインインを持たない静的寄りの構成になる。",
+      "files": [
+        "apps/web/src/lib/firebase.ts",
+        "apps/web/src/lib/firebase-admin.ts",
+        "apps/web/src/app/api/session",
+        "apps/web/src/app/login",
+        "apps/web/src/app/dashboard",
+        "apps/web/src/components/auth",
+        "apps/web/tests/session-route.test.ts",
+        "packages/shared/src/firebase",
+        "packages/shared/src/firestore",
+        "packages/shared/src/storage",
+        "packages/shared/src/stores",
+        "packages/shared/tests/stores.test.ts",
+        "firestore.rules",
+        "firestore.indexes.json",
+        "storage.rules",
+        "firebase.rules-test.json",
+        "tests",
+        "scripts/test-rules.sh"
+      ],
+      "blocks": [
+        "apps/web/src/app/layout.tsx",
+        "apps/web/src/middleware.ts",
+        "apps/web/tests/middleware.test.ts",
+        "scripts/deploy.sh",
+        ".env.example",
+        ".github/workflows/ci.yml",
+        ".github/workflows/deploy.yml",
+        ".github/workflows/smoke-test.yml",
+        "packages/shared/src/index.ts",
+        "packages/README.md"
+      ],
+      "deps": {
+        "package.json": ["firebase", "@firebase/rules-unit-testing"],
+        "apps/web/package.json": ["firebase", "firebase-admin"],
+        "packages/shared/package.json": [
+          "firebase",
+          "@geckou/firebase-client",
+          "zustand"
+        ]
+      },
+      "scripts": {
+        "package.json": ["test:rules"]
+      },
+      "json": {
+        "firebase.json": [
+          ["firestore"],
+          ["storage"],
+          ["emulators", "firestore"],
+          ["emulators", "auth"],
+          ["emulators", "storage"]
+        ],
+        "packages/shared/package.json": [
+          ["exports", "./firebase"],
+          ["exports", "./firestore"],
+          ["exports", "./storage"],
+          ["exports", "./stores"]
+        ]
+      },
+      "replace": [
+        {
+          "file": "apps/web/src/app/layout.tsx",
+          "find": "<AuthProvider>{children}</AuthProvider>",
+          "with": "{children}"
+        },
+        {
+          "file": ".claude/hooks/config.sh",
+          "find": "firestore.rules\tfirestore.rules が変更されました。yarn test:rules でルールテスト（許可/拒否）を実行してください。\n",
+          "with": ""
+        }
+      ],
+      "env": [
+        "NEXT_PUBLIC_FIREBASE_API_KEY",
+        "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+        "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+        "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
+        "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+        "NEXT_PUBLIC_FIREBASE_APP_ID",
+        "FIREBASE_SERVICE_ACCOUNT_KEY",
+        "NEXT_PUBLIC_USE_FIREBASE_EMULATOR",
+        "GOOGLE_APPLICATION_CREDENTIALS"
+      ],
+      "notes": [
+        "auth / firestore / storage を別々の層に割らないのは、外しても消えるのがコードだけで、設定・運用が消えないため（#105 代替案 B）。"
+      ]
+    },
+    {
+      "name": "functions",
+      "title": "apps/functions（自分で書く関数の器）",
+      "requires": "firebase",
+      "removable": true,
+      "summary": "API・Firestore / Auth トリガー・スケジュール実行の置き場所。API は全クライアントがこの1本を共有する（architecture.md）。外すとプロジェクトは API を持たない。",
+      "files": ["apps/functions", "apps/web/src/lib/api-client.ts"],
+      "blocks": [
+        ".env.example",
+        "scripts/use-env.sh",
+        "scripts/deploy.sh",
+        "lint-staged.config.cjs",
+        ".github/workflows/deploy.yml",
+        "apps/README.md"
+      ],
+      "scripts": {
+        "package.json": [
+          "dev:functions",
+          "build:functions",
+          "firebase:deploy:functions"
+        ]
+      },
+      "json": {
+        "firebase.json": [["functions"], ["emulators", "functions"]]
+      },
+      "env": ["ALLOWED_ORIGINS", "NEXT_PUBLIC_API_BASE_URL", "SENTRY_DSN"],
+      "notes": [
+        "@geckou/firebase-server（認証ミドルウェア / FCM 送信）を持ち込むのはこの層。kit 側の分類（firebase 層のサーバー側）と 1:1 で対応する。",
+        "FCM 送信（apps/functions/src/lib/push-notifications.ts）はファイルとしてこの層にあるが、実利用は mobile 層が前提。"
+      ]
+    },
+    {
+      "name": "mobile",
+      "title": "Expo（iOS / Android）",
+      "requires": "functions",
+      "removable": true,
+      "summary": "apps/mobile 一式と、それが持ち込む CI ステップ・nohoist・Dependabot の ignore 群。React / Tailwind のバージョン分裂の発生源でもある。",
+      "files": ["apps/mobile"],
+      "blocks": [
+        ".env.example",
+        "scripts/use-env.sh",
+        "lint-staged.config.cjs",
+        ".github/dependabot.yml",
+        ".github/workflows/ci.yml",
+        ".github/workflows/deploy.yml",
+        ".github/workflows/smoke-test.yml",
+        "packages/README.md",
+        "apps/README.md"
+      ],
+      "scripts": {
+        "package.json": ["dev:mobile"]
+      },
+      "json": {
+        "package.json": [["workspaces", "nohoist"]]
+      },
+      "env": [
+        "FIREBASE_API_KEY",
+        "FIREBASE_AUTH_DOMAIN",
+        "FIREBASE_PROJECT_ID",
+        "FIREBASE_STORAGE_BUCKET",
+        "FIREBASE_MESSAGING_SENDER_ID",
+        "FIREBASE_APP_ID",
+        "EXPO_PUBLIC_API_BASE_URL",
+        "EXPO_PUBLIC_SENTRY_DSN"
+      ],
+      "notes": [
+        "mobile が functions を要求するのは、API を Cloud Functions の1本に集約する規約（architecture.md）を全構成で維持するため。"
+      ]
+    },
+    {
+      "name": "billing",
+      "title": "課金（Stripe / RevenueCat）",
+      "requires": "functions",
+      "removable": true,
+      "summary": "@geckou/billing の配線と課金画面。ロジックはパッケージ側にあるため、この層に残るのは配線と権利変化フックだけ。",
+      "files": [
+        "apps/web/src/app/billing",
+        "apps/web/src/components/billing",
+        "apps/web/src/lib/billing.ts",
+        "packages/shared/src/billing",
+        "apps/functions/src/lib/billing.ts",
+        "apps/functions/src/lib/entitlement-hooks.ts",
+        "apps/mobile/src/lib/revenuecat.ts"
+      ],
+      "blocks": [
+        "packages/shared/src/index.ts",
+        "packages/shared/src/types/index.ts",
+        "packages/shared/tests/types.test.ts",
+        "apps/functions/src/api.ts",
+        "apps/mobile/app.config.ts",
+        ".env.example",
+        "scripts/use-env.sh",
+        "packages/README.md",
+        "apps/functions/.env.example"
+      ],
+      "deps": {
+        "packages/shared/package.json": ["@geckou/billing"],
+        "apps/functions/package.json": ["@geckou/billing", "stripe"],
+        "apps/mobile/package.json": [
+          "react-native-purchases",
+          "react-native-purchases-ui"
+        ]
+      },
+      "json": {
+        "packages/shared/package.json": [["exports", "./billing"]]
+      },
+      "replace": [
+        {
+          "file": "apps/functions/package.json",
+          "find": " --external:stripe",
+          "with": ""
+        }
+      ],
+      "env": [
+        "NEXT_PUBLIC_STRIPE_PRICE_ID",
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_PRICE_IDS",
+        "STRIPE_SUCCESS_URL",
+        "STRIPE_CANCEL_URL",
+        "STRIPE_PORTAL_RETURN_URL",
+        "SYNC_SUBSCRIPTION_CLAIMS",
+        "REVENUECAT_WEBHOOK_AUTH",
+        "REVENUECAT_API_KEY_APPLE",
+        "REVENUECAT_API_KEY_GOOGLE"
+      ],
+      "notes": [
+        "RevenueCat 部分（apps/mobile/src/lib/revenuecat.ts、REVENUECAT_API_KEY_*）は billing と mobile の交点。マーカーは layer:billing,mobile で、どちらが外れても消える。",
+        "Webhook / API の置き場所は常に apps/functions（billing 層は functions 層を前提にする）。@geckou/billing 自体は実行環境非依存のまま。"
+      ]
+    }
+  ]
+}

@@ -7,7 +7,9 @@
 
 | ディレクトリ | 説明                                                                        |
 | ------------ | --------------------------------------------------------------------------- |
+<!-- layer:firebase:start -->
 | `shared/`    | 共有の型定義・ユーティリティ・Firebase クライアント（初期化 / Firestore / Storage）・状態管理・i18n・デザイントークン |
+<!-- layer:firebase:end -->
 
 ## UI コンポーネント
 
@@ -46,12 +48,16 @@ yarn workspace <web ワークスペース名> add @geckou/ui-react
 ```
 shared/src/
 ├── types/      # 共通の型定義（User, ApiResponse 等）
+<!-- layer:billing:start -->
 ├── billing/    # @geckou/billing/entitlement の re-export（権利判定）
+<!-- layer:billing:end -->
 ├── utils/      # ユーティリティ関数（formatDate, sleep 等）
+<!-- layer:firebase:start -->
 ├── firebase/   # Firebase クライアント SDK の初期化（"use client"）
 ├── firestore/  # Firestore の CRUD・クエリ・購読（"use client"）
 ├── storage/    # Firebase Storage のアップロード・削除（"use client"）
 ├── stores/     # Zustand ストア（認証状態等）
+<!-- layer:firebase:end -->
 ├── i18n/       # 翻訳キーとロケール（ja / en）
 ├── theme/      # デザイントークン（色・フォント・角丸等）
 └── index.ts    # 環境非依存のモジュールだけを一括エクスポート
@@ -73,32 +79,44 @@ shared/src/
 実際にはダウンロードされるわけではなく、yarn のワークスペース機能で `packages/shared/src/` を直接参照している。
 
 ```typescript
-// ルートのバレルが出すのは環境非依存のもの（types / billing / utils / theme / i18n）だけ
+// ルートのバレルが出すのは環境非依存のもの（types / utils / theme / i18n）だけ
 import { formatDate } from '@geckou/shared'
 import type { User } from '@geckou/shared'
 
+// layer:firebase:start
 // firebase / zustand に依存するものはサブパスから取る
 import { initFirebase } from '@geckou/shared/firebase'
 import { getDocument } from '@geckou/shared/firestore'
 import { uploadFile } from '@geckou/shared/storage'
 import { useAuthStore } from '@geckou/shared/stores'
+// layer:firebase:end
 ```
+
+<!-- layer:firebase:start -->
 
 **`initFirebase` をルートから import することはできない。** バレルが Firebase クライアント
 SDK を巻き込むと、`firebase-admin` しか依存に持たない `apps/functions` が
 `@geckou/shared` を import しただけで `firebase` / `zustand` の型解決を要求されるため、
 意図的に除外している（`packages/shared/src/index.ts` の冒頭コメント参照）。
 
+<!-- layer:firebase:end -->
+
 ## Tailwind CSS / デザイントークンの仕組み
 
-Web と Mobile で Tailwind のバージョンが異なるが、色やフォント等のデザイントークンは共有している。
+色やフォント等のデザイントークンは `packages/shared/src/theme/index.ts` を単一の情報源として共有する。
+
+<!-- layer:mobile:start -->
 
 ### なぜバージョンが違うのか
+
+Web と Mobile で Tailwind のバージョンが異なる。
 
 - **Web**: Tailwind CSS **v4**（最新。CSS ベースの設定）
 - **Mobile**: Tailwind CSS **v3** + NativeWind（NativeWind が v3 を要求するため）
 
 バージョンは違うが、`className="text-primary-500"` のような書き方は同じ。
+
+<!-- layer:mobile:end -->
 
 ### デザイントークンの流れ
 
@@ -107,8 +125,10 @@ packages/shared/src/theme/index.ts    ← 色・フォント・角丸を定義�
         │
         ├── apps/web/tailwind.config.ts       ← import して theme.extend に設定
         │   └── apps/web/src/styles/globals.css で @config から読み込み
+<!-- layer:mobile:start -->
         │
         └── apps/mobile/tailwind.config.js    ← require して theme.extend に設定
+<!-- layer:mobile:end -->
 ```
 
 ### 色を変更・追加したい場合
@@ -135,10 +155,12 @@ export const colors = {
 | `apps/web/tailwind.config.ts`        | Web 用 Tailwind 設定。shared/theme を読み込む    |
 | `apps/web/src/styles/globals.css`    | Tailwind の読み込みと `@config` でconfig を参照  |
 | `apps/web/postcss.config.mjs`        | PostCSS 経由で Tailwind v4 を処理                |
+<!-- layer:mobile:start -->
 | `apps/mobile/tailwind.config.js`     | Mobile 用 Tailwind 設定。shared/theme を読み込む |
 | `apps/mobile/src/global.css`         | NativeWind 用の Tailwind ディレクティブ          |
 | `apps/mobile/metro.config.js`        | Metro bundler に NativeWind を統合               |
 | `apps/mobile/babel.config.js`        | Babel に NativeWind プリセットを追加             |
+<!-- layer:mobile:end -->
 
 ## 新しいパッケージを追加する場合
 

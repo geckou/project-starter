@@ -12,7 +12,9 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 - **第0層（制約層）** — `.claude/hooks/`、本ファイルの規約、`memory/`、プロセス系スキル
   （`/kickoff` `/next` `/wrap-up` `/new-skill`）、commitlint・ESLint 共通ルール・Prettier。
   **スタックに依存しない。** AI と人間に規約を機械的に強制するのがこの層の役割
-- **スタック層** — 上記の Turborepo 構成・Firebase・課金。参照実装であり、案件によって差し替わる
+- **スタック層** — 上記の Turborepo 構成・Firebase・課金。参照実装であり、案件によって差し替わる。
+  `core` を基点に `firebase` → `functions` → `mobile` / `billing` の opt-in 層に分かれる
+  （→「スタック層の構成（層マニフェスト）」）
 
 共有できる実装は npm パッケージとして外部リポジトリへ切り出している
 （`@geckou/billing` は [`geckou/kit`](https://github.com/geckou/kit)、
@@ -21,6 +23,30 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 
 **第0層をスタックから独立に保つ**のがこのテンプレートの設計方針。
 スタック依存の値をフック本体に直書きしないこと（→「スタック依存の値は `config.sh` に置く」）。
+
+## スタック層の構成（層マニフェスト）
+
+```
+core              LP が作れる最小構成（Next.js + Hosting + CI/deploy + 環境切替）
+ └ firebase       Auth + Firestore + Storage + rules + emulator + Admin SDK
+      └ functions apps/functions（API・トリガー・スケジュール実行の器）
+           ├ mobile   Expo（iOS / Android）
+           └ billing  Stripe / RevenueCat の配線
+```
+
+どの層に何が属するかは **`layers.json`（層マニフェスト）が正**。文章ではなく機械可読な定義で持ち、
+`node scripts/remove-layer.mjs <層>` が層を外し、`node scripts/check-layers.mjs` が
+マニフェストと実態の一致を検証する（CI で実行）。使い方は `.claude/docs/layers.md` を参照。
+
+**ファイルを追加・移動・削除したら `layers.json` も更新する。** マニフェストは実態と乖離した瞬間に
+嘘になるが、型チェックにもテストにも引っかからない（CI の Layer Manifest Check が検出する）。
+
+1つのファイルに複数の層が混ざる場合は、コメントのマーカーで範囲を囲む
+（`.claude/docs/layers.md` の「マーカー」）。マーカーを足したら `layers.json` の `blocks` にも
+そのファイルを登録する。
+
+API の置き場所は全構成で `apps/functions` に統一する（`.claude/docs/architecture.md`）。
+functions 層を持たない構成は API を持たない。「API Routes で代用する」は選ばない。
 
 ## プロダクトの目的（北極星）
 
@@ -278,6 +304,12 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 逆にテンプレート側で設定項目が増えても自動では流れてこないため、**フック本体は
 その項目が無くても既定値で動く**ように書く。フックを追加するときも同じ方針に従う。
 
+### 層マニフェストを変更したら
+
+`layers.json` を変えたら `bash scripts/test-layers.sh`（減算の回帰テスト）と
+`node scripts/check-layers.mjs`（実態との一致）を実行する。
+どちらも node_modules に依存しないので `yarn install` なしで走る。CI でも実行される。
+
 ### フックを変更したら
 
 `pre-git-guard.sh` / `post-edit-reminder.sh` / `stop-dod-check.sh` には回帰テストがある。
@@ -349,6 +381,10 @@ yarn lint                # ESLint
 yarn firebase:emulators  # Firebase エミュレーター
 yarn env:<環境名>        # 環境切り替え（develop / staging / production）
 yarn deploy:<環境名>     # デプロイ（develop / staging / production）
+
+node scripts/check-layers.mjs        # 層マニフェストと実態の一致を検証
+bash scripts/test-layers.sh          # 減算スクリプトの回帰テスト
+node scripts/remove-layer.mjs <層>   # 層を外す（--dry-run で確認のみ）
 ```
 
 ## テンプレート起因の問題を親リポジトリに報告
@@ -463,6 +499,7 @@ gh issue create \
 - `.claude/docs/planning.md` — 企画書（プロダクト背景・ターゲット・ペルソナ・用語集・機能一覧）
 - `.claude/docs/spec.md` — 仕様書（画面一覧・データモデル・API・セキュリティ）
 - `.claude/docs/roadmap.md` — ロードマップ（機能ステータス表・残タスク・セッション引き継ぎ）
+- `.claude/docs/layers.md` — 層構成と層マニフェスト（層の外し方・マーカー・検証）
 - `.claude/docs/architecture.md` — API方針、Firebase使い分け、認証、データ取得、環境変数、Zustand、Storage、FCM、Sentry、i18n、課金（Stripe / IAP）、Tailwind、コンポーネント整理
 - `.claude/docs/billing.md` — 決済の実装手順（Stripe / IAP のセットアップ、権利判定、チェックリスト、よくある失敗）
 - `.claude/docs/nuxt-nextjs.md` — Nuxt.js → Next.js の対応表（Server Component、ルーティング等）
