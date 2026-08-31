@@ -309,3 +309,26 @@ reusable workflow の `actions/checkout` は**呼び出し元のリポジトリ*
 
 `deploy.yml` は派生ごとにシークレットとデプロイ対象が違うため、reusable にせずファイル同期のまま残す。
 `branch-guard.yml` / `template-sync.yml` も同様（リポジトリ固有の設定に依存する）。
+
+## PR タイトルの検証
+
+`.github/workflows/pr-title-lint.yml` が PR タイトルを commitlint の設定
+（`commitlint.config.cjs`）で検証する。**squash merge のコミットメッセージは PR タイトルから
+作られる**が、commitlint（`.husky/commit-msg`）も `pre-git-guard.sh` もローカルのコミットしか
+見ないため、ここだけ検証が抜けていた。
+
+可読性だけの問題ではない。`release-tag.yml` の破壊的変更ゲートは squash コミットの件名
+（`type!:`）と本文のフッターを読んで `v1` を進めるかどうかを決めるので、**タイトルが規約から
+外れると互換性の判断が効かなくなる**。
+
+**必須チェックにはしない。** 「規約違反は警告のみでコミットをブロックしない」という方針
+（CLAUDE.md）に揃え、マージするかどうかは人が決める。`.github/rulesets/production.json` の
+required status checks にも入れていない。
+
+これも reusable workflow として参照できる。
+
+```yaml
+jobs:
+  pr-title:
+    uses: geckou/project-starter/.github/workflows/pr-title-lint.yml@v1
+```
