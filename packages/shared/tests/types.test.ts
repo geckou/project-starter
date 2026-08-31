@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import type {
   ApiResponse,
+  // layer:billing:start
   Subscription,
   SubscriptionSource,
   SubscriptionStatus,
+  // layer:billing:end
   User,
 } from '../src/types'
 
@@ -21,9 +23,12 @@ describe('型定義の整合性', () => {
     expect(user.displayName).toBe('テストユーザー')
     expect(user.email).toBe('test@example.com')
     expect(user.createdAt).toBeInstanceOf(Date)
+    // layer:billing:start
     expect(user.subscription).toBeUndefined()
+    // layer:billing:end
   })
 
+  // layer:billing:start
   it('User に Subscription をオプションで付与できる', () => {
     const user: User = {
       id: 'user-2',
@@ -67,6 +72,7 @@ describe('型定義の整合性', () => {
     expect(subscription.cancelAtPeriodEnd).toBeUndefined()
     expect(subscription.lastEventId).toBeUndefined()
   })
+  // layer:billing:end
 
   it('ApiResponse が成功レスポンスを表現できる', () => {
     const response: ApiResponse<{ name: string }> = {

@@ -1,0 +1,95 @@
+name: Layer Matrix
+
+# 層マニフェスト（layers.json）から減算して作った各構成が、実際にビルドできるかを検証する。
+#
+# 「後から足す作業が、最初から入っているのと同じくらい確実」でなければ分割版は使われない。
+# 全部入りが動いている状態を「既知の正解」として、そこから層を引いた構成が
+# 型チェック・Lint・テスト・ビルドを通ることを確認する（#105 決定2）。
+#
+# **この 6 構成が緑になるまで、分割版（core + opt-in）は派生プロジェクトへ配らない。**
+#
+# 減算すると package.json が変わるため yarn.lock は使えない（--frozen-lockfile なし）。
+# 上流の変化で落ちることがあり、それも検知したい情報として扱う。
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [production, 'release/**']
+    # 層の仕組みに触る変更でのみ回す（全 PR で 6 構成を回すと Actions 分が重い）
+    paths:
+      - 'layers.json'
+      - 'scripts/remove-layer.mjs'
+      - 'scripts/check-layers.mjs'
+      - 'scripts/lib/layers.mjs'
+      - '.github/workflows/layer-matrix.yml'
+
+concurrency:
+  group: layer-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  variant:
+    runs-on: ubuntu-latest
+    strategy:
+      # 1構成の失敗で他を打ち切らない（どの層で壊れたかを一度に知りたい）
+      fail-fast: false
+      matrix:
+        include:
+          - name: core
+            remove: firebase
+            mobile: false
+          - name: core+firebase
+            remove: functions
+            mobile: false
+          - name: core+firebase+functions
+            remove: mobile billing
+            mobile: false
+          - name: core+firebase+functions+billing
+            remove: mobile
+            mobile: false
+          - name: core+firebase+functions+mobile
+            remove: billing
+            mobile: true
+          - name: all
+            remove: ''
+            mobile: true
+
+    name: ${{ matrix.name }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Remove layers
+        if: matrix.remove != ''
+        run: node scripts/remove-layer.mjs ${{ matrix.remove }}
+
+      # 減算後のリポジトリでもマニフェストが実態と一致していること
+      - name: Layer Manifest Check
+        run: node scripts/check-layers.mjs
+
+      # 減算で package.json が変わるため lockfile は使えない
+      - name: Install
+        run: yarn install --no-lockfile
+
+      - name: Generate Expo type declarations
+        if: matrix.mobile
+        run: yarn workspace @geckou/mobile exec expo customize tsconfig.json
+
+      - name: Type Check
+        run: yarn type-check
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Test
+        run: yarn test
+
+      - name: Build
+        run: yarn build

@@ -8,8 +8,12 @@
 | ディレクトリ | 説明                                                            | デプロイ先の例          |
 | ------------ | --------------------------------------------------------------- | ----------------------- |
 | `web/`       | Next.js 15 (App Router / SSR)。Tailwind CSS v4                  | Vercel / Cloud Run      |
+<!-- layer:mobile:start -->
 | `mobile/`    | Expo SDK 52 (iOS / Android)。NativeWind v4。不要なら削除可      | App Store / Google Play |
+<!-- layer:mobile:end -->
+<!-- layer:functions:start -->
 | `functions/` | Firebase Cloud Functions (v2)。サーバーサイドのビジネスロジック | Firebase                |
+<!-- layer:functions:end -->
 
 ## ディレクトリ名について
 
@@ -22,8 +26,12 @@
 apps/
 ├── <プロジェクト名>/        # メインサイト
 ├── <プロジェクト名>-admin/  # 社内管理画面
+<!-- layer:mobile:start -->
 ├── mobile/                  # モバイルアプリ
+<!-- layer:mobile:end -->
+<!-- layer:functions:start -->
 └── functions/               # Cloud Functions
+<!-- layer:functions:end -->
 ```
 
 名前を変更したら `package.json` の `name` も合わせて変更する。

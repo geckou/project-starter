@@ -23,6 +23,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # node_modules に依存しないので依存インストールより先に回す
+      - name: Layer Manifest Check
+        run: node scripts/check-layers.mjs
+
+      - name: Layer Test
+        run: bash scripts/test-layers.sh
+
       - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
@@ -30,8 +37,10 @@ jobs:
 
       - run: yarn install --frozen-lockfile
 
+      # layer:mobile:start
       - name: Generate Expo router types
         run: yarn workspace @geckou/mobile exec expo customize tsconfig.json
+      # layer:mobile:end
 
       - name: Type Check
         run: yarn type-check
@@ -42,6 +51,7 @@ jobs:
       - name: Test
         run: yarn test
 
+      # layer:firebase:start
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -52,6 +62,7 @@ jobs:
 
       - name: Firestore Rules Test
         run: yarn test:rules
+      # layer:firebase:end
 
       - name: Build
         run: yarn build

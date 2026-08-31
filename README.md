@@ -23,8 +23,31 @@
 スタックに依存する値（パッケージマネージャ、監視パス等）はフック本体に直書きせず
 [`.claude/hooks/config.sh`](.claude/hooks/config.sh) に集める。
 
-スタック層を core / opt-in（firebase・mobile・billing）に分割する設計は
-[#105](https://github.com/geckou/project-starter/issues/105) で進行中。現状は全部入り。
+### スタック層の内訳（core + opt-in）
+
+```
+core              LP が作れる最小構成（Next.js + Hosting + CI/deploy + 環境切替）
+ └ firebase       Auth + Firestore + Storage + rules + emulator + Admin SDK
+      └ functions apps/functions（API・トリガー・スケジュール実行の器）
+           ├ mobile   Expo（iOS / Android）
+           └ billing  Stripe / RevenueCat の配線
+```
+
+層の定義は [`layers.json`](layers.json)（層マニフェスト）が持ち、
+`node scripts/remove-layer.mjs <層>` で層ごと外せる。
+
+```bash
+node scripts/remove-layer.mjs mobile     # Expo を外す
+node scripts/remove-layer.mjs firebase   # core 構成にする（配下も連鎖して外れる）
+```
+
+外すとファイル・依存・設定のキー・環境変数・CI ステップがまとめて消える。
+実行後は `yarn install` で `yarn.lock` を作り直す。詳細は
+[`.claude/docs/layers.md`](.claude/docs/layers.md)。
+
+**リポジトリの既定は今も全部入り**（[#105](https://github.com/geckou/project-starter/issues/105) で進行中）。
+6 構成（`core` / `+firebase` / `+functions` / `+functions+billing` / `+functions+mobile` / 全部入り）の
+ビルド検証は `.github/workflows/layer-matrix.yml` が行う。残りは加算側（`/add-*`）。
 
 ---
 

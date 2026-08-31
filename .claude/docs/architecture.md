@@ -1,5 +1,9 @@
 # アーキテクチャパターン
 
+> このドキュメントは**全部入りの構成**（core + firebase + functions + mobile + billing）を前提に書いている。
+> どの層が何を持ち込むかは `.claude/docs/layers.md` と `layers.json` を参照。
+> 層を外した構成では、その層に属するセクションは読み飛ばしてよい。
+
 ## API 方針
 
 バックエンド API は **Firebase Cloud Functions**（`apps/functions/src/api.ts`）に集約する。
@@ -12,6 +16,20 @@ Cloud Functions なら Web・Mobile・外部サービス（Webhook 等）全て�
 **例外**: セッション Cookie の発行・破棄を行う `app/api/session/` のみ API Routes を許可する
 （`apps/web/src/app/api/session/route.ts`）。Cookie は Web 固有かつ same-origin で
 設定する必要があり、`middleware.ts` のルート保護がこの Cookie を前提とするため。
+
+### functions 層を含まない構成
+
+この規約は**全構成で共通**とする。構成によって API の書き方が変わると、
+後から Mobile を足すときに API を移植し直すことになり、`/new-function` も使えなくなるため。
+
+`apps/functions` を持たない構成（core / core + firebase）は、**API を持たない**。
+API・Firestore / Auth トリガー・スケジュール実行のいずれかが必要になった時点で
+functions 層を足す（`/add-functions`。未実装のため現状は `layers.json` の functions 層を
+手で戻す）。「API Routes で代用する」という選択肢は取らない。
+
+なお `hosting.frameworksBackend` による SSR 用の関数は、framework アダプタが自動生成して
+Cloud Functions (2nd gen) にデプロイするもので、`apps/functions` とは別物。
+core の時点で存在し、Blaze プランもこの時点で必須になる。
 
 ## Firebase の使い分け
 

@@ -45,8 +45,10 @@ function evaluateBasicAuth(
   return 'unauthorized'
 }
 
+// layer:firebase:start
 // 認証が必要なパス
 const PROTECTED_PATHS = ['/dashboard']
+// layer:firebase:end
 
 export function middleware(request: NextRequest) {
   // Basic 認証（BASIC_AUTH_CREDENTIALS が設定されている環境のみ）
@@ -78,6 +80,7 @@ export function middleware(request: NextRequest) {
     return response
   }
 
+  // layer:firebase:start
   // ルート保護
   const { pathname } = request.nextUrl
   const isProtected = PROTECTED_PATHS.some((path) => pathname.startsWith(path))
@@ -93,6 +96,7 @@ export function middleware(request: NextRequest) {
     loginUrl.searchParams.set('redirect', pathname)
     return withNoStore(NextResponse.redirect(loginUrl))
   }
+  // layer:firebase:end
 
   return withNoStore(NextResponse.next())
 }

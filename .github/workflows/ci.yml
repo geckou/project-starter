@@ -39,6 +39,14 @@ jobs:
       - name: Hook Test
         run: bash scripts/test-hooks.sh
 
+      # 層マニフェスト（layers.json）と実態の一致、および減算スクリプトの回帰テスト。
+      # これも node_modules に依存しない
+      - name: Layer Manifest Check
+        run: node scripts/check-layers.mjs
+
+      - name: Layer Test
+        run: bash scripts/test-layers.sh
+
       - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
@@ -57,8 +65,10 @@ jobs:
           restore-keys: |
             turbo-${{ runner.os }}-
 
+      # layer:mobile:start
       - name: Generate Expo type declarations
         run: yarn workspace @geckou/mobile exec expo customize tsconfig.json
+      # layer:mobile:end
 
       - name: Type Check
         run: yarn type-check
@@ -75,6 +85,7 @@ jobs:
       - name: Test
         run: yarn test
 
+      # layer:firebase:start
       # Firestore ルールテスト（turbo のタスクグラフ外なので明示的に実行する）
       # エミュレーターの実行に Java が必要。メジャー更新での破壊を防ぐため firebase-tools は固定
       - uses: actions/setup-java@v6
@@ -90,6 +101,7 @@ jobs:
       # 派生プロジェクトでは古いコマンド（firestore のみ）のまま実行されてしまう
       - name: Firestore / Storage Rules Test
         run: bash scripts/test-rules.sh
+      # layer:firebase:end
 
       - name: Build (Web)
         run: yarn build --filter=@geckou/web

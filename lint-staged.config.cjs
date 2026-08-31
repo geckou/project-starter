@@ -4,8 +4,12 @@
 module.exports = {
   '**/*': 'prettier --write --ignore-unknown',
   'apps/web/**/*.{ts,tsx,js,jsx}': () => 'yarn workspace @geckou/web lint',
+  // layer:mobile:start
   'apps/mobile/**/*.{ts,tsx,js,jsx}': () =>
     'yarn workspace @geckou/mobile lint',
+  // layer:mobile:end
+  // layer:functions:start
   'apps/functions/**/*.{ts,js}': () => 'yarn workspace @geckou/functions lint',
+  // layer:functions:end
   'packages/shared/**/*.{ts,tsx}': () => 'yarn workspace @geckou/shared lint',
 }

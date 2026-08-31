@@ -41,8 +41,10 @@ const config: ExpoConfig = {
     firebaseStorageBucket: process.env.FIREBASE_STORAGE_BUCKET ?? '',
     firebaseMessagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID ?? '',
     firebaseAppId: process.env.FIREBASE_APP_ID ?? '',
+    // layer:billing:start
     revenuecatApiKeyApple: process.env.REVENUECAT_API_KEY_APPLE ?? '',
     revenuecatApiKeyGoogle: process.env.REVENUECAT_API_KEY_GOOGLE ?? '',
+    // layer:billing:end
   },
 }
 

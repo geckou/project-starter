@@ -53,15 +53,28 @@ fi
 
 # workspace 依存を一時削除（Cloud Build が npm registry から取得しようとするのを防ぐ）
 # git checkout での復元はユーザーの未コミット変更ごと破棄してしまうため、
-# バックアップコピーからの復元方式にする
+# バックアップコピーからの復元方式にする。
+# 対象は層構成によって変わるため、ここを唯一の一覧にする（layers.json 参照）
+WORKSPACE_PACKAGE_JSONS=(apps/web/package.json)
+# layer:functions:start
+WORKSPACE_PACKAGE_JSONS+=(apps/functions/package.json)
+# layer:functions:end
+
+backup_path() {
+  printf '%s/%s' "${BACKUP_DIR}" "$(printf '%s' "$1" | tr '/' '_')"
+}
+
 BACKUP_DIR=$(mktemp -d)
-cp apps/web/package.json "${BACKUP_DIR}/web-package.json"
-cp apps/functions/package.json "${BACKUP_DIR}/functions-package.json"
+
+for workspace_package in "${WORKSPACE_PACKAGE_JSONS[@]}"; do
+  cp "${workspace_package}" "$(backup_path "${workspace_package}")"
+done
 
 cleanup_workspace_deps() {
   echo "[cleanup] workspace 依存を復元中..."
-  cp "${BACKUP_DIR}/web-package.json" apps/web/package.json
-  cp "${BACKUP_DIR}/functions-package.json" apps/functions/package.json
+  for workspace_package in "${WORKSPACE_PACKAGE_JSONS[@]}"; do
+    cp "$(backup_path "${workspace_package}")" "${workspace_package}"
+  done
   rm -rf "${BACKUP_DIR}"
 }
 trap cleanup_workspace_deps EXIT
@@ -69,14 +82,14 @@ trap cleanup_workspace_deps EXIT
 echo "[predeploy] workspace 依存を一時削除..."
 node -e "
   const fs = require('fs');
-  ['apps/web/package.json', 'apps/functions/package.json'].forEach(p => {
+  process.argv.slice(1).forEach(p => {
     const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
     for (const dep of Object.keys(pkg.dependencies || {})) {
       if (dep.startsWith('@geckou/')) delete pkg.dependencies[dep];
     }
     fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
   });
-"
+" "${WORKSPACE_PACKAGE_JSONS[@]}"
 
 echo "[deploy] Firebase にデプロイ中..."
 
@@ -115,11 +128,17 @@ storage_configured() {
 
 # デプロイ対象（カンマ区切り）。
 # CI は変更差分から必要なターゲットだけを渡してくる（.github/workflows/deploy.yml）
-DEFAULT_TARGETS="functions,firestore,hosting"
+DEFAULT_TARGETS="hosting"
+# layer:firebase:start
+DEFAULT_TARGETS="firestore,${DEFAULT_TARGETS}"
 
 if storage_configured; then
-  DEFAULT_TARGETS="functions,firestore,storage,hosting"
+  DEFAULT_TARGETS="firestore,storage,hosting"
 fi
+# layer:firebase:end
+# layer:functions:start
+DEFAULT_TARGETS="functions,${DEFAULT_TARGETS}"
+# layer:functions:end
 
 TARGETS="${DEPLOY_ONLY:-$DEFAULT_TARGETS}"
 

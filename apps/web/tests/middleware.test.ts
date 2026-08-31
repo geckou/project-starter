@@ -59,6 +59,7 @@ describe('middleware basic auth', () => {
       expect(response.headers.get('cache-control')).toBe('private, no-store')
     })
 
+    // layer:firebase:start
     it('sets no-store on the login redirect for protected paths', () => {
       const response = middleware(
         buildRequest('/dashboard', { authorization: validAuth })
@@ -68,6 +69,7 @@ describe('middleware basic auth', () => {
       expect(response.headers.get('location')).toContain('/login')
       expect(response.headers.get('cache-control')).toBe('private, no-store')
     })
+    // layer:firebase:end
   })
 
   describe('without BASIC_AUTH_CREDENTIALS (disabled)', () => {

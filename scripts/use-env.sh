@@ -12,6 +12,7 @@ if [ ! -f ".env.${ENV}" ]; then
   exit 1
 fi
 
+# layer:functions:start
 # apps/functions/.env に配布する変数。
 # Functions の .env はデプロイ時に関数の環境変数として取り込まれるため、
 # ルートの .env をまるごとコピーせず、必要なキーだけを許可リストで抽出する
@@ -19,6 +20,7 @@ fi
 # Functions に新しい環境変数を追加したらここにも追記すること
 FUNCTIONS_ENV_KEYS=(
   ALLOWED_ORIGINS
+  # layer:billing:start
   REVENUECAT_WEBHOOK_AUTH
   STRIPE_SECRET_KEY
   STRIPE_WEBHOOK_SECRET
@@ -27,8 +29,10 @@ FUNCTIONS_ENV_KEYS=(
   STRIPE_CANCEL_URL
   STRIPE_PORTAL_RETURN_URL
   SYNC_SUBSCRIPTION_CLAIMS
+  # layer:billing:end
   SENTRY_DSN
 )
+# layer:functions:end
 
 # .env.<環境名> から指定キーの値を取り出す（前後のクォートは除去する）
 read_env_value() {
@@ -47,6 +51,7 @@ read_env_value() {
   printf '%s' "${value}"
 }
 
+# layer:billing:start
 # 本番キーの誤用ガード。
 # development 環境に本番キーが入っていると、開発中の操作が実際の決済として
 # 処理され、実在するカードに課金される。取り返しがつかないのでここで止める
@@ -72,14 +77,21 @@ if [ "${ENV}" = "production" ]; then
       ;;
   esac
 fi
+# layer:billing:end
 
-# .env.local にコピー（ルート + apps/web + apps/mobile）
-# Next.js は apps/web/、Expo (app.config.ts) は apps/mobile/ の .env.local を読む
+# .env.local にコピー（ルート + apps/web）
+# Next.js は apps/web/ の .env.local を読む
 cp ".env.${ENV}" .env.local
 cp ".env.${ENV}" apps/web/.env.local
-cp ".env.${ENV}" apps/mobile/.env.local
-echo "[done] .env.${ENV} → .env.local, apps/web/.env.local, apps/mobile/.env.local にコピーしました"
+echo "[done] .env.${ENV} → .env.local, apps/web/.env.local にコピーしました"
 
+# layer:mobile:start
+# Expo (app.config.ts) は apps/mobile/ の .env.local を読む
+cp ".env.${ENV}" apps/mobile/.env.local
+echo "[done] .env.${ENV} → apps/mobile/.env.local にコピーしました"
+# layer:mobile:end
+
+# layer:functions:start
 # apps/functions/.env を許可リストのキーだけで生成する。
 # ここを配布しないと、環境を切り替えても Functions だけ前の環境のキーが残り、
 # 例えば develop に切り替えたつもりで本番の Stripe / RevenueCat を叩いてしまう
@@ -96,6 +108,7 @@ echo "[done] .env.${ENV} → .env.local, apps/web/.env.local, apps/mobile/.env.l
   done
 } > apps/functions/.env
 echo "[done] .env.${ENV} → apps/functions/.env を生成しました（Functions 用のキーのみ）"
+# layer:functions:end
 
 # Firebase プロジェクトを切り替え。
 # ここで失敗を握りつぶすと、アクティブなプロジェクトが前の環境（例: production）の
