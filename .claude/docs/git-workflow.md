@@ -301,9 +301,18 @@ reusable workflow の `actions/checkout` は**呼び出し元のリポジトリ*
 
 ### 層構成の違いは実行時に判定する
 
-呼び出し元の層構成（mobile / firebase の有無）は、`ci.yml` が実ファイル（`apps/mobile/`・
-`firestore.rules`）を見て判定する。`layers.json` を持たない派生プロジェクトでも正しく動き、
-1 つのワークフローがどの構成からでも呼べる。
+呼び出し元の層構成は、`ci.yml` が実ファイルを見て判定する。`layers.json` を持たない
+派生プロジェクトでも正しく動き、1 つのワークフローがどの構成からでも呼べる。
+
+| 判定 | 見るもの |
+| --- | --- |
+| Expo の型生成 | `apps/mobile/` の有無（ワークスペース名も `package.json` から読む） |
+| ルールテスト | `tests/*rules*.test.ts` の有無（`firestore.rules` があってもテストが無ければ走らせない） |
+| Hook Test / Layer Check | 対応するスクリプトの有無（`hashFiles`） |
+
+**古い派生プロジェクトからも呼べる。** `scripts/format.sh` や `scripts/test-rules.sh` が
+まだ Template Sync で届いていない構成では、`yarn format:check` / `yarn test:rules` に
+フォールバックする（スクリプトは呼び出し元のものが実行されるため、届いていないことがある）。
 
 ### 対象外
 
