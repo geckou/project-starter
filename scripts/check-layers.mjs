@@ -23,7 +23,6 @@ import path from 'node:path'
 import {
   findBlocks,
   isTextFile,
-  layerByName,
   listFiles,
   loadManifest,
   markerLayers,
