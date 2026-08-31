@@ -2125,6 +2125,11 @@
   resolved "https://registry.yarnpkg.com/@geckou/firebase-client/-/firebase-client-0.1.0.tgz#2e96fddb22ca00d9902ac0a78a337eb0be9ac318"
   integrity sha512-CPkzUvKKO1ZlmZUuvU3KhcCqOYIls5UL6giF46QCZTEXMKoZlzKAqrZXLD6iUILseyj7esR6UID0KOAefg+pHg==
 
+"@geckou/firebase-server@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@geckou/firebase-server/-/firebase-server-0.1.0.tgz#5b8cd9498c7798b189d8ffa72b8c393ea8ddffe0"
+  integrity sha512-cYWuE5pb6GDdT4tALoIIjOyi08vx1PB8SWJrIjVkE+vJhdowGU+D3AGV64MvsEuUuB3cECJuazyttPPWuze/ug==
+
 "@geckou/ui-core@^0.1.0":
   version "0.1.1"
   resolved "https://registry.yarnpkg.com/@geckou/ui-core/-/ui-core-0.1.1.tgz#05f62b339598b318f85ef83bc2fe6cf9dac406ab"
