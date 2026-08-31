@@ -1,5 +1,10 @@
 {
   "$comment": "テンプレートの層マニフェスト（機械可読な層定義）。scripts/remove-layer.mjs が減算に、scripts/check-layers.mjs が実態との整合検証に使う。仕様は .claude/docs/layers.md を参照。",
+  "source": {
+    "repository": "https://github.com/geckou/project-starter",
+    "ref": "production",
+    "$comment": "加算（scripts/add-layer.mjs）が層の実体を取り寄せる元。派生プロジェクトでは自分の scaffold 元テンプレートを指す。--from でローカルのチェックアウトを渡せば clone しない"
+  },
   "markers": {
     "syntax": "<コメント記号> layer:<層名>[,<層名>...]:start / :end",
     "rule": "列挙した層のいずれかが外れたら、その範囲を削除する（複数列挙は層の交点を表す）"

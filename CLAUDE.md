@@ -35,8 +35,9 @@ core              LP が作れる最小構成（Next.js + Hosting + CI/deploy + 
 ```
 
 どの層に何が属するかは **`layers.json`（層マニフェスト）が正**。文章ではなく機械可読な定義で持ち、
-`node scripts/remove-layer.mjs <層>` が層を外し、`node scripts/check-layers.mjs` が
-マニフェストと実態の一致を検証する（CI で実行）。使い方は `.claude/docs/layers.md` を参照。
+`node scripts/remove-layer.mjs <層>` が層を外し、`node scripts/add-layer.mjs <層>`（`/add-*`）が
+足し、`node scripts/check-layers.mjs` がマニフェストと実態の一致を検証する（CI で実行）。
+使い方は `.claude/docs/layers.md` を参照。
 
 **ファイルを追加・移動・削除したら `layers.json` も更新する。** マニフェストは実態と乖離した瞬間に
 嘘になるが、型チェックにもテストにも引っかからない（CI の Layer Manifest Check が検出する）。
@@ -358,6 +359,10 @@ CI でも実行される。
 | `/new-type` | shared に型定義追加 |
 | `/new-app` | モノレポに新しいアプリ追加 |
 | `/new-skill` | 新しいスキル（スラッシュコマンド）を作成 |
+| `/add-firebase` | firebase 層（Auth + Firestore + Storage）を足す |
+| `/add-functions` | functions 層（apps/functions）を足す |
+| `/add-mobile` | mobile 層（Expo）を足す |
+| `/add-billing` | billing 層（Stripe / RevenueCat）を足す |
 | `/init-project` | テンプレートから派生プロジェクトを初期化 |
 | `/migrate` | 既存リポジトリの移植 + ドキュメント自動生成 |
 | `/review` | プロジェクト構成を前提としたコードレビュー |
@@ -365,7 +370,7 @@ CI でも実行される。
 | `/troubleshoot` | ビルドエラー・型エラーの診断と修正 |
 
 `/kickoff` `/next` `/wrap-up` `/new-skill` は**第0層**（進め方のスキル。スタックに依存しない）。
-`/new-*` の scaffold 系と `/init-project` `/deploy` は**スタック層**（生成物がスタックに直結する）。
+`/new-*` の scaffold 系と `/add-*` `/init-project` `/deploy` は**スタック層**（生成物がスタックに直結する）。
 スキルを追加するときは、どちらに属するかを意識して書く。
 
 ## よく使うコマンド
@@ -383,8 +388,9 @@ yarn env:<環境名>        # 環境切り替え（develop / staging / productio
 yarn deploy:<環境名>     # デプロイ（develop / staging / production）
 
 node scripts/check-layers.mjs        # 層マニフェストと実態の一致を検証
-bash scripts/test-layers.sh          # 減算スクリプトの回帰テスト
+bash scripts/test-layers.sh          # 層スクリプトの回帰テスト（減算・加算・往復）
 node scripts/remove-layer.mjs <層>   # 層を外す（--dry-run で確認のみ）
+node scripts/add-layer.mjs <層>      # 層を足す（テンプレートから取り寄せる）
 ```
 
 ## テンプレート起因の問題を親リポジトリに報告

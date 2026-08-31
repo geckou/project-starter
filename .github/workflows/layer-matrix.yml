@@ -6,7 +6,8 @@ name: Layer Matrix
 # 全部入りが動いている状態を「既知の正解」として、そこから層を引いた構成が
 # 型チェック・Lint・テスト・ビルドを通ることを確認する（#105 決定2）。
 #
-# **この 6 構成が緑になるまで、分割版（core + opt-in）は派生プロジェクトへ配らない。**
+# **この構成が緑になるまで、分割版（core + opt-in）は派生プロジェクトへ配らない。**
+# 減算で作った 6 構成に加えて、core から加算で組み直した構成も検証する。
 #
 # 減算すると package.json が変わるため yarn.lock は使えない（--frozen-lockfile なし）。
 # 上流の変化で落ちることがあり、それも検知したい情報として扱う。
@@ -45,22 +46,34 @@ jobs:
         include:
           - name: core
             remove: firebase
+            add: ''
             mobile: false
           - name: core+firebase
             remove: functions
+            add: ''
             mobile: false
           - name: core+firebase+functions
             remove: mobile billing
+            add: ''
             mobile: false
           - name: core+firebase+functions+billing
             remove: mobile
+            add: ''
             mobile: false
           - name: core+firebase+functions+mobile
             remove: billing
+            add: ''
             mobile: true
           - name: all
             remove: ''
+            add: ''
             mobile: true
+          # 加算の検証。core から足し直した構成が実際にビルドできること。
+          # 生成物が減算で作った同じ構成と一致することは scripts/test-layers.sh が見る
+          - name: core-then-add
+            remove: firebase
+            add: firebase functions billing
+            mobile: false
 
     name: ${{ matrix.name }}
 
@@ -71,9 +84,21 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
+      # 加算はテンプレートから層の実体を取り寄せる。CI では clone せず、
+      # 減算前のチェックアウトをそのまま手本にする
+      - name: Copy pristine template
+        if: matrix.add != ''
+        run: |
+          mkdir -p "$RUNNER_TEMP/pristine"
+          git ls-files -z | tar -cf - --null -T - | tar -xf - -C "$RUNNER_TEMP/pristine"
+
       - name: Remove layers
         if: matrix.remove != ''
         run: node scripts/remove-layer.mjs ${{ matrix.remove }}
+
+      - name: Add layers
+        if: matrix.add != ''
+        run: node scripts/add-layer.mjs --from "$RUNNER_TEMP/pristine" ${{ matrix.add }}
 
       # 減算後のリポジトリでもマニフェストが実態と一致していること
       - name: Layer Manifest Check

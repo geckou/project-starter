@@ -8,6 +8,7 @@ set -u
 #   2. remove-layer.mjs が層ごとに正しく減算すること（ファイル・依存・設定・マーカー）
 #   3. 減算後も残ったファイルが構文として壊れていないこと
 #   4. 減算後のリポジトリに、外した層への参照が残っていないこと
+#   5. add-layer.mjs が減算を打ち消すこと（外して足すと元に戻る＝往復）
 #
 # このスクリプトが検証するのは「全部入りのテンプレートからの減算」なので、
 # 各層が揃っていることを前提にする。減算済みの構成や、層マニフェストを持たない
@@ -77,6 +78,38 @@ remove_layers() {
   local dir=$1
   shift
   node "$REPO_ROOT/scripts/remove-layer.mjs" --target "$dir" "$@" 2>&1
+}
+
+add_layers() {
+  local dir=$1
+  shift
+  node "$REPO_ROOT/scripts/add-layer.mjs" --target "$dir" --from "$1" "${@:2}" 2>&1
+}
+
+# 減算 → 加算で元のテンプレートに戻るか。
+# 加算の正しさは「生成物を何と比べるか」が問題になるが、減算前の状態が
+# その比較対象になる（#105 実装方式の補足）
+assert_round_trip() {
+  local removed=$1
+  shift
+  local pristine variant result
+
+  pristine=$(make_variant)
+  variant=$(mktemp -d)
+  cp -a "$pristine/." "$variant/"
+
+  node "$REPO_ROOT/scripts/remove-layer.mjs" --target "$variant" "$removed" > /dev/null 2>&1
+  add_layers "$variant" "$pristine" "$@" > /dev/null 2>&1
+
+  result=$(node "$REPO_ROOT/scripts/lib/compare-trees.mjs" "$pristine" "$variant" 2>&1)
+
+  if [ "$result" = "IDENTICAL" ]; then
+    pass "${removed} を外して $* を足すと元に戻る"
+  else
+    fail "${removed} の往復で元に戻らない" "$result"
+  fi
+
+  rm -rf "$pristine" "$variant"
 }
 
 json_has() {
@@ -224,6 +257,21 @@ if (cd "$variant" && node scripts/check-layers.mjs > /dev/null 2>&1); then
   pass "減算後の構成でも check-layers.mjs が通る"
 else
   fail "減算後の構成で check-layers.mjs が落ちる" "$(cd "$variant" && node scripts/check-layers.mjs 2>&1)"
+fi
+
+# 層ツール自身のコード・ドキュメントに出てくる layer:... は説明用の文字列であって
+# 範囲指定ではない。減算の対象にすると、閉じていないマーカーのフィクスチャを
+# 範囲の開始と誤読してファイル末尾まで削ってしまう
+self_documenting_damage=""
+for self_file in scripts/test-layers.sh .claude/docs/layers.md scripts/lib/layers.mjs; do
+  if ! cmp -s "$REPO_ROOT/$self_file" "$variant/$self_file"; then
+    self_documenting_damage="${self_documenting_damage}${self_file} "
+  fi
+done
+if [ -z "$self_documenting_damage" ]; then
+  pass "層ツール自身のコード・ドキュメントは減算されない"
+else
+  fail "層ツール自身のファイルが減算で壊れた" "$self_documenting_damage"
 fi
 
 rm -rf "$variant"
@@ -380,12 +428,19 @@ else
   fail "外した層への import が残っている" "$leftovers"
 fi
 
-# マーカーは外した層のものだけが消え、残る層のものは残っている
-if ! grep -rq "layer:firebase\|layer:billing\|layer:mobile\|layer:functions" \
-  "$variant/apps" "$variant/packages" "$variant/scripts" "$variant/.env.example" 2>/dev/null; then
+# マーカーは外した層のものだけが消え、残る層のものは残っている。
+# 層ツール自身（scripts/lib/ と層スクリプト）はマーカーの構文を本文に含むので除く
+leftover_markers=$(grep -rn "layer:firebase\|layer:billing\|layer:mobile\|layer:functions" \
+  "$variant/apps" "$variant/packages" "$variant/scripts" "$variant/.env.example" 2>/dev/null |
+  grep -v "$variant/scripts/lib/" |
+  grep -v "$variant/scripts/add-layer.mjs" |
+  grep -v "$variant/scripts/remove-layer.mjs" |
+  grep -v "$variant/scripts/check-layers.mjs" |
+  grep -v "$variant/scripts/test-layers.sh")
+if [ -z "$leftover_markers" ]; then
   pass "外した層のマーカーが残っていない"
 else
-  fail "外した層のマーカーが残っている"
+  fail "外した層のマーカーが残っている" "$leftover_markers"
 fi
 
 syntax_errors=""
@@ -419,8 +474,70 @@ fi
 rm -rf "$variant"
 echo ""
 
-# --- 6. core は外せない ---
-echo "[6] ガード"
+# --- 6. 減算 → 加算の往復 ---
+echo "[6] add-layer.mjs（減算の打ち消し）"
+
+# 葉の層は単独で戻る
+assert_round_trip billing billing
+assert_round_trip mobile mobile
+# 連鎖して外れた層は、まとめて足せば元に戻る
+assert_round_trip functions functions mobile billing
+assert_round_trip firebase firebase functions mobile billing
+
+# 前提の層は自動で足される
+variant=$(make_variant)
+pristine=$(make_variant)
+node "$REPO_ROOT/scripts/remove-layer.mjs" --target "$variant" firebase > /dev/null 2>&1
+output=$(add_layers "$variant" "$pristine" billing)
+if echo "$output" | grep -q "firebase" && echo "$output" | grep -q "functions"; then
+  pass "前提になる層（firebase / functions）を遡って足す"
+else
+  fail "requires を遡っていない" "$output"
+fi
+
+if [ -d "$variant/apps/functions" ] && [ -f "$variant/firestore.rules" ] &&
+  [ ! -e "$variant/apps/mobile" ]; then
+  pass "要求していない層（mobile）は足さない"
+else
+  fail "足す層の範囲が想定と違う"
+fi
+
+if (cd "$variant" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  pass "加算後も check-layers.mjs が通る"
+else
+  fail "加算後に check-layers.mjs が落ちる" "$(cd "$variant" && node scripts/check-layers.mjs 2>&1)"
+fi
+
+# core から足し直した構成が、その構成を減算で作ったものと一致する
+# （加算の生成物を「既知の正解」と突き合わせる。CI マトリクスがビルドを保証している）
+subtracted=$(make_variant)
+node "$REPO_ROOT/scripts/remove-layer.mjs" --target "$subtracted" mobile > /dev/null 2>&1
+added=$(make_variant)
+pristine_for_add=$(make_variant)
+node "$REPO_ROOT/scripts/remove-layer.mjs" --target "$added" firebase > /dev/null 2>&1
+add_layers "$added" "$pristine_for_add" firebase functions billing > /dev/null 2>&1
+comparison=$(node "$REPO_ROOT/scripts/lib/compare-trees.mjs" "$subtracted" "$added" 2>&1)
+if [ "$comparison" = "IDENTICAL" ]; then
+  pass "core から足し直した構成が、減算で作った同じ構成と一致する"
+else
+  fail "加算で作った構成が減算で作ったものと違う" "$comparison"
+fi
+rm -rf "$subtracted" "$added" "$pristine_for_add"
+
+# ローカルの変更は 3-way マージで保たれる
+printf '\n// ローカルの追記\n' >> "$variant/packages/shared/src/index.ts"
+add_layers "$variant" "$pristine" mobile > /dev/null 2>&1
+if grep -q "ローカルの追記" "$variant/packages/shared/src/index.ts"; then
+  pass "加算はローカルの変更を保つ（3-way マージ）"
+else
+  fail "加算がローカルの変更を上書きした"
+fi
+
+rm -rf "$variant" "$pristine"
+echo ""
+
+# --- 7. core は外せない ---
+echo "[7] ガード"
 
 variant=$(make_variant)
 if remove_layers "$variant" core > /dev/null 2>&1; then
