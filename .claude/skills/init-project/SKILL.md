@@ -114,7 +114,24 @@ mobile 層を外した場合はこの手順を飛ばす。
 - プロジェクトドキュメント表の `<Figma URL>` を実際の Figma URL に置き換える
 - 「テンプレート起因の問題を親リポジトリに報告」セクションはそのまま残す（派生プロジェクトで使うルール）
 
-### 7. ドキュメント・メモリの初期化
+### 7. CI と依存更新をテンプレート参照に切り替える
+
+コピーではなく参照にすることで、テンプレート側の修正が取り込み作業ゼロで届く。
+
+**CI（reusable workflow）**
+
+`.github/workflows/ci.yml` を参照だけの内容に置き換え、`.templatesyncignore` に
+`.github/workflows/ci.yml` を追加する（テンプレートの実体で上書きされないようにするため）。
+置き換える内容と理由は `.claude/docs/git-workflow.md`「CI の配布（reusable workflow）」を参照。
+
+**依存更新（Renovate）**
+
+`renovate.json5` はテンプレートから配られるのでそのまま使う。**Renovate の GitHub App を
+このリポジトリにインストールする**（未インストールだと依存更新が一切来ない）。
+Dependabot の設定ファイルが残っていれば削除する（PR が二重に立つため）。
+詳細は `.claude/docs/dependencies.md`。
+
+### 8. ドキュメント・メモリの初期化
 
 - `.claude/docs/planning.md` / `spec.md` / `roadmap.md` のプレースホルダ
   （空のテーブル・コメント）を確認し、プロダクトの内容を記入する
@@ -132,4 +149,6 @@ mobile 層を外した場合はこの手順を飛ばす。
 - [ ] `yarn install` 後に `yarn type-check` / `yarn test` が通る
 - [ ] `apps/mobile/app.config.ts` の識別子を変更した（mobile 層を残した場合）
 - [ ] CLAUDE.md の Figma URL を設定した
+- [ ] CI を reusable workflow の参照に切り替え、`.templatesyncignore` に追加した
+- [ ] Renovate の GitHub App をインストールした
 - [ ] `.claude/docs/` と `memory/` を初期化した

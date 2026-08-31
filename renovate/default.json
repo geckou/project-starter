@@ -1,0 +1,57 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "geckou のプロジェクト共通の依存更新ルール。派生プロジェクトは renovate.json5 からこれを extends するだけで、ルールの変更はこのファイルの1コミットで全派生へ届く（コピーではなく参照）。判断の理由は description に残す — JSON にコメントが書けないため、コメントの代わりに使う。",
+  "extends": ["config:recommended", ":semanticCommits"],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["before 9am on monday"],
+  "prConcurrentLimit": 5,
+  "dependencyDashboard": true,
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "minor / patch はまとめて1本の PR にする。CI が緑なら自動マージし、派生数ぶんの週次 PR を人力で捌かなくて済むようにする（テンプレートの ci.yml が型チェック・Lint・テスト・ルールテスト・ビルドまで回している）",
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "minor and patch",
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "メジャー更新は破壊的変更を含むうえ、CI が緑でも壊れていることがある（例: NativeWind と Tailwind の組み合わせは CI で検証されない）。自動 PR は作らず、必要になったタイミングで Dependency Dashboard から手動で上げる",
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "GitHub Actions のメジャーは Node ランタイム更新が中心で、失敗すれば CI が即座に赤くなり検知できるため、メジャーも自動更新の対象に残す",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["major"],
+      "enabled": true,
+      "automerge": false
+    },
+    {
+      "description": "Firebase SDK は破壊的変更がアプリの挙動に直結する（認証・課金）。minor / patch でも自動マージせず目視で確認する",
+      "matchPackageNames": [
+        "firebase",
+        "firebase-admin",
+        "firebase-functions",
+        "firebase-tools"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "@geckou/* は自分たちのパッケージ（geckou/kit・geckou/ui）。テンプレート側の修正を素早く取り込みたいので即時に PR を作る",
+      "matchPackageNames": ["@geckou/**"],
+      "schedule": ["at any time"]
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "description": "脆弱性の修正はメジャー全面 ignore の対象外にして、常に PR を作る。自動マージはしない（影響範囲を人が見る）",
+    "enabled": true,
+    "labels": ["security"],
+    "automerge": false
+  },
+  "lockFileMaintenance": {
+    "description": "yarn.lock の再生成を月1回。トランジティブ依存だけが古いまま残るのを防ぐ",
+    "enabled": true,
+    "schedule": ["before 9am on the first day of the month"]
+  }
+}

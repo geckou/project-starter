@@ -9,7 +9,7 @@ description: mobile 層（Expo / iOS / Android）をプロジェクトに足す
 層の考え方は `.claude/docs/layers.md` を参照。
 
 > この層はメンテコストが大きい（React / Tailwind のバージョン分裂、`nohoist`、
-> CI の `expo customize` ステップ、Dependabot の ignore 群）。
+> CI の `expo customize` ステップ、Renovate の Expo ルール）。
 > 本当にネイティブアプリが要るのかを先に確認する。Web だけで足りるなら足さない。
 
 ## 1. 配線する（スクリプト）
@@ -29,7 +29,7 @@ yarn format
 | 区分 | 中身 |
 | --- | --- |
 | ファイル | `apps/mobile/` 一式（Expo Router の画面・`lib/{api-client,firebase,push-notifications,sentry}.ts`・設定） |
-| 設定 | ルート `package.json` の `workspaces.nohoist` と `dev:mobile`、lint-staged、CI / deploy / smoke-test の `expo customize` ステップ、Dependabot の Expo ignore 群 |
+| 設定 | ルート `package.json` の `workspaces.nohoist` と `dev:mobile`、lint-staged、CI / deploy / smoke-test の `expo customize` ステップ、`renovate/mobile.json`（Expo 系の更新ルール） |
 | env | `FIREBASE_*`（Expo 用）/ `EXPO_PUBLIC_API_BASE_URL` / `EXPO_PUBLIC_SENTRY_DSN` |
 
 ## 2. 判断が要る部分

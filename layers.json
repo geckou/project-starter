@@ -75,9 +75,7 @@
         "apps/web/tests/middleware.test.ts",
         "scripts/deploy.sh",
         ".env.example",
-        ".github/workflows/ci.yml",
         ".github/workflows/deploy.yml",
-        ".github/workflows/smoke-test.yml",
         "packages/shared/src/index.ts",
         "packages/README.md"
       ],
@@ -171,18 +169,16 @@
       "title": "Expo（iOS / Android）",
       "requires": "functions",
       "removable": true,
-      "summary": "apps/mobile 一式と、それが持ち込む CI ステップ・nohoist・Dependabot の ignore 群。React / Tailwind のバージョン分裂の発生源でもある。",
-      "files": ["apps/mobile"],
+      "summary": "apps/mobile 一式と、それが持ち込む CI ステップ・nohoist・Renovate preset の Expo ルール。React / Tailwind のバージョン分裂の発生源でもある。",
+      "files": ["apps/mobile", "renovate/mobile.json"],
       "blocks": [
         ".env.example",
         "scripts/use-env.sh",
         "lint-staged.config.cjs",
-        ".github/dependabot.yml",
-        ".github/workflows/ci.yml",
         ".github/workflows/deploy.yml",
-        ".github/workflows/smoke-test.yml",
         "packages/README.md",
-        "apps/README.md"
+        "apps/README.md",
+        "renovate.json5"
       ],
       "scripts": {
         "package.json": ["dev:mobile"]

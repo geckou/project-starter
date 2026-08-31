@@ -226,3 +226,58 @@ gh api repos/{owner}/{repo}/rulesets \
 ### Free プランのプライベートリポジトリの場合
 
 マージ操作の強制はできない。branch-guard の可視化と運用規律（CLAUDE.md のマージルール）に依存することを、チームで共有しておく。
+
+## CI の配布（reusable workflow）
+
+`.github/workflows/ci.yml` は **reusable workflow**（`on: workflow_call`）として書いてある。
+派生プロジェクトは中身をコピーせず、参照 1 行だけを持つ。
+
+```yaml
+# 派生プロジェクトの .github/workflows/ci.yml
+name: CI
+
+on:
+  pull_request:
+    branches: [production, 'release/**']
+    paths-ignore:
+      - '**/*.md'
+      - '.claude/docs/**'
+      - '.claude/skills/**'
+      - '.vscode/**'
+      - 'LICENSE'
+
+jobs:
+  ci:
+    uses: geckou/project-starter/.github/workflows/ci.yml@v1
+```
+
+**チェック内容の修正が、各派生での取り込み作業ゼロで行き渡る。** ルールテストの追加や
+`firebase-tools` のバージョン固定のような修正は、テンプレート側の 1 コミットで全派生に効く。
+Template Sync のファイルコピーと違い、コンフリクトも発生しない。
+
+### 切り替え手順（派生プロジェクト側）
+
+1. `.github/workflows/ci.yml` を上記の参照だけの内容に置き換える
+2. `.templatesyncignore` に `.github/workflows/ci.yml` を追加する
+   （テンプレート側の実体で上書きされないようにするため）
+
+`/init-project` の手順に含めてある。
+
+### バージョンの進み方
+
+`@v1` は `.github/workflows/release-tag.yml` が `production` の先頭へ進める浮動タグ。
+ワークフローと `scripts/` が変わったときだけ動く。
+
+**互換性を壊す変更をするときは `v1` を進めず、`v2` を切って派生側の参照を更新する。**
+「タグを進めない = 派生に配らない」という判断をこの仕組みで表現できる。
+
+### 層構成の違いは実行時に判定する
+
+呼び出し元の層構成（mobile / firebase の有無）は、`ci.yml` が実ファイル（`apps/mobile/`・
+`firestore.rules`）を見て判定する。`layers.json` を持たない派生プロジェクトでも正しく動き、
+1 つのワークフローがどの構成からでも呼べる。
+
+### 対象外
+
+`deploy.yml` は派生ごとにシークレットとデプロイ対象が違うため、reusable にせずファイル同期のまま残す。
+`branch-guard.yml` / `template-sync.yml` も同様（リポジトリ固有の設定に依存する）。

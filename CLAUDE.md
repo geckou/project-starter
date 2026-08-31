@@ -321,6 +321,14 @@ CI でも実行される。
 **フックを追加・変更したらテストも足す。** 設定で挙動が変わるフックは、
 設定が効くことと `config.sh` が無くても既定値で動くことの両方を検証する。
 
+### 依存更新は Renovate の preset で配る
+
+依存更新のルールは `renovate/*.json`（テンプレート側の preset）にあり、各プロジェクトは
+`renovate.json5` から `extends` するだけ。**設定のコピーを配らない**ので、ルールの変更は
+preset の1コミットで全派生へ届く。判断（メジャーは自動 PR を作らない、Expo 系は触らせない等）の
+理由は各ルールの `description` に残す。詳細と、preset では配れないもの（ルート `package.json` の
+`resolutions`）は `.claude/docs/dependencies.md` を参照。
+
 ### ドキュメントの参照切れは CI が検出する
 
 コードを移動・削除したときにドキュメントの追従を忘れると、読んだ人と AI が
@@ -506,6 +514,7 @@ gh issue create \
 - `.claude/docs/spec.md` — 仕様書（画面一覧・データモデル・API・セキュリティ）
 - `.claude/docs/roadmap.md` — ロードマップ（機能ステータス表・残タスク・セッション引き継ぎ）
 - `.claude/docs/layers.md` — 層構成と層マニフェスト（層の外し方・マーカー・検証）
+- `.claude/docs/dependencies.md` — 依存更新の方針（Renovate preset・automerge・配れないもの）
 - `.claude/docs/architecture.md` — API方針、Firebase使い分け、認証、データ取得、環境変数、Zustand、Storage、FCM、Sentry、i18n、課金（Stripe / IAP）、Tailwind、コンポーネント整理
 - `.claude/docs/billing.md` — 決済の実装手順（Stripe / IAP のセットアップ、権利判定、チェックリスト、よくある失敗）
 - `.claude/docs/nuxt-nextjs.md` — Nuxt.js → Next.js の対応表（Server Component、ルーティング等）

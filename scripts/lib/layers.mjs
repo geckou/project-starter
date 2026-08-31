@@ -57,6 +57,7 @@ const TEXT_EXTENSIONS = new Set([
   '.mjs',
   '.cjs',
   '.json',
+  '.json5',
   '.yml',
   '.yaml',
   '.sh',

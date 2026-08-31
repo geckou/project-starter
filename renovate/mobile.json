@@ -1,0 +1,31 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "mobile 層（Expo）を持つプロジェクト向けの追加ルール。Expo は周辺パッケージのバージョン整合が厳しく、更新は `expo install` 経由で行う前提のため、Renovate には触らせない。mobile 層を外すと renovate.json5 の extends ごと消える（layers.json 参照）。",
+  "packageRules": [
+    {
+      "description": "Expo 系はバージョン整合が厳しく `expo install --fix` 前提のため、minor / patch も含めて全面的に手動更新とする（脆弱性の修正も止まる点に注意。Expo SDK のアップグレードとして扱う）",
+      "matchPackageNames": [
+        "expo",
+        "expo-*",
+        "react-native",
+        "react-native-*",
+        "@expo/**",
+        "@react-native-async-storage/**",
+        "eslint-config-expo"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "react / react-dom: Expo SDK と密結合（mobile は 18 系固定）。default プリセットのメジャー全面 ignore と重複するが、そのルールを緩めたときに保護が黙って消えないよう理由を明示して残す",
+      "matchPackageNames": ["react", "react-dom"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "tailwindcss: NativeWind v4 が Tailwind v4 未対応のため mobile は v3 固定。web は v4 なので、上げるときは両方の整合を人が確認する",
+      "matchPackageNames": ["tailwindcss"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
+}

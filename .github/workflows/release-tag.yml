@@ -1,0 +1,42 @@
+name: Release Tag
+
+# 派生プロジェクトが参照するメジャーバージョンのタグ（v1）を production の先頭へ進める。
+#
+# 派生側の CI は `uses: geckou/project-starter/.github/workflows/ci.yml@v1` の形で
+# このタグを指す。production へマージするたびにタグが進むので、チェック内容の修正は
+# 各派生での取り込み作業ゼロで行き渡る（詳細は .claude/docs/git-workflow.md）。
+#
+# タグを進めない = 派生に配らない、という判断もこの仕組みで表現できる。
+# 互換性を壊す変更をしたときは v1 を進めず、v2 を切って派生側の参照を更新する。
+
+on:
+  push:
+    branches: [production]
+    # 参照される側（ワークフローと、そこから呼ぶスクリプト）が変わったときだけ進める
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/**'
+  workflow_dispatch:
+
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  move-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Move v1 to the current commit
+        env:
+          # 互換性を壊す変更をするときは、ここを増やすのではなく
+          # 新しいタグ（v2）を切り、派生側の参照を更新する
+          MAJOR_TAG: v1
+        run: |
+          git tag -f "$MAJOR_TAG" "$GITHUB_SHA"
+          git push origin -f "refs/tags/$MAJOR_TAG"
+          echo "::notice::$MAJOR_TAG を ${GITHUB_SHA:0:7} へ進めました"

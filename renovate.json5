@@ -1,0 +1,19 @@
+// 依存更新（Renovate）の設定。
+//
+// ルール本体はテンプレート側のプリセット（renovate/*.json）にあり、ここは参照だけを持つ。
+// ルールを直すときはプリセットを1コミット直せば全派生プロジェクトへ即時に届く
+// （Dependabot と違い、設定のコピーを配らなくてよい）。
+//
+// 前提: Renovate の GitHub App がこのリポジトリにインストールされていること。
+// プリセット側（geckou/project-starter）は public なので追加のアクセス設定は要らない。
+//
+// 詳細は .claude/docs/dependencies.md を参照。
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'github>geckou/project-starter//renovate/default',
+    // layer:mobile:start
+    'github>geckou/project-starter//renovate/mobile',
+    // layer:mobile:end
+  ],
+}
