@@ -24,7 +24,11 @@
   本番デプロイを発火するため、自動マージを既定にすると依存更新が staging を経ずに本番へ出る。
   自動マージしたい構成（`production` への push が本番デプロイに繋がらない、あるいは
   その形で流してよいと判断した場合）は `renovate.json5` の `extends` に
-  `github>geckou/project-starter//renovate/automerge` を足す
+  `github>geckou/project-starter//renovate/automerge` を足す。
+  **ただしそれだけでは完了しない**: `.github/rulesets/production.json` はレビュー承認を
+  1件必須にしており、Renovate はブランチ保護の条件が満たされるまで待つ。自動マージを
+  実際に効かせるには、ruleset で Renovate を bypass actor に加えるか、
+  そのリポジトリのレビュー要件自体を見直す
 - **メジャーは自動では PR を作らない。** CI が緑でも壊れていることがあるため
   （NativeWind と Tailwind の組み合わせは CI で検証されない）。Dependency Dashboard
   （Renovate が自動生成する Issue）に承認待ちで並ぶので、必要なタイミングでチェックを入れて上げる。
@@ -40,11 +44,16 @@
 
 1. Renovate の GitHub App を派生プロジェクトにインストールする。preset 側
    （`geckou/project-starter`）は public なので、追加のアクセス設定は要らない
-2. `renovate.json5` を置く（Template Sync で配られる）
-3. Dependabot とは**併存させない**。同じ更新で PR が二重に立つため、
+2. **脆弱性アラートを使うための設定を有効にする。** `vulnerabilityAlerts` は GitHub の
+   アラートを読んで PR を作る仕組みなので、リポジトリ設定で **Dependency graph** と
+   **Dependabot alerts** を有効化し、App に alerts の読み取りを許可する。
+   private リポジトリでは既定で無効なことがあり、**気付かないままセキュリティ更新だけ
+   止まる**（Settings > Advanced Security から有効化する）
+3. `renovate.json5` を置く（Template Sync で配られる）
+4. Dependabot とは**併存させない**。同じ更新で PR が二重に立つため、
    Dependabot の設定ファイル（`.github/` 配下）が残っていれば削除する
    （テンプレート側では削除済み）
-4. `renovate/*` から `production` への PR は `branch-guard.yml` が例外として許可する
+5. `renovate/*` から `production` への PR は `branch-guard.yml` が例外として許可する
    （依存更新はリリース単位に束ねる意味が薄いため）。マージ = 本番デプロイになる点は
    変わらないので、タイミングは人が選ぶ
 

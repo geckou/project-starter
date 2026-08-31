@@ -132,6 +132,9 @@ reusable workflow を呼ぶとチェック名が変わるため、`.github/rules
 
 `renovate.json5` はテンプレートから配られるのでそのまま使う。**Renovate の GitHub App を
 このリポジトリにインストールする**（未インストールだと依存更新が一切来ない）。
+
+あわせて **Dependency graph と Dependabot alerts を有効化する**（Settings > Advanced Security）。
+これが無効だと `vulnerabilityAlerts` が働かず、**気付かないままセキュリティ更新だけ止まる**。
 Dependabot の設定ファイルが残っていれば削除する（PR が二重に立つため）。
 詳細は `.claude/docs/dependencies.md`。
 
@@ -155,4 +158,5 @@ Dependabot の設定ファイルが残っていれば削除する（PR が二重
 - [ ] CLAUDE.md の Figma URL を設定した
 - [ ] CI を reusable workflow の参照に切り替え、`.templatesyncignore` に追加した
 - [ ] Renovate の GitHub App をインストールした
+- [ ] Dependency graph / Dependabot alerts を有効化した（脆弱性の PR が来るようにする）
 - [ ] `.claude/docs/` と `memory/` を初期化した
