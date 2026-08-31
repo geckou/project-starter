@@ -60,7 +60,10 @@ jobs:
             echo "mobile=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if [ -f firestore.rules ] || [ -f storage.rules ]; then
+          # ルールファイルの有無ではなくテストの有無で判定する。ルールは持つが
+          # ルールテストをまだ持たない構成（Template Sync 未設定の派生プロジェクト）で、
+          # 存在しない scripts/test-rules.sh を呼んで落ちるのを防ぐ
+          if ls tests/*rules*.test.ts > /dev/null 2>&1; then
             echo "rules=true" >> "$GITHUB_OUTPUT"
           else
             echo "rules=false" >> "$GITHUB_OUTPUT"
@@ -117,8 +120,16 @@ jobs:
       # yarn format:check ではなくスクリプトを直接呼ぶ。
       # ルート package.json は Template Sync の対象外なので、yarn 経由だと
       # 派生プロジェクトでは古いコマンド（ビルド前の prettier）のまま実行されてしまう
+      # スクリプトは呼び出し元のリポジトリのものが実行されるため、まだ届いていない
+      # 構成では存在しない。その場合は yarn 経由にフォールバックする
       - name: Format Check
-        run: bash scripts/format.sh --check
+        run: |
+          if [ -f scripts/format.sh ]; then
+            bash scripts/format.sh --check
+          else
+            echo "::notice::scripts/format.sh が無いため yarn format:check を使います"
+            yarn format:check
+          fi
 
       - name: Test
         run: yarn test
@@ -140,7 +151,13 @@ jobs:
       # 派生プロジェクトでは古いコマンド（firestore のみ）のまま実行されてしまう
       - name: Firestore / Storage Rules Test
         if: steps.layers.outputs.rules == 'true'
-        run: bash scripts/test-rules.sh
+        run: |
+          if [ -f scripts/test-rules.sh ]; then
+            bash scripts/test-rules.sh
+          else
+            echo "::notice::scripts/test-rules.sh が無いため yarn test:rules を使います"
+            yarn test:rules
+          fi
 
       # ワークスペース名を書かない（派生プロジェクトはスコープをリネームしているため）。
       # mobile には build タスクが無いので、実質 web + shared + functions が対象になる
