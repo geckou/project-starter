@@ -6,9 +6,11 @@ name: Release Tag
 # このタグを指す。production へマージするたびにタグが進むので、チェック内容の修正は
 # 各派生での取り込み作業ゼロで行き渡る（詳細は .claude/docs/git-workflow.md）。
 #
-# **互換性を壊す変更ではタグを進めない。** push で入ったコミットのいずれかに
-# BREAKING CHANGE（または conventional commits の `type!:`）が含まれていたら昇格を止め、
-# 次のメジャータグ（v2）を切って派生側の参照を更新する、という判断を促す。
+# **互換性を壊す変更ではタグを進めない。** push で入ったコミットのいずれかが
+# Conventional Commits の破壊的変更の書式（件名の `type!:` か、本文の行頭フッター）
+# だったら昇格を止め、次のメジャータグ（v2）を切って派生側の参照を更新する、という判断を促す。
+# 語が本文に出てくるだけでは止めない（この仕組みを説明したコミットが自分で自分を
+# 止めてしまうため。初回の昇格が実際にこれで空振りした）。
 #
 # 進めるのは「今あるメジャータグのうち最大のもの」。v2 を手で切れば、以後の昇格は
 # v2 に移る（v1 は破壊的変更の手前で止まったまま残る）。
@@ -66,12 +68,36 @@ jobs:
           if [ -n "$BEFORE" ] &&
             [ "$BEFORE" != "0000000000000000000000000000000000000000" ] &&
             git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            MESSAGES=$(git log --pretty=%B "${BEFORE}..${GITHUB_SHA}")
+            RANGE="${BEFORE}..${GITHUB_SHA}"
           else
-            MESSAGES=$(git log -1 --pretty=%B "$GITHUB_SHA")
+            RANGE="${GITHUB_SHA} -1"
           fi
 
-          if printf '%s' "$MESSAGES" | grep -qE 'BREAKING CHANGE|^[a-z]+(\([^)]*\))?!:'; then
+          # Conventional Commits の書式でだけ破壊的変更と判定する。
+          #   件名: `type!: ...`（`!` が付いている）
+          #   本文: 行頭の破壊的変更フッター
+          # 「本文のどこかにその語がある」で判定すると、この仕組み自体を説明した
+          # コミットが自分で自分を止めてしまう（初回の昇格が実際にこれで空振りした）
+          BREAKING=false
+
+          while IFS= read -r commit; do
+            [ -z "$commit" ] && continue
+
+            SUBJECT=$(git log -1 --pretty=%s "$commit")
+            BODY=$(git log -1 --pretty=%b "$commit")
+
+            if printf '%s\n' "$SUBJECT" | grep -qE '^[a-zA-Z]+(\([^)]*\))?!:'; then
+              BREAKING=true
+              echo "破壊的変更（件名の !）: $SUBJECT"
+            fi
+
+            if printf '%s\n' "$BODY" | grep -qE '^BREAKING[ -]CHANGE:'; then
+              BREAKING=true
+              echo "破壊的変更（フッター）: $SUBJECT"
+            fi
+          done <<< "$(git log --format=%H $RANGE)"
+
+          if [ "$BREAKING" = true ]; then
             echo "promote=false" >> "$GITHUB_OUTPUT"
             echo "::warning::破壊的変更のため $MAJOR_TAG を進めません。次のメジャータグを切り、派生プロジェクトの参照（uses: ...@${MAJOR_TAG}）を更新してください"
           else
