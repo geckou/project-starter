@@ -23,6 +23,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # 層構成に応じて実行するステップを決める（ci.yml と同じ理由で実ファイルを見る）
+      - name: Detect layers
+        id: layers
+        run: |
+          if [ -d apps/mobile ]; then
+            echo "mobile=true" >> "$GITHUB_OUTPUT"
+            echo "mobile_workspace=$(node -p "require('./apps/mobile/package.json').name")" >> "$GITHUB_OUTPUT"
+          else
+            echo "mobile=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -f firestore.rules ] || [ -f storage.rules ]; then
+            echo "rules=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rules=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # node_modules に依存しないので依存インストールより先に回す
       - name: Layer Manifest Check
         run: node scripts/check-layers.mjs
@@ -37,10 +54,11 @@ jobs:
 
       - run: yarn install --frozen-lockfile
 
-      # layer:mobile:start
       - name: Generate Expo router types
-        run: yarn workspace @geckou/mobile exec expo customize tsconfig.json
-      # layer:mobile:end
+        if: steps.layers.outputs.mobile == 'true'
+        run: |
+          yarn workspace "${{ steps.layers.outputs.mobile_workspace }}" \
+            exec expo customize tsconfig.json
 
       - name: Type Check
         run: yarn type-check
@@ -51,18 +69,19 @@ jobs:
       - name: Test
         run: yarn test
 
-      # layer:firebase:start
       - uses: actions/setup-java@v6
+        if: steps.layers.outputs.rules == 'true'
         with:
           distribution: temurin
           java-version: 21
 
       - name: Install Firebase CLI
+        if: steps.layers.outputs.rules == 'true'
         run: npm install -g firebase-tools@14
 
       - name: Firestore Rules Test
-        run: yarn test:rules
-      # layer:firebase:end
+        if: steps.layers.outputs.rules == 'true'
+        run: bash scripts/test-rules.sh
 
       - name: Build
         run: yarn build

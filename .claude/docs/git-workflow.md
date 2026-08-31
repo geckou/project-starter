@@ -226,3 +226,86 @@ gh api repos/{owner}/{repo}/rulesets \
 ### Free プランのプライベートリポジトリの場合
 
 マージ操作の強制はできない。branch-guard の可視化と運用規律（CLAUDE.md のマージルール）に依存することを、チームで共有しておく。
+
+## CI の配布（reusable workflow）
+
+`.github/workflows/ci.yml` は **reusable workflow**（`on: workflow_call`）として書いてある。
+派生プロジェクトは中身をコピーせず、参照 1 行だけを持つ。
+
+```yaml
+# 派生プロジェクトの .github/workflows/ci.yml
+name: CI
+
+on:
+  pull_request:
+    branches: [production, 'release/**']
+    paths-ignore:
+      - '**/*.md'
+      - '.claude/docs/**'
+      - '.claude/skills/**'
+      - '.vscode/**'
+      - 'LICENSE'
+
+jobs:
+  ci:
+    uses: geckou/project-starter/.github/workflows/ci.yml@v1
+```
+
+**チェック内容の修正が、各派生での取り込み作業ゼロで行き渡る。** ルールテストの追加や
+`firebase-tools` のバージョン固定のような修正は、テンプレート側の 1 コミットで全派生に効く。
+Template Sync のファイルコピーと違い、コンフリクトも発生しない。
+
+### 切り替え手順（派生プロジェクト側）
+
+1. `.github/workflows/ci.yml` を上記の参照だけの内容に置き換える
+2. `.templatesyncignore` に `.github/workflows/ci.yml` を追加する
+   （テンプレート側の実体で上書きされないようにするため）
+3. **Required status check の名前を `ci / ci` に変える。** reusable workflow を呼ぶと
+   チェック名が `<呼び出し側のジョブ ID> / <呼ばれる側のジョブ ID>` になる。
+   `.github/rulesets/production.json` を取り込んでいる場合、`{ "context": "ci" }` のままだと
+   **出力されないチェックを待ち続けてマージできなくなる**
+
+`/init-project` の手順に含めてある。
+
+### 依存更新（Renovate）の PR は branch-guard の例外
+
+`renovate/*` から `production` への PR は `branch-guard.yml` が許可する。依存更新は
+プロダクトの機能変更ではなく、リリース単位に束ねる意味が薄いため。
+
+ただし **`production` へのマージは本番デプロイを発火する**ので、マージのタイミングは人が選ぶ
+（自動マージは既定で無効。`.claude/docs/dependencies.md` 参照）。
+
+### バージョンの進み方
+
+`@v1` は `.github/workflows/release-tag.yml` が `production` の先頭へ進める浮動タグ。
+**`.github/workflows/` が変わったときだけ**動く（このタグで配られるのはワークフローだけのため。
+下の「配られるのはワークフローだけ」を参照）。
+
+**互換性を壊す変更ではタグが進まない。** push で入ったコミットのいずれかに `BREAKING CHANGE`
+または `type!:` が含まれていると昇格を止め、警告を出す。「タグを進めない = 派生に配らない」
+という判断をこの仕組みで表現できる。
+
+進めるのは **今あるメジャータグのうち最大のもの**。破壊的変更を入れたら `v2` を手で切る
+（`git tag v2 && git push origin v2`）。以後の昇格は `v2` に移り、`v1` は破壊的変更の手前で
+止まったまま残るので、参照を更新していない派生プロジェクトは壊れない。
+
+### 配られるのはワークフローだけ（スクリプトは呼び出し元のもの）
+
+reusable workflow の `actions/checkout` は**呼び出し元のリポジトリ**をチェックアウトする。
+つまり `bash scripts/test-hooks.sh` のようなステップが実行するのは、**派生プロジェクト側の
+`scripts/`**（Template Sync で配られたもの）であって、`@v1` が指すテンプレートのものではない。
+
+- `release-tag.yml` が `v1` を進める対象を `.github/workflows/**` に限っているのはこのため
+- 新しいスクリプトに依存するワークフローの変更は、**スクリプトの同期が先**になる。
+  `ci.yml` はスクリプトが無くても落ちないよう `hashFiles` で存在を見てから実行する
+
+### 層構成の違いは実行時に判定する
+
+呼び出し元の層構成（mobile / firebase の有無）は、`ci.yml` が実ファイル（`apps/mobile/`・
+`firestore.rules`）を見て判定する。`layers.json` を持たない派生プロジェクトでも正しく動き、
+1 つのワークフローがどの構成からでも呼べる。
+
+### 対象外
+
+`deploy.yml` は派生ごとにシークレットとデプロイ対象が違うため、reusable にせずファイル同期のまま残す。
+`branch-guard.yml` / `template-sync.yml` も同様（リポジトリ固有の設定に依存する）。

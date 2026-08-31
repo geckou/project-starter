@@ -295,11 +295,27 @@ else
   fail "ルート package.json に mobile の設定が残っている"
 fi
 
-if ! grep -q "expo customize" "$variant/.github/workflows/ci.yml" &&
-  ! grep -q "dependency-name: 'expo'" "$variant/.github/dependabot.yml"; then
-  pass "CI の Expo ステップと Dependabot の ignore が消える"
+if [ ! -e "$variant/renovate/mobile.json" ] &&
+  ! grep -q "renovate/mobile" "$variant/renovate.json5"; then
+  pass "Renovate の Expo ルールが消える"
 else
-  fail "Expo 向けの CI / Dependabot 設定が残っている"
+  fail "Renovate の Expo 設定が残っている"
+fi
+
+# ci.yml / smoke-test.yml は層のマーカーを持たない（実ファイルを見て実行時に判定する）。
+# 層構成に関係なく1つのファイルで動くことが reusable workflow の前提になる
+if grep -q "expo customize" "$variant/.github/workflows/ci.yml" &&
+  grep -q "steps.layers.outputs.mobile" "$variant/.github/workflows/ci.yml"; then
+  pass "CI は層構成に依存しない（Expo ステップは実行時に判定してスキップ）"
+else
+  fail "CI が層構成に依存している"
+fi
+
+if grep -q "renovate/default" "$variant/renovate.json5" &&
+  [ -f "$variant/renovate/default.json" ]; then
+  pass "Renovate の共通ルールは残る"
+else
+  fail "Renovate の共通ルールまで消えた"
 fi
 
 if [ -d "$variant/apps/functions" ] && [ -f "$variant/apps/functions/src/lib/billing.ts" ]; then

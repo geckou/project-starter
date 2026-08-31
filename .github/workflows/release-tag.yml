@@ -1,0 +1,88 @@
+name: Release Tag
+
+# 派生プロジェクトが参照するメジャーバージョンのタグ（v1）を production の先頭へ進める。
+#
+# 派生側の CI は `uses: geckou/project-starter/.github/workflows/ci.yml@v1` の形で
+# このタグを指す。production へマージするたびにタグが進むので、チェック内容の修正は
+# 各派生での取り込み作業ゼロで行き渡る（詳細は .claude/docs/git-workflow.md）。
+#
+# **互換性を壊す変更ではタグを進めない。** push で入ったコミットのいずれかに
+# BREAKING CHANGE（または conventional commits の `type!:`）が含まれていたら昇格を止め、
+# 次のメジャータグ（v2）を切って派生側の参照を更新する、という判断を促す。
+#
+# 進めるのは「今あるメジャータグのうち最大のもの」。v2 を手で切れば、以後の昇格は
+# v2 に移る（v1 は破壊的変更の手前で止まったまま残る）。
+#
+# 対象を .github/workflows/ に限っているのは、reusable workflow から呼ばれる
+# scripts/ は**呼び出し元のリポジトリのもの**が実行されるため（checkout は呼び出し元を
+# チェックアウトする）。スクリプトはこのタグでは配られず、Template Sync で届く。
+
+on:
+  push:
+    branches: [production]
+    # このタグで実際に配られるのはワークフローだけ
+    paths:
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  move-tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # push で入ったコミット範囲のメッセージと、既存のタグを読む
+          fetch-depth: 0
+
+      # 進めるタグは「今あるメジャータグのうち最大のもの」。
+      # 破壊的変更のあとに v2 を手で切れば、以後の昇格対象も自動で v2 に移る
+      # （v1 を固定していると、次の非破壊の変更で v1 が破壊的コミットまで進んでしまう）
+      - name: Resolve major tag
+        id: tag
+        run: |
+          MAJOR_TAG=$(git tag -l 'v[0-9]*' | grep -E '^v[0-9]+$' | sort -V | tail -1)
+          MAJOR_TAG=${MAJOR_TAG:-v1}
+
+          echo "name=$MAJOR_TAG" >> "$GITHUB_OUTPUT"
+          echo "対象のタグ: $MAJOR_TAG"
+
+      # 互換性を壊す変更ではタグを進めない（進めると、参照している派生プロジェクトの
+      # CI が予告なく壊れる）。止まったら次のメジャータグを切って派生側の参照を更新する
+      - name: Check for breaking changes
+        id: gate
+        env:
+          BEFORE: ${{ github.event.before }}
+          MAJOR_TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          # squash なら1件、merge コミットなら取り込んだ全件を見る。
+          # 基準が取れないとき（workflow_dispatch・初回 push）は HEAD だけ見る
+          if [ -n "$BEFORE" ] &&
+            [ "$BEFORE" != "0000000000000000000000000000000000000000" ] &&
+            git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            MESSAGES=$(git log --pretty=%B "${BEFORE}..${GITHUB_SHA}")
+          else
+            MESSAGES=$(git log -1 --pretty=%B "$GITHUB_SHA")
+          fi
+
+          if printf '%s' "$MESSAGES" | grep -qE 'BREAKING CHANGE|^[a-z]+(\([^)]*\))?!:'; then
+            echo "promote=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::破壊的変更のため $MAJOR_TAG を進めません。次のメジャータグを切り、派生プロジェクトの参照（uses: ...@${MAJOR_TAG}）を更新してください"
+          else
+            echo "promote=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Move the major tag to the current commit
+        if: steps.gate.outputs.promote == 'true'
+        env:
+          MAJOR_TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          git tag -f "$MAJOR_TAG" "$GITHUB_SHA"
+          git push origin -f "refs/tags/$MAJOR_TAG"
+          echo "::notice::$MAJOR_TAG を ${GITHUB_SHA:0:7} へ進めました"

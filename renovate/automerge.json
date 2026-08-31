@@ -1,0 +1,22 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "minor / patch を CI 緑で自動マージする opt-in プリセット。既定では有効にしていない — production へのマージは本番デプロイを発火するため、これを入れると依存更新が staging を経ずに本番へ出る。production への push が本番デプロイに繋がらない構成、または依存更新をその形で流してよいと判断した構成でだけ extends に足す。",
+  "packageRules": [
+    {
+      "description": "CI（型チェック・Lint・テスト・ルールテスト・ビルド）が緑なら minor / patch は自動マージする。派生数ぶんの週次 PR を人力で捌かないための設定",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "Firebase SDK は認証・課金の挙動に直結するため、自動マージの対象から外す（default プリセットと同じ判断をここでも明示する）",
+      "matchPackageNames": [
+        "firebase",
+        "firebase-admin",
+        "firebase-functions",
+        "firebase-tools"
+      ],
+      "automerge": false
+    }
+  ]
+}

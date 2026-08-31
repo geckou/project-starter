@@ -28,6 +28,13 @@ jobs:
             release/*|hotfix/*)
               echo "OK: $HEAD_REF から production への PR は許可されています"
               ;;
+            renovate/*)
+              # 依存更新（Renovate）はプロダクトの機能変更ではなく、リリース単位に
+              # 束ねる意味が薄いため例外として許可する。ただし production への
+              # マージは本番デプロイを発火するので、マージのタイミングは人が選ぶ
+              # （自動マージは既定で無効。.claude/docs/dependencies.md 参照）
+              echo "OK: $HEAD_REF は依存更新のため許可されています"
+              ;;
             *)
               echo "::error::production への PR は release/* または hotfix/* からのみ許可されます（現在: $HEAD_REF）。詳細は .claude/docs/git-workflow.md を参照してください。"
               exit 1

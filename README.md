@@ -303,6 +303,8 @@ yarn firebase:emulators
 |---|---|
 | PR 自動レビュー / `@claude` メンション | リポジトリの Secrets に `ANTHROPIC_API_KEY` を登録（未登録ならスキップされる）。`.github/workflows/claude.yml` |
 | テンプレート更新の取り込み | 追加のシークレット登録は不要（親テンプレートは public）。取り込み対象外は `.templatesyncignore` で管理。`.github/workflows/template-sync.yml` |
+| CI をテンプレート参照にする | 派生側は `uses: geckou/project-starter/.github/workflows/ci.yml@v1` の 1 行だけ持つ。チェック内容の修正が取り込み作業ゼロで届く（[`.claude/docs/git-workflow.md`](.claude/docs/git-workflow.md)） |
+| 依存更新（Renovate） | `renovate.json5` がテンプレートの preset を参照する。Renovate の GitHub App のインストールが前提（[`.claude/docs/dependencies.md`](.claude/docs/dependencies.md)） |
 
 ---
 
