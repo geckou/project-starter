@@ -11,20 +11,13 @@
 //
 // node_modules に依存しない。yarn install なしで実行できる。
 
-import fs from 'node:fs'
 import path from 'node:path'
 
 import {
-  DEPENDENCY_FIELDS,
-  isTextFile,
-  layerByName,
-  listFiles,
+  applyRemoval,
   loadManifest,
   pruneManifest,
-  readJson,
-  resolveJsonPath,
   resolveRemoval,
-  stripBlocks,
   writeJson,
 } from './lib/layers.mjs'
 
@@ -77,7 +70,6 @@ function main() {
 
   const removal = resolveRemoval(manifest, options.layers)
   const cascaded = removal.filter((name) => !options.layers.includes(name))
-  const changes = []
 
   if (cascaded.length > 0) {
     console.log(
@@ -87,122 +79,9 @@ function main() {
 
   console.log(`[plan] 外す層: ${removal.join(', ')}`)
 
-  // 1. ファイル・ディレクトリの削除
-  for (const name of removal) {
-    for (const relative of layerByName(manifest, name).files ?? []) {
-      const target = path.join(root, relative)
-
-      if (!fs.existsSync(target)) continue
-
-      changes.push(`delete  ${relative}`)
-
-      if (!options.dryRun) fs.rmSync(target, { recursive: true, force: true })
-    }
-  }
-
-  // 2. マーカーで囲まれた範囲の削除
-  for (const relative of listFiles(root)) {
-    if (!isTextFile(relative)) continue
-
-    const target = path.join(root, relative)
-
-    if (!fs.existsSync(target)) continue
-
-    const before = fs.readFileSync(target, 'utf8')
-
-    if (!before.includes('layer:')) continue
-
-    const after = stripBlocks(before, removal)
-
-    if (after === before) continue
-
-    changes.push(`strip   ${relative}`)
-
-    if (!options.dryRun) fs.writeFileSync(target, after)
-  }
-
-  // 3. package.json の依存・スクリプトと、設定ファイルのキー
-  for (const name of removal) {
-    const layer = layerByName(manifest, name)
-
-    for (const [relative, names] of Object.entries(layer.deps ?? {})) {
-      const target = path.join(root, relative)
-
-      // 依存を持つワークスペースごと消えている場合がある（billing の apps/functions 等）
-      if (!fs.existsSync(target)) continue
-
-      const json = readJson(target)
-      let changed = false
-
-      for (const dependency of names) {
-        for (const field of DEPENDENCY_FIELDS) {
-          if (json[field]?.[dependency] === undefined) continue
-
-          delete json[field][dependency]
-          changed = true
-          changes.push(`dep     ${relative}: ${dependency}`)
-        }
-      }
-
-      if (changed && !options.dryRun) writeJson(target, json)
-    }
-
-    for (const [relative, names] of Object.entries(layer.scripts ?? {})) {
-      const target = path.join(root, relative)
-
-      if (!fs.existsSync(target)) continue
-
-      const json = readJson(target)
-      let changed = false
-
-      for (const script of names) {
-        if (json.scripts?.[script] === undefined) continue
-
-        delete json.scripts[script]
-        changed = true
-        changes.push(`script  ${relative}: ${script}`)
-      }
-
-      if (changed && !options.dryRun) writeJson(target, json)
-    }
-
-    for (const [relative, keyPaths] of Object.entries(layer.json ?? {})) {
-      const target = path.join(root, relative)
-
-      if (!fs.existsSync(target)) continue
-
-      const json = readJson(target)
-      let changed = false
-
-      for (const keys of keyPaths) {
-        const resolved = resolveJsonPath(json, keys)
-
-        if (!resolved || resolved.parent[resolved.key] === undefined) continue
-
-        delete resolved.parent[resolved.key]
-        changed = true
-        changes.push(`json    ${relative}: ${keys.join('.')}`)
-      }
-
-      if (changed && !options.dryRun) writeJson(target, json)
-    }
-
-    for (const rule of layer.replace ?? []) {
-      const target = path.join(root, rule.file)
-
-      if (!fs.existsSync(target)) continue
-
-      const before = fs.readFileSync(target, 'utf8')
-
-      if (!before.includes(rule.find)) continue
-
-      changes.push(`replace ${rule.file}`)
-
-      if (!options.dryRun) {
-        fs.writeFileSync(target, before.split(rule.find).join(rule.with))
-      }
-    }
-  }
+  const changes = applyRemoval(root, manifest, removal, {
+    dryRun: options.dryRun,
+  })
 
   // 4. マニフェストを実態に合わせる。
   // 外した層の定義を落とし、残った層の定義からも実在しなくなった項目を落とす。

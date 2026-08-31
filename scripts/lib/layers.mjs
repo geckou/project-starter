@@ -1,5 +1,5 @@
 // 層マニフェスト（layers.json）を読むための共通処理。
-// remove-layer.mjs（減算）と check-layers.mjs（検証）の両方から使う。
+// remove-layer.mjs（減算）・add-layer.mjs（加算）・check-layers.mjs（検証）から使う。
 //
 // node_modules に依存しない（Node 22 の標準 API のみ）。yarn install なしで動く。
 
@@ -14,6 +14,24 @@ export const DEPENDENCY_FIELDS = [
   'peerDependencies',
   'optionalDependencies',
 ]
+
+/**
+ * マーカーの構文そのものを本文に含むファイル（層ツール自身のコードとドキュメント）。
+ *
+ * これらの `layer:...` は層の範囲指定ではなく説明・テスト用の文字列なので、
+ * 減算の対象にも検証の対象にもしない。除外を忘れると、例えば
+ * scripts/test-layers.sh 内の「閉じていないマーカー」のフィクスチャを
+ * 範囲の開始と誤読し、そこから先が丸ごと削られる
+ */
+export const SELF_DOCUMENTING = new Set([
+  'layers.json',
+  'scripts/lib/layers.mjs',
+  'scripts/remove-layer.mjs',
+  'scripts/add-layer.mjs',
+  'scripts/check-layers.mjs',
+  'scripts/test-layers.sh',
+  '.claude/docs/layers.md',
+])
 
 /** マーカーの構文: <コメント記号> layer:<層名>[,<層名>...]:start | :end */
 export const MARKER_PATTERN = /layer:([a-zA-Z0-9,_-]+):(start|end)/
@@ -100,6 +118,35 @@ export function resolveRemoval(manifest, names) {
   // 宣言順（core に近い層から）に並べ替える
   return manifest.layers
     .filter((layer) => removal.has(layer.name))
+    .map((layer) => layer.name)
+}
+
+/**
+ * 足す層の集合を求める。
+ * 前提になる層（requires）を遡り、対象に含めて base に近い順で返す。
+ */
+export function resolveAddition(manifest, names) {
+  const addition = new Set()
+
+  const addWithRequirements = (name) => {
+    if (addition.has(name)) return
+
+    const layer = layerByName(manifest, name)
+
+    if (!layer) {
+      throw new Error(`未定義の層です: ${name}`)
+    }
+
+    addition.add(name)
+
+    if (layer.requires !== null) addWithRequirements(layer.requires)
+  }
+
+  for (const name of names) addWithRequirements(name)
+
+  // 宣言順（core に近い層から）に並べ替える
+  return manifest.layers
+    .filter((layer) => addition.has(layer.name))
     .map((layer) => layer.name)
 }
 
@@ -323,12 +370,192 @@ export function pruneManifest(root, manifest) {
   return { ...manifest, layers }
 }
 
+/** resolveJsonPath と同じだが、途中のオブジェクトが無ければ作る（加算用） */
+export function ensureJsonPath(value, keys) {
+  let parent = value
+
+  for (const key of keys.slice(0, -1)) {
+    if (typeof parent[key] !== 'object' || parent[key] === null)
+      parent[key] = {}
+
+    parent = parent[key]
+  }
+
+  return { parent, key: keys[keys.length - 1] }
+}
+
+/**
+ * 層の実体をツリーから取り除く（ファイル・マーカーの範囲・依存・設定のキー・置換）。
+ * layers.json 自体の更新は呼び出し側が行う。
+ *
+ * 加算（add-layer.mjs）からも使う。テンプレートから持ち込んだファイルに
+ * 「まだ足していない層」の内容が混ざるため、最後にこれで落とす。
+ * 既に無いものは飛ばすので、何度実行しても同じ結果になる。
+ */
+export function applyRemoval(root, manifest, removal, { dryRun = false } = {}) {
+  const changes = []
+
+  // 1. ファイル・ディレクトリの削除
+  for (const name of removal) {
+    for (const relative of layerByName(manifest, name).files ?? []) {
+      const target = path.join(root, relative)
+
+      if (!fs.existsSync(target)) continue
+
+      changes.push(`delete  ${relative}`)
+
+      if (!dryRun) fs.rmSync(target, { recursive: true, force: true })
+    }
+  }
+
+  // 2. マーカーで囲まれた範囲の削除
+  for (const relative of listFiles(root)) {
+    if (!isTextFile(relative)) continue
+
+    // 層ツール自身のコードとドキュメントに出てくる layer:... は説明用の文字列
+    if (SELF_DOCUMENTING.has(relative)) continue
+
+    const target = path.join(root, relative)
+
+    if (!fs.existsSync(target)) continue
+
+    const before = fs.readFileSync(target, 'utf8')
+
+    if (!before.includes('layer:')) continue
+
+    const after = stripBlocks(before, removal)
+
+    if (after === before) continue
+
+    changes.push(`strip   ${relative}`)
+
+    if (!dryRun) fs.writeFileSync(target, after)
+  }
+
+  // 3. package.json の依存・スクリプトと、設定ファイルのキー
+  for (const name of removal) {
+    const layer = layerByName(manifest, name)
+
+    for (const [relative, names] of Object.entries(layer.deps ?? {})) {
+      const target = path.join(root, relative)
+
+      // 依存を持つワークスペースごと消えている場合がある（billing の apps/functions 等）
+      if (!fs.existsSync(target)) continue
+
+      const json = readJson(target)
+      let changed = false
+
+      for (const dependency of names) {
+        for (const field of DEPENDENCY_FIELDS) {
+          if (json[field]?.[dependency] === undefined) continue
+
+          delete json[field][dependency]
+          changed = true
+          changes.push(`dep     ${relative}: ${dependency}`)
+        }
+      }
+
+      if (changed && !dryRun) writeJson(target, json)
+    }
+
+    for (const [relative, names] of Object.entries(layer.scripts ?? {})) {
+      const target = path.join(root, relative)
+
+      if (!fs.existsSync(target)) continue
+
+      const json = readJson(target)
+      let changed = false
+
+      for (const script of names) {
+        if (json.scripts?.[script] === undefined) continue
+
+        delete json.scripts[script]
+        changed = true
+        changes.push(`script  ${relative}: ${script}`)
+      }
+
+      if (changed && !dryRun) writeJson(target, json)
+    }
+
+    for (const [relative, keyPaths] of Object.entries(layer.json ?? {})) {
+      const target = path.join(root, relative)
+
+      if (!fs.existsSync(target)) continue
+
+      const json = readJson(target)
+      let changed = false
+
+      for (const keys of keyPaths) {
+        const resolved = resolveJsonPath(json, keys)
+
+        if (!resolved || resolved.parent[resolved.key] === undefined) continue
+
+        delete resolved.parent[resolved.key]
+        changed = true
+        changes.push(`json    ${relative}: ${keys.join('.')}`)
+      }
+
+      if (changed && !dryRun) writeJson(target, json)
+    }
+
+    for (const rule of layer.replace ?? []) {
+      const target = path.join(root, rule.file)
+
+      if (!fs.existsSync(target)) continue
+
+      const before = fs.readFileSync(target, 'utf8')
+
+      if (!before.includes(rule.find)) continue
+
+      changes.push(`replace ${rule.file}`)
+
+      if (!dryRun) {
+        fs.writeFileSync(target, before.split(rule.find).join(rule.with))
+      }
+    }
+  }
+
+  return changes
+}
+
 export function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'))
 }
 
 export function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`)
+}
+
+/**
+ * オブジェクトのキー順を手本（source）に合わせて並べ替える。
+ * 加算でキーを戻すとそのまま末尾に付き、減算 → 加算で元に戻らなくなるため。
+ */
+export function restoreKeyOrder(target, source) {
+  if (
+    typeof target !== 'object' ||
+    target === null ||
+    Array.isArray(target) ||
+    typeof source !== 'object' ||
+    source === null
+  ) {
+    return target
+  }
+
+  const ordered = {}
+
+  for (const key of Object.keys(source)) {
+    if (key in target) ordered[key] = target[key]
+  }
+
+  // 手本に無いキー（派生プロジェクトが足したもの）は後ろに残す
+  for (const key of Object.keys(target)) {
+    if (!(key in ordered)) ordered[key] = target[key]
+  }
+
+  for (const key of Object.keys(ordered)) delete target[key]
+  Object.assign(target, ordered)
+
+  return target
 }
 
 /** ["exports", "./billing"] のようなキー列を辿って親オブジェクトと末尾キーを返す */

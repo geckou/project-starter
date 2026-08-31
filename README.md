@@ -39,15 +39,18 @@ core              LP が作れる最小構成（Next.js + Hosting + CI/deploy + 
 ```bash
 node scripts/remove-layer.mjs mobile     # Expo を外す
 node scripts/remove-layer.mjs firebase   # core 構成にする（配下も連鎖して外れる）
+node scripts/add-layer.mjs billing       # 課金を足す（前提の層も一緒に入る）
 ```
 
-外すとファイル・依存・設定のキー・環境変数・CI ステップがまとめて消える。
-実行後は `yarn install` で `yarn.lock` を作り直す。詳細は
-[`.claude/docs/layers.md`](.claude/docs/layers.md)。
+外すとファイル・依存・設定のキー・環境変数・CI ステップがまとめて消え、足すと戻る
+（実体はテンプレートから取り寄せ、ローカルの変更は 3-way マージで保たれる）。
+実行後は `yarn install` と `yarn format`。外部サービスの設定など判断が要る手順は
+`/add-firebase` `/add-functions` `/add-mobile` `/add-billing` の各スキルが案内する。
+詳細は [`.claude/docs/layers.md`](.claude/docs/layers.md)。
 
 **リポジトリの既定は今も全部入り**（[#105](https://github.com/geckou/project-starter/issues/105) で進行中）。
 6 構成（`core` / `+firebase` / `+functions` / `+functions+billing` / `+functions+mobile` / 全部入り）の
-ビルド検証は `.github/workflows/layer-matrix.yml` が行う。残りは加算側（`/add-*`）。
+ビルド検証は `.github/workflows/layer-matrix.yml` が行う。
 
 ---
 

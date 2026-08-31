@@ -22,6 +22,7 @@ import path from 'node:path'
 
 import {
   DEPENDENCY_FIELDS,
+  SELF_DOCUMENTING,
   findBlocks,
   isTextFile,
   listFiles,
@@ -33,17 +34,6 @@ import {
 
 const root = path.resolve(path.dirname(process.argv[1]), '..')
 const errors = []
-
-// マーカーの構文を説明するために layer:<層名>:start 等を本文に含むファイル。
-// 検査すると「未定義の層のマーカー」として誤検出するため除外する
-const SELF_DOCUMENTING = new Set([
-  'layers.json',
-  'scripts/lib/layers.mjs',
-  'scripts/remove-layer.mjs',
-  'scripts/check-layers.mjs',
-  'scripts/test-layers.sh',
-  '.claude/docs/layers.md',
-])
 
 function fail(message) {
   errors.push(message)
