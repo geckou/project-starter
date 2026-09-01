@@ -431,7 +431,7 @@ ESLint / Prettier / commitlint の設定は、ツール側が**共有設定を n
 - `type-enum` の値は本ファイルの「コミットメッセージ規約」と `.claude/hooks/pre-git-guard.sh`
   にもある。フックはシェルなので npm パッケージを参照できず、**ここだけは重複が残る**。
   type を増減するときは 3 箇所とも直す
-- 公開は `yarn release <パッケージのディレクトリ名>`。version を上げる PR をマージしてから、
+- 公開は `yarn release <パッケージのディレクトリ名>...`（複数可）。version を上げる PR をマージしてから、
   `production` でタグを打つ。**`production` に入っていないコミットからは公開できない**
   （ワークフローが検査する。詳細は `packages/README.md`）
 
@@ -519,7 +519,7 @@ node scripts/add-layer.mjs <層>      # 層を足す（テンプレートから�
 node scripts/adopt-references.mjs --repo <派生のパス>  # 既存の派生を参照方式へ移行する
 bash scripts/test-adopt-references.sh                 # 上記スクリプトの回帰テスト
 
-yarn release <パッケージのディレクトリ名>              # packages/*-config を npm へ公開する
+yarn release <パッケージのディレクトリ名>...           # packages/*-config を npm へ公開する（複数可）
 ```
 
 ## テンプレート起因の問題を親リポジトリに報告
