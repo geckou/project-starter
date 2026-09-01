@@ -366,7 +366,7 @@ write_questions '（なし）'
 run_qstart EMPTY '未回答が無ければ何も出さない'
 write_questions '### Q-001 予約のキャンセル期限
 
-- 対応: 仮決定
+- ブロック: 予約キャンセル API
 
 ### Q-002 通知の文言'
 run_qstart '未回答の確認事項（2 件）' '未回答の件数を出す'
