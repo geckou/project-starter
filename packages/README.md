@@ -54,10 +54,15 @@ npm へ公開する。`production` への直接 push は禁止なので、versio
 
 ```bash
 # 1. packages/<パッケージ>/package.json の version を上げる PR を出してマージする
-# 2. production でタグを打つ
-git checkout production && git pull
-yarn release eslint-config
+# 2. production でタグを打つ（複数まとめて指定できる）
+git checkout production && git pull --ff-only
+yarn release eslint-config prettier-config commitlint-config
 ```
+
+`yarn release` はタグを打つだけで、version は上げない。**HEAD が `origin/production` と
+一致していなければ止まる** — 手元が古いままタグを打つと、GitHub は「タグが指すコミットの
+ワークフローファイル」で実行するため、古い `publish.yml` が動いて意図しない中身が
+公開されうるため。
 
 公開済みのバージョンに対してタグを打っても publish はスキップされる（冪等）。
 
