@@ -39,7 +39,8 @@
     "prepare": "husky",
     "test:rules": "bash scripts/test-rules.sh",
     "test:hooks": "bash scripts/test-hooks.sh",
-    "check:docs": "bash scripts/check-docs.sh"
+    "check:docs": "bash scripts/check-docs.sh",
+    "release": "bash scripts/release.sh"
   },
   "resolutions": {
     "tar": ">=7.5.11",
@@ -50,8 +51,9 @@
   },
   "devDependencies": {
     "@commitlint/cli": "^21",
-    "@commitlint/config-conventional": "^21",
     "@firebase/rules-unit-testing": "^4.0.0",
+    "@geckou/commitlint-config": "^0.1.0",
+    "@geckou/prettier-config": "^0.1.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.2.5",
     "firebase": "^11.0.0",
@@ -59,7 +61,6 @@
     "lint-staged": "^17.3.0",
     "next": "^15.5.23",
     "prettier": "^3.9.6",
-    "prettier-plugin-tailwindcss": "^0.8.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tailwindcss": "^4.0.0",

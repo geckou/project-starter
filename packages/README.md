@@ -10,6 +10,62 @@
 <!-- layer:firebase:start -->
 | `shared/`    | 共有の型定義・ユーティリティ・Firebase クライアント（初期化 / Firestore / Storage）・状態管理・i18n・デザイントークン |
 <!-- layer:firebase:end -->
+| `eslint-config/` / `prettier-config/` / `commitlint-config/` | 第0層（規約）の共通設定。npm へ公開して参照で配る（→「第0層の設定パッケージ」） |
+
+## 第0層の設定パッケージ
+
+ESLint / Prettier / commitlint の共通設定は、このリポジトリから npm へ公開して
+**参照で配る**（CLAUDE.md「第0層の設定は npm パッケージで配る」）。
+ツール側が共有設定を npm パッケージとしてしか受け付けないため、Renovate preset や
+reusable workflow のような URL 参照にはできない。
+
+| ディレクトリ | パッケージ | 参照する側 |
+| --- | --- | --- |
+| `eslint-config/` | `@geckou/eslint-config` | 各ワークスペースの `eslint.config.mjs` |
+| `prettier-config/` | `@geckou/prettier-config` | `.prettierrc.cjs` |
+| `commitlint-config/` | `@geckou/commitlint-config` | `commitlint.config.cjs` |
+
+ESLint はサブパスで層に対応する。`.` は TypeScript パッケージ（`apps/functions` /
+`packages/shared`）、`./next` は Next.js アプリ、`./expo` は Expo アプリ。
+**プリセットは重ねて使わない**（それぞれ単独で完結する。重ねると同じプラグインを
+別々の実体で登録することになり、ESLint が `Cannot redefine plugin` で落ちる）。
+
+```js
+// apps/web/eslint.config.mjs
+import next from '@geckou/eslint-config/next'
+
+export default next
+```
+
+Prettier には `extends` が無いので、参照する側は spread で受けてプロジェクト固有の
+項目だけを足す。`.prettierignore` は参照にできないため各プロジェクトが持つ。
+
+```js
+// .prettierrc.cjs
+const geckou = require('@geckou/prettier-config')
+
+module.exports = { ...geckou, tailwindStylesheet: './apps/web/src/styles/globals.css' }
+```
+
+### 公開する
+
+タグ（`<ディレクトリ名>@<バージョン>`）を打つと `.github/workflows/publish.yml` が
+npm へ公開する。`production` への直接 push は禁止なので、version を上げるのは通常の PR。
+
+```bash
+# 1. packages/<パッケージ>/package.json の version を上げる PR を出してマージする
+# 2. production でタグを打つ
+git checkout production && git pull
+yarn release eslint-config
+```
+
+公開済みのバージョンに対してタグを打っても publish はスキップされる（冪等）。
+公開には `NPM_TOKEN` シークレットが要る。
+
+### 派生プロジェクトでは
+
+派生プロジェクトはこの 3 つを**持たない**（npm から取る）。scaffold 直後は
+テンプレートのコピーが残っているので、`/init-project` の手順で削除する。
 
 ## UI コンポーネント
 

@@ -1,0 +1,77 @@
+name: Publish package
+
+# 第0層の設定パッケージ（@geckou/eslint-config / prettier-config / commitlint-config）を
+# npm へ公開する。geckou/kit と同じタグ駆動で、タグは
+# <パッケージのディレクトリ名>@<バージョン>（例: eslint-config@0.1.0）。
+# タグは scripts/release.sh が打つ（yarn release <パッケージ>）。
+#
+# 設定パッケージはビルドを持たない素の JS なので、依存インストールもビルドも行わない。
+#
+# release-tag.yml が動かす v1 等のメジャータグとはパターンが重ならない（あちらは v<数字>）。
+on:
+  push:
+    tags: ['*@*']
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 公開するパッケージのディレクトリ名（eslint-config 等）
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve target package
+        id: target
+        env:
+          INPUT_PACKAGE: ${{ github.event.inputs.package }}
+        run: |
+          if [ -n "$INPUT_PACKAGE" ]; then
+            PACKAGE="$INPUT_PACKAGE"
+          else
+            PACKAGE="${GITHUB_REF_NAME%@*}"
+          fi
+
+          if [ ! -f "packages/$PACKAGE/package.json" ]; then
+            echo "packages/$PACKAGE が存在しません（tag: $GITHUB_REF_NAME）" >&2
+            exit 1
+          fi
+
+          if [ "$(node -p "require('./packages/$PACKAGE/package.json').private === true")" = "true" ]; then
+            echo "packages/$PACKAGE は private です（公開対象ではありません）" >&2
+            exit 1
+          fi
+
+          echo "package=$PACKAGE" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      # 公開済みのバージョンに対して起動されることがある（初回リリースを
+      # workflow_dispatch で行い、記録のために後からタグを打つ場合など）。
+      # その場合 npm publish は必ず失敗するので、実行を冪等にする
+      - name: Publish to npm
+        working-directory: packages/${{ steps.target.outputs.package }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+
+          # 未公開なら npm view はエラー（パッケージ未登録）か空（バージョン未登録）になる
+          PUBLISHED="$(npm view "$NAME@$VERSION" version 2>/dev/null || true)"
+
+          if [ -n "$PUBLISHED" ]; then
+            echo "$NAME@$VERSION は既に公開済みのため、publish をスキップします"
+            exit 0
+          fi
+
+          npm publish --access public

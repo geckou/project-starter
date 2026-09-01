@@ -1,0 +1,35 @@
+{
+  "name": "@geckou/prettier-config",
+  "version": "0.1.0",
+  "description": "Shared Prettier config for geckou projects",
+  "type": "commonjs",
+  "main": "./index.cjs",
+  "exports": {
+    ".": "./index.cjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.cjs",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/geckou/project-starter.git",
+    "directory": "packages/prettier-config"
+  },
+  "author": "geckou-shogo <shogo.nojima@geckou.net>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "dependencies": {
+    "prettier-plugin-tailwindcss": "^0.8.1"
+  },
+  "peerDependencies": {
+    "prettier": ">=3"
+  }
+}

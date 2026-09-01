@@ -67,7 +67,8 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'yarn'
 
-      # type の一覧は commitlint.config.cjs が持っている。ここで正規表現を書き直すと
+      # type の一覧は commitlint.config.cjs（実体は @geckou/commitlint-config）が持っている。
+      # ここで正規表現を書き直すと
       # 同じ規約の4つ目の写しになるため、実際の設定をそのまま使う
       - name: Install dependencies
         if: steps.pre.outputs.run == 'true'

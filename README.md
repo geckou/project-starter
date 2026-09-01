@@ -106,6 +106,9 @@ project-starter/
 │       └── package.json
 │
 ├── packages/                    # アプリ間で共有するライブラリ
+│   ├── eslint-config/           # 第0層の共通設定。npm へ公開して参照で配る
+│   ├── prettier-config/         #   〃
+│   ├── commitlint-config/       #   〃
 │   └── shared/
 │       └── src/
 │           ├── types/           # 共通の型定義（User, Subscription, ApiResponse 等）
@@ -154,7 +157,7 @@ project-starter/
 ├── firebase.json                # Firebase Functions / Hosting / Emulators 設定
 ├── .firebaserc                  # Firebase プロジェクト ID
 ├── turbo.json                   # Turborepo タスク定義
-├── .prettierrc                  # Prettier 設定（singleQuote 等）
+├── .prettierrc.cjs              # Prettier 設定（@geckou/prettier-config の参照）
 ├── .env.example                 # 環境変数のテンプレート
 └── package.json                 # ワークスペースルート + スクリプト定義
 ```

@@ -35,3 +35,7 @@ yarn.lock
 
 # 層マニフェスト（どの層を採用しているかは派生プロジェクトごとに違う）
 layers.json
+
+# パッケージ公開の導線（テンプレート本体だけが持つ。派生プロジェクトは公開しない）
+.github/workflows/publish.yml
+scripts/release.sh

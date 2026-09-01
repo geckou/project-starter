@@ -45,14 +45,34 @@ yarn setup
 
 `package.json` の `"name": "geckou-monorepo"` を `"<project-name>-monorepo"` 等に変更する。
 
+### 3.5. 第0層の設定パッケージを削除する
+
+ESLint / Prettier / commitlint の共通設定は npm から取る。scaffold には
+**公開元の実体**（`packages/*-config`）が付いてくるので、派生プロジェクトでは削除する。
+残すとローカルのワークスペースが優先され、テンプレート側の修正が届かない。
+
+```bash
+rm -rf packages/eslint-config packages/prettier-config packages/commitlint-config
+```
+
+参照する側（`eslint.config.mjs` / `.prettierrc.cjs` / `commitlint.config.cjs` と、
+各 `package.json` の `@geckou/*-config` 依存）は**そのまま残す**。
+次の `yarn install` で npm から取得される。
+
+あわせて `layers.json` から該当の行（`packages/eslint-config/*` と、mobile 層の
+`deps` / `json` のエントリ）を消す。実在しないパスは `node scripts/check-layers.mjs` が
+検出する。
+
 ### 4. `@geckou/*` スコープの一括リネーム
 
 ワークスペース内部のスコープ `@geckou/*` を `@<project-name>/*` に一括置換する。
 
-> ⚠️ **`@geckou/ui-react`・`@geckou/ui-core`・`@geckou/billing` は置換しない。**
-> これらは npm から取得する外部パッケージ（`ui-react` / `ui-core` は [`geckou/ui`](https://github.com/geckou/ui)、
-> `billing` は [`geckou/kit`](https://github.com/geckou/kit) 管理）であり、
-> リネームすると依存が解決できなくなる。下の手順はこの 3 つを除外している。
+> ⚠️ **npm から取得する外部パッケージは置換しない。**
+> `@geckou/ui-react` / `@geckou/ui-core`（[`geckou/ui`](https://github.com/geckou/ui) 管理）、
+> `@geckou/billing`（[`geckou/kit`](https://github.com/geckou/kit) 管理）、
+> `@geckou/eslint-config` / `@geckou/prettier-config` / `@geckou/commitlint-config`
+> （テンプレート本体から公開している第0層の設定）が対象であり、
+> リネームすると依存が解決できなくなる。下の手順はこの 6 つを除外している。
 
 対象は package.json の name / 依存だけでなく、以下すべてに及ぶ:
 
@@ -72,7 +92,7 @@ yarn setup
 一括置換（macOS の BSD sed。Linux では `sed -i ''` を `sed -i` にする）:
 
 > ⚠️ **このファイル（`SKILL.md`）自身は置換対象から外すこと。**
-> 下の `sed` の正規表現リテラル `@geckou/(ui-react|ui-core|billing)` も `@geckou/` を含むため、
+> 下の `sed` の正規表現リテラル `@geckou/(ui-react|ui-core|billing|...)` も `@geckou/` を含むため、
 > 自身に適用するとコマンドが書き換わり、次回以降の手順が壊れる。
 > 以下のコマンドは `grep -v` でこのファイルを除外している。
 
@@ -83,13 +103,13 @@ SELF=".claude/skills/init-project/SKILL.md"
 # 対象ファイルの確認
 grep -rl '@geckou/' $EXCLUDES . | grep -v "$SELF"
 
-# 一括置換（@geckou/ui-react と @geckou/ui-core は温存する）
+# 一括置換（npm から取得する外部パッケージは温存する）
 # デリミタは # を使う。| だと正規表現の選択と衝突する
 grep -rl '@geckou/' $EXCLUDES . | grep -v "$SELF" \
-  | xargs sed -i '' -E 's#@geckou/(ui-react|ui-core|billing)#@@KEEP@@\1#g; s#@geckou/#@<project-name>/#g; s#@@KEEP@@#@geckou/#g'
+  | xargs sed -i '' -E 's#@geckou/(ui-react|ui-core|billing|eslint-config|prettier-config|commitlint-config)#@@KEEP@@\1#g; s#@geckou/#@<project-name>/#g; s#@@KEEP@@#@geckou/#g'
 
 # 置換漏れの確認
-# （@geckou/ui-react と @geckou/ui-core、および SKILL.md 内の記述だけが残っていれば完了）
+# （温存した外部パッケージと、SKILL.md 内の記述だけが残っていれば完了）
 grep -rn '@geckou/' $EXCLUDES .
 ```
 
@@ -167,7 +187,9 @@ Dependabot の設定ファイルが残っていれば削除する（PR が二重
 - [ ] `node scripts/check-layers.mjs` が通る（層マニフェストと実態が一致している）
 - [ ] `yarn setup` を実行した（.firebaserc / .env.*）
 - [ ] ルート `package.json` の `name` を変更した
-- [ ] `@geckou/` の grep が `@geckou/ui-react` / `@geckou/ui-core` / `@geckou/billing`（外部パッケージ）と
+- [ ] `packages/{eslint,prettier,commitlint}-config` を削除し、`layers.json` から該当の行を消した
+- [ ] `@geckou/` の grep が npm から取得する外部パッケージ（`ui-react` / `ui-core` / `billing` /
+      `eslint-config` / `prettier-config` / `commitlint-config`）と
       `.claude/skills/init-project/SKILL.md`（この手順書自身）以外 0 件になった
 - [ ] `yarn install` 後に `yarn type-check` / `yarn test` が通る
 - [ ] `apps/mobile/app.config.ts` の識別子を変更した（mobile 層を残した場合）

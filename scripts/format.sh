@@ -4,7 +4,7 @@ set -e
 # Prettier の実行。--check を付けるとチェックのみ（書き換えない）。
 #
 # 先に packages/ をビルドする理由:
-# prettier-plugin-tailwindcss は .prettierrc の tailwindStylesheet から
+# prettier-plugin-tailwindcss は .prettierrc.cjs の tailwindStylesheet から
 # apps/web/src/styles/globals.css → @config → apps/web/tailwind.config.ts と辿る。
 # この設定は @geckou/shared/theme を import しており、exports が dist を指すため
 # packages/shared がビルドされていないと解決に失敗する。

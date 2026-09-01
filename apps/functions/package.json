@@ -28,6 +28,7 @@
     "stripe": "^22.0.0"
   },
   "devDependencies": {
+    "@geckou/eslint-config": "^0.1.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.20.1",
@@ -35,7 +36,6 @@
     "eslint": "^9.39.5",
     "firebase-functions-test": "^3.5.0",
     "typescript": "^5.0.0",
-    "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.11"
   }
 }
