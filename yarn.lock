@@ -2131,14 +2131,14 @@
   integrity sha512-cYWuE5pb6GDdT4tALoIIjOyi08vx1PB8SWJrIjVkE+vJhdowGU+D3AGV64MvsEuUuB3cECJuazyttPPWuze/ug==
 
 "@geckou/ui-core@^0.1.0":
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/@geckou/ui-core/-/ui-core-0.1.1.tgz#05f62b339598b318f85ef83bc2fe6cf9dac406ab"
-  integrity sha512-uDRajTluSVMef6xchzrv213/xZnqaQGQJ7+cO+FP2O+9+UN36femvOBRBV7G5bpnREtlZD/CoTpm4ISiAk0n5g==
+  version "0.1.2"
+  resolved "https://registry.yarnpkg.com/@geckou/ui-core/-/ui-core-0.1.2.tgz#e4c90d35b21ed38b18755a09d4485cca41a86b3c"
+  integrity sha512-RrneppjlCTkpTravJNQO3U3lFh/fLYbPAzBFRCCSDdSGzsTIdgKTZhvPZB0IYSJO6mgESAY68XR4CQbiUZKU7A==
 
 "@geckou/ui-react@^0.1.0":
-  version "0.1.0"
-  resolved "https://registry.yarnpkg.com/@geckou/ui-react/-/ui-react-0.1.0.tgz#09f19018bc06193345dc1724314fed16b69ac91d"
-  integrity sha512-xCp5P+3jHqM0LlZzQwJOAFaTs7AESOAUdePNgFXjO+NR986cxXso0djK0J2eWoTTtIHhL3azWHPSSc4Ib3zw1w==
+  version "0.1.1"
+  resolved "https://registry.yarnpkg.com/@geckou/ui-react/-/ui-react-0.1.1.tgz#2433b933717469ed91963f0582a984a1b032af45"
+  integrity sha512-QNAQ6txRrxcFSlAWVfPJdG5/ObVqeS8Zgo0mA7Lk1Xp7lWRk+F8xKgy9X3KmzJV9y4JZVy6wWA+o3/S9f7pTNg==
   dependencies:
     "@geckou/ui-core" "^0.1.0"
 
