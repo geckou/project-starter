@@ -445,14 +445,16 @@ else
 fi
 
 # マーカーは外した層のものだけが消え、残る層のものは残っている。
-# 層ツール自身（scripts/lib/ と層スクリプト）はマーカーの構文を本文に含むので除く
+# 層ツール自身（scripts/lib/ と層スクリプト）と、マーカーの消え方を検証する
+# テストはマーカーの構文を本文に含むので除く
 leftover_markers=$(grep -rn "layer:firebase\|layer:billing\|layer:mobile\|layer:functions" \
   "$variant/apps" "$variant/packages" "$variant/scripts" "$variant/.env.example" 2>/dev/null |
   grep -v "$variant/scripts/lib/" |
   grep -v "$variant/scripts/add-layer.mjs" |
   grep -v "$variant/scripts/remove-layer.mjs" |
   grep -v "$variant/scripts/check-layers.mjs" |
-  grep -v "$variant/scripts/test-layers.sh")
+  grep -v "$variant/scripts/test-layers.sh" |
+  grep -v "$variant/scripts/test-adopt-references.sh")
 if [ -z "$leftover_markers" ]; then
   pass "外した層のマーカーが残っていない"
 else

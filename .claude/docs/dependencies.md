@@ -42,6 +42,11 @@
 
 ## 派生プロジェクトでの前提
 
+既存の派生プロジェクトを参照方式へ切り替えるときは、**設定ファイル側（下の 4）は
+`node scripts/adopt-references.mjs --repo <派生のパス>` が生成する**
+（→ `.claude/docs/git-workflow.md`「切り替え手順（派生プロジェクト側）」）。
+1〜3・5 は管理画面での操作なのでスクリプトからはできない。実行すると残作業として印字される。
+
 1. Renovate の GitHub App を派生プロジェクトにインストールする。preset 側
    （`geckou/project-starter`）は public なので、追加のアクセス設定は要らない
 2. **Silent mode を切る。** App を入れただけでは PR が来ない。Mend の管理画面
@@ -55,7 +60,8 @@
    **Dependabot alerts** を有効化し、App に alerts の読み取りを許可する。
    private リポジトリでは既定で無効なことがあり、**気付かないままセキュリティ更新だけ
    止まる**（Settings > Advanced Security から有効化する）
-4. `renovate.json5` を置く（Template Sync で配られる）
+4. `renovate.json5` を置く（Template Sync で配られる。既存プロジェクトへの後付けは
+   `scripts/adopt-references.mjs` が生成する）
 5. Dependabot とは**併存させない**。同じ更新で PR が二重に立つため、
    Dependabot の設定ファイル（`.github/` 配下）が残っていれば削除する
    （テンプレート側では削除済み）

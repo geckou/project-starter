@@ -406,6 +406,9 @@ node scripts/check-layers.mjs        # 層マニフェストと実態の一致�
 bash scripts/test-layers.sh          # 層スクリプトの回帰テスト（減算・加算・往復）
 node scripts/remove-layer.mjs <層>   # 層を外す（--dry-run で確認のみ）
 node scripts/add-layer.mjs <層>      # 層を足す（テンプレートから取り寄せる）
+
+node scripts/adopt-references.mjs --repo <派生のパス>  # 既存の派生を参照方式へ移行する
+bash scripts/test-adopt-references.sh                 # 上記スクリプトの回帰テスト
 ```
 
 ## テンプレート起因の問題を親リポジトリに報告
