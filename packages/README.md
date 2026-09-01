@@ -76,9 +76,20 @@ Environment の「Deployment branches and tags」を `production` に限定し�
 派生プロジェクトはこの 3 つを**持たない**（npm から取る）。scaffold 直後は
 テンプレートのコピーが残っているので、`/init-project` の手順で削除する。
 
-既にテンプレートから scaffold してある派生プロジェクトを参照へ切り替えるときは、
-**古い `.prettierrc` を消すこと**。Prettier は `.prettierrc` を `.prettierrc.cjs` より
-先に見るため、両方あると参照が効かず、古いコピーが黙って使われ続ける。
+既にテンプレートから scaffold してある派生プロジェクトの切り替えは
+`scripts/adopt-references.mjs` が行う（→ `.claude/docs/git-workflow.md`
+「第0層の設定（`packages/*-config`）の参照化」）。
+
+```bash
+node scripts/adopt-references.mjs --repo <派生プロジェクトのパス> --dry-run
+node scripts/adopt-references.mjs --repo <派生プロジェクトのパス>
+```
+
+`eslint.config.mjs` / `.prettierrc.cjs` / `commitlint.config.cjs` を生成し、`package.json` の
+依存を入れ替える。**古い `.prettierrc` はスクリプトが消す**。Prettier は `.prettierrc` を
+`.prettierrc.cjs` より先に見るため、残すと参照が効かず、古いコピーが黙って使われ続ける。
+独自ルールを足している設定ファイルは書き換えず、差分を印字する（`--force` で上書きできる）。
+依存が変わるので、実行後に `yarn install` で `yarn.lock` を更新する。
 
 ## UI コンポーネント
 

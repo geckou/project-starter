@@ -42,10 +42,12 @@
 
 ## 派生プロジェクトでの前提
 
-既存の派生プロジェクトを参照方式へ切り替えるときは、**設定ファイル側（下の 4）は
+既存の派生プロジェクトを参照方式へ切り替えるときは、**設定ファイル側（下の 4）と
+第0層の設定（ESLint / Prettier / commitlint）は
 `node scripts/adopt-references.mjs --repo <派生のパス>` が生成する**
 （→ `.claude/docs/git-workflow.md`「切り替え手順（派生プロジェクト側）」）。
 1〜3・5 は管理画面での操作なのでスクリプトからはできない。実行すると残作業として印字される。
+依存を入れ替えるため、実行後に `yarn install` で `yarn.lock` を更新する。
 
 1. Renovate の GitHub App を派生プロジェクトにインストールする。preset 側
    （`geckou/project-starter`）は public なので、追加のアクセス設定は要らない
