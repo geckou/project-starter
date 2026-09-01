@@ -271,12 +271,32 @@ node scripts/adopt-references.mjs --repo <派生プロジェクトのパス>
    （テンプレート側の実体で上書きされないようにするため）
 3. `renovate.json5` を生成する（`apps/mobile` があれば `//renovate/mobile` も `extends`）
 4. テンプレートとの設定差分を埋める（`.prettierignore` の生成ファイル除外）
-5. 残る手動作業（下記）を印字する
+5. 第0層の設定（ESLint / Prettier / commitlint）を参照形にする（下記）
+6. 残る手動作業（下記）を印字する
 
 **既存の `ci.yml` を書き換えるのではなく生成する**のは、古いトリガーを引き継がないため。
 `production` への push をトリガーに残すと、`deploy.yml` が同内容のチェックを実行するので
 **check が二重に走る**。層構成は実ファイル（`apps/mobile/` の有無）で判定するので、
 `layers.json` を持たない古い派生でも動く。冪等なので、途中まで手作業で移行済みでも流してよい。
+
+#### 第0層の設定（`packages/*-config`）の参照化
+
+ESLint / Prettier / commitlint も npm パッケージの参照に切り替える
+（→ CLAUDE.md「第0層の設定は npm パッケージで配る」）。
+
+- 各ワークスペースの `eslint.config.mjs` を生成する。プリセットは `package.json` の依存で
+  決める（`next` → `/next`、`expo` → `/expo`、それ以外の TypeScript パッケージ → `.`）
+- `.prettierrc.cjs` を生成し、**古い `.prettierrc` を削除する**。Prettier は `.prettierrc` を
+  `.prettierrc.cjs` より先に読むため、両方あると参照が効かず古いコピーが黙って使われ続ける。
+  `tailwindStylesheet` は既存の値を引き継ぐ
+- `commitlint.config.cjs` を参照形にする
+- `package.json` の依存を入れ替える（`@geckou/*-config` を足し、実体だった
+  `eslint-config-next` / `typescript-eslint` / `prettier-plugin-tailwindcss` 等を外す）。
+  `yarn.lock` が古くなるので、`yarn install` が残作業として印字される
+
+**独自ルールを足している設定ファイルは書き換えない。** テンプレートの既知の形
+（現行の参照形か、移行前に配っていた形）と一致しないものは差分を印字して人に渡す。
+上書きしてよいと分かっているときだけ `--force` を付ける。
 
 スクリプトが**やらない**こと（人にしかできない・触るべきでない）:
 
@@ -288,7 +308,8 @@ node scripts/adopt-references.mjs --repo <派生プロジェクトのパス>
   有効化（→ `.claude/docs/dependencies.md`「派生プロジェクトでの前提」）
 - Template Sync の設定
 - ルート `package.json` の `resolutions`。派生ごとに値が違うため触らない
-  （→ `.claude/docs/dependencies.md`「配れないもの」）
+  （→ `.claude/docs/dependencies.md`「配れないもの」）。依存フィールドだけを書き換える
+- `yarn install`（`yarn.lock` の更新）。依存を入れ替えたときだけ残作業として印字される
 
 新規プロジェクトはこの手順を `/init-project` に含めてある。
 
