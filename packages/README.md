@@ -67,6 +67,10 @@ yarn release eslint-config
 派生プロジェクトはこの 3 つを**持たない**（npm から取る）。scaffold 直後は
 テンプレートのコピーが残っているので、`/init-project` の手順で削除する。
 
+既にテンプレートから scaffold してある派生プロジェクトを参照へ切り替えるときは、
+**古い `.prettierrc` を消すこと**。Prettier は `.prettierrc` を `.prettierrc.cjs` より
+先に見るため、両方あると参照が効かず、古いコピーが黙って使われ続ける。
+
 ## UI コンポーネント
 
 フォーム部品・モーダル・タブ等の汎用 UI は、このリポジトリではなく
