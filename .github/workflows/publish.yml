@@ -1,0 +1,117 @@
+name: Publish package
+
+# 第0層の設定パッケージ（@geckou/eslint-config / prettier-config / commitlint-config）を
+# npm へ公開する。geckou/kit と同じタグ駆動で、タグは
+# <パッケージのディレクトリ名>@<バージョン>（例: eslint-config@0.1.0）。
+# タグは scripts/release.sh が打つ（yarn release <パッケージ>）。
+#
+# 設定パッケージはビルドを持たない素の JS なので、依存インストールもビルドも行わない。
+#
+# release-tag.yml が動かす v1 等のメジャータグとはパターンが重ならない（あちらは v<数字>）。
+#
+# **公開できるのは production に入っているコミットだけ。** タグも workflow_dispatch も
+# 任意の ref から起動できるため、そのままだと「version の変更を PR で production へ
+# 入れてから公開する」という手順を迂回して、レビューを通っていないコードを npm へ
+# 出せてしまう（NPM_TOKEN もその ref のワークフロー定義から使える）。
+# 下の 2 つの検査でそれを塞いでいる。
+#
+#   1. タグ（または dispatch した ref）のコミットが origin/production に含まれること
+#   2. タグのバージョン部分が、対象 package.json の version と一致すること
+#
+# あわせて npm-publish Environment を通す。リポジトリ設定で
+# 「Deployment branches and tags」を production に限定し、必要なら承認者を設定すると、
+# ワークフロー定義を書き換えた ref からトークンを引き出す経路も塞げる。
+on:
+  push:
+    tags: ['*@*']
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 公開するパッケージのディレクトリ名（eslint-config 等）
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm-publish
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # production との包含関係を見るため、履歴を持ってチェックアウトする
+          fetch-depth: 0
+
+      # レビューを通っていないコミットからの公開を止める。
+      # push（タグ）でも workflow_dispatch でも GITHUB_SHA は起動した ref の先頭を指す
+      - name: Verify the commit is on production
+        run: |
+          git fetch --no-tags --quiet origin production
+
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/production; then
+            echo "::error::${GITHUB_SHA} は origin/production に含まれていません。version を上げる PR をマージしてから、production でタグを打ってください（yarn release <パッケージ>）"
+            exit 1
+          fi
+
+      - name: Resolve target package
+        id: target
+        env:
+          INPUT_PACKAGE: ${{ github.event.inputs.package }}
+        run: |
+          if [ -n "$INPUT_PACKAGE" ]; then
+            PACKAGE="$INPUT_PACKAGE"
+          else
+            PACKAGE="${GITHUB_REF_NAME%@*}"
+          fi
+
+          if [ ! -f "packages/$PACKAGE/package.json" ]; then
+            echo "::error::packages/$PACKAGE が存在しません（ref: $GITHUB_REF_NAME）"
+            exit 1
+          fi
+
+          if [ "$(node -p "require('./packages/$PACKAGE/package.json').private === true")" = "true" ]; then
+            echo "::error::packages/$PACKAGE は private です（公開対象ではありません）"
+            exit 1
+          fi
+
+          # タグ起動のときは、タグのバージョン部分と package.json の version の一致を見る。
+          # ずれていると、タグが指すものと実際に公開されるものが食い違う
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            TAG_VERSION="${GITHUB_REF_NAME##*@}"
+            VERSION="$(node -p "require('./packages/$PACKAGE/package.json').version")"
+
+            if [ "$TAG_VERSION" != "$VERSION" ]; then
+              echo "::error::タグ $GITHUB_REF_NAME と packages/$PACKAGE/package.json の version ($VERSION) が一致しません"
+              exit 1
+            fi
+          fi
+
+          echo "package=$PACKAGE" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      # 公開済みのバージョンに対して起動されることがある（初回リリースを
+      # workflow_dispatch で行い、記録のために後からタグを打つ場合など）。
+      # その場合 npm publish は必ず失敗するので、実行を冪等にする
+      - name: Publish to npm
+        working-directory: packages/${{ steps.target.outputs.package }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+
+          # 未公開なら npm view はエラー（パッケージ未登録）か空（バージョン未登録）になる
+          PUBLISHED="$(npm view "$NAME@$VERSION" version 2>/dev/null || true)"
+
+          if [ -n "$PUBLISHED" ]; then
+            echo "$NAME@$VERSION は既に公開済みのため、publish をスキップします"
+            exit 0
+          fi
+
+          npm publish --access public

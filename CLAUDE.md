@@ -21,6 +21,10 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 `@geckou/ui-*` は [`geckou/ui`](https://github.com/geckou/ui)）。
 このリポジトリに残るのは**規約を強制する仕組みと、組み立て方**。
 
+第0層の設定（ESLint / Prettier / commitlint）も**コピーではなく参照で配る**。
+`packages/*-config` として npm へ公開し、各プロジェクトは 1 行の参照だけを持つ
+（→「第0層の設定は npm パッケージで配る」）。
+
 **第0層をスタックから独立に保つ**のがこのテンプレートの設計方針。
 スタック依存の値をフック本体に直書きしないこと（→「スタック依存の値は `config.sh` に置く」）。
 
@@ -281,7 +285,9 @@ functions 層を持たない構成は API を持たない。「API Routes で代
 - Server Component をデフォルト、必要時のみ `'use client'`
 - アイコンは `components/icons/`、定数は `lib/constants/`
 - セマンティック HTML + Tailwind CSS でスタイリング
-- ESLint: 各ワークスペースの `eslint.config.mjs`（flat config）のルールに従う
+- ESLint: 各ワークスペースの `eslint.config.mjs`（flat config）のルールに従う。
+  中身は `@geckou/eslint-config` を参照するだけで、ルール本体は
+  `packages/eslint-config/` にある（→「第0層の設定は npm パッケージで配る」）
 
 ## Git ブランチ運用
 
@@ -406,6 +412,29 @@ CI でも実行される。
 **フックを追加・変更したらテストも足す。** 設定で挙動が変わるフックは、
 設定が効くことと `config.sh` が無くても既定値で動くことの両方を検証する。
 
+### 第0層の設定は npm パッケージで配る
+
+ESLint / Prettier / commitlint の設定は、ツール側が**共有設定を npm パッケージとしてしか
+受け付けない**（Renovate preset や reusable workflow のような URL 参照ができない）。
+そこで `packages/` 配下に置いて npm へ公開し、各プロジェクトは参照 1 行だけを持つ。
+
+| パッケージ | 参照する側 |
+| --- | --- |
+| `@geckou/eslint-config`（`.` / `./next` / `./expo`） | 各ワークスペースの `eslint.config.mjs` |
+| `@geckou/prettier-config` | `.prettierrc.cjs` |
+| `@geckou/commitlint-config` | `commitlint.config.cjs` |
+
+- **ルールを変えるときは `packages/*-config` を直す。** 参照側のファイルに書き足すのは、
+  プロジェクト固有の値だけ（例: `.prettierrc.cjs` の `tailwindStylesheet`）
+- ESLint のプリセットは**重ねて使わない**。`.` / `./next` / `./expo` はそれぞれ単独で完結する
+  （同じプラグインを別々の実体で登録すると ESLint が `Cannot redefine plugin` で落ちるため）
+- `type-enum` の値は本ファイルの「コミットメッセージ規約」と `.claude/hooks/pre-git-guard.sh`
+  にもある。フックはシェルなので npm パッケージを参照できず、**ここだけは重複が残る**。
+  type を増減するときは 3 箇所とも直す
+- 公開は `yarn release <パッケージのディレクトリ名>`。version を上げる PR をマージしてから、
+  `production` でタグを打つ。**`production` に入っていないコミットからは公開できない**
+  （ワークフローが検査する。詳細は `packages/README.md`）
+
 ### 依存更新は Renovate の preset で配る
 
 依存更新のルールは `renovate/*.json`（テンプレート側の preset）にあり、各プロジェクトは
@@ -489,6 +518,8 @@ node scripts/add-layer.mjs <層>      # 層を足す（テンプレートから�
 
 node scripts/adopt-references.mjs --repo <派生のパス>  # 既存の派生を参照方式へ移行する
 bash scripts/test-adopt-references.sh                 # 上記スクリプトの回帰テスト
+
+yarn release <パッケージのディレクトリ名>              # packages/*-config を npm へ公開する
 ```
 
 ## テンプレート起因の問題を親リポジトリに報告

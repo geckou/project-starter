@@ -1,0 +1,47 @@
+{
+  "name": "@geckou/eslint-config",
+  "version": "0.1.0",
+  "description": "Shared ESLint flat config for geckou projects (base / next / expo)",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./next": "./next.js",
+    "./expo": "./expo.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "next.js",
+    "expo.js",
+    "rules.js",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/geckou/project-starter.git",
+    "directory": "packages/eslint-config"
+  },
+  "author": "geckou-shogo <shogo.nojima@geckou.net>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "dependencies": {
+    "@eslint/eslintrc": "^3.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint-config-expo": "~8.0.0",
+    "eslint-config-next": "^15.5.23",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-import": "^2.31.0",
+    "typescript-eslint": "^8.67.0"
+  },
+  "peerDependencies": {
+    "eslint": ">=9"
+  }
+}

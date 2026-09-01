@@ -31,6 +31,11 @@
         "packages/shared/src/i18n/index.ts",
         "scripts/deploy.sh",
         "scripts/use-env.sh",
+        "packages/eslint-config/index.js",
+        "packages/eslint-config/next.js",
+        "packages/eslint-config/rules.js",
+        "packages/prettier-config/index.cjs",
+        "packages/commitlint-config/index.cjs",
         "turbo.json",
         "renovate.json5",
         "renovate/default.json",
@@ -43,7 +48,8 @@
       ],
       "notes": [
         "hosting.frameworksBackend の SSR 用関数は framework アダプタが自動生成して Cloud Functions (2nd gen) にデプロイする。リポジトリにコードを持たないため core に属する（functions 層とは別物）。",
-        "apps/web/src/app/ui-demo/ は @geckou/ui-react だけに依存する参考ページ。層ではなく scaffold の削除対象（/init-project で消す類）として扱う。"
+        "apps/web/src/app/ui-demo/ は @geckou/ui-react だけに依存する参考ページ。層ではなく scaffold の削除対象（/init-project で消す類）として扱う。",
+        "packages/eslint-config / prettier-config / commitlint-config は第0層（規約）の設定を npm パッケージとして配るためのもの。層に直交するが、core と一緒に必ず存在するのでここに置く。mobile 層に属するのは ./expo のサブパスだけ。"
       ]
     },
     {
@@ -173,7 +179,11 @@
       "requires": "functions",
       "removable": true,
       "summary": "apps/mobile 一式と、それが持ち込む CI ステップ・nohoist・Renovate preset の Expo ルール。React / Tailwind のバージョン分裂の発生源でもある。",
-      "files": ["apps/mobile", "renovate/mobile.json"],
+      "files": [
+        "apps/mobile",
+        "packages/eslint-config/expo.js",
+        "renovate/mobile.json"
+      ],
       "blocks": [
         ".env.example",
         "scripts/use-env.sh",
@@ -187,7 +197,8 @@
         "package.json": ["dev:mobile"]
       },
       "json": {
-        "package.json": [["workspaces", "nohoist"]]
+        "package.json": [["workspaces", "nohoist"]],
+        "packages/eslint-config/package.json": [["exports", "./expo"]]
       },
       "env": [
         "FIREBASE_API_KEY",
@@ -200,8 +211,16 @@
         "EXPO_PUBLIC_SENTRY_DSN"
       ],
       "notes": [
-        "mobile が functions を要求するのは、API を Cloud Functions の1本に集約する規約（architecture.md）を全構成で維持するため。"
-      ]
+        "mobile が functions を要求するのは、API を Cloud Functions の1本に集約する規約（architecture.md）を全構成で維持するため。",
+        "ESLint の共通設定は ./expo のサブパスだけが mobile 層に属する（expo.js とその依存・exports）。"
+      ],
+      "deps": {
+        "packages/eslint-config/package.json": [
+          "eslint-config-expo",
+          "@typescript-eslint/eslint-plugin",
+          "@typescript-eslint/parser"
+        ]
+      }
     },
     {
       "name": "billing",
