@@ -3,6 +3,7 @@
 # テンプレート更新の取り込み対象になる。
 
 # プロダクト固有ドキュメント
+.claude/docs/questions.md
 .claude/docs/planning.md
 .claude/docs/spec.md
 .claude/docs/roadmap.md

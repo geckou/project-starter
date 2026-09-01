@@ -11,6 +11,8 @@ set -u
 #   pre-git-guard.sh      PreToolUse(Bash)   git 操作の検証
 #   post-edit-reminder.sh PostToolUse(Edit)  監視パスのリマインド
 #   stop-dod-check.sh     Stop               DoD の自動実行
+#   session-start-questions.sh  SessionStart   未回答の確認事項の抽出
+#   stop-questions-reminder.sh  Stop           確認事項の提示忘れの検出
 #
 # node_modules に依存しないので yarn install なしで実行できる。
 # 実体を package.json ではなくこのスクリプトに置いている理由は
@@ -292,6 +294,138 @@ run_dod 0 '既定値でも入力の判定は変わらない' '{"stop_hook_active
 
 rm -f "$SESSION/probe.ts"
 unset HOOK_RUNNER
+
+# ---- session-start-questions.sh / stop-questions-reminder.sh ----
+#
+# 確認事項キュー（CLAUDE.md「自律性の境界」）を読む2つのフック。
+# SessionStart 側は文脈への出力が成果物なので、終了コードではなく出力を検証する。
+
+Q_START_HOOK=$REPO/.claude/hooks/session-start-questions.sh
+Q_STOP_HOOK=$REPO/.claude/hooks/stop-questions-reminder.sh
+cp "$Q_START_HOOK" "$Q_STOP_HOOK" "$NOCONFIG/"
+
+QUESTIONS=$SESSION/.claude/docs/questions.md
+mkdir -p "$SESSION/.claude/docs"
+
+# write_questions <未回答セクションの中身>
+write_questions() {
+  {
+    printf '# 確認事項キュー\n\n## 未回答\n\n'
+    printf '%s\n' "$1"
+    printf '\n## 回答済み\n\n### Q-000 回答済みの問い\n\n- 回答: 済\n'
+  } > "$QUESTIONS"
+}
+
+# run_qstart <期待する出力の部分文字列|EMPTY> <説明> [フック本体のパス]
+run_qstart() {
+  want=$1
+  desc=$2
+  hook=${3:-$Q_START_HOOK}
+
+  LAST_OUT=$(cd "$SESSION" && sh "$hook" 2>&1)
+
+  ok=0
+  if [ "$want" = EMPTY ]; then
+    [ -z "$LAST_OUT" ] && ok=1
+  else
+    case "$LAST_OUT" in *"$want"*) ok=1 ;; esac
+  fi
+
+  if [ "$ok" = 1 ]; then
+    pass=$((pass + 1))
+    printf 'ok   [-] %s\n' "$desc"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL %s\n     want: %s\n     out: %s\n' "$desc" "$want" "$LAST_OUT"
+  fi
+}
+
+# run_qstop <期待する終了コード> <説明> <入力 JSON> [フック本体のパス]
+run_qstop() {
+  want=$1
+  desc=$2
+  input=$3
+  hook=${4:-$Q_STOP_HOOK}
+
+  LAST_OUT=$(cd "$SESSION" && printf '%s' "$input" | sh "$hook" 2>&1)
+  status=$?
+
+  if [ "$status" = "$want" ]; then
+    pass=$((pass + 1))
+    printf 'ok   [%s] %s\n' "$status" "$desc"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL [want %s got %s] %s\n     out: %s\n' "$want" "$status" "$desc" "$LAST_OUT"
+  fi
+}
+
+echo
+echo '=== session-start-questions: 未回答の抽出 ==='
+run_qstart EMPTY '確認事項ファイルが無ければ何も出さない'
+write_questions '（なし）'
+run_qstart EMPTY '未回答が無ければ何も出さない'
+write_questions '### Q-001 予約のキャンセル期限
+
+- ブロック: 予約キャンセル API
+
+### Q-002 通知の文言'
+run_qstart '未回答の確認事項（2 件）' '未回答の件数を出す'
+run_qstart 'Q-001 予約のキャンセル期限' '未回答の見出しを出す'
+refute 'Q-000' '「回答済み」の見出しは拾わない'
+
+echo
+echo '=== session-start-questions: 設定で場所を差し替えられる ==='
+printf '# q\n\n## 未回答\n\n### Q-900 差し替え先の問い\n' > "$SESSION/other-questions.md"
+HOOK_QUESTIONS_FILE=other-questions.md
+export HOOK_QUESTIONS_FILE
+run_qstart 'Q-900 差し替え先の問い' '差し替えたファイルを読む'
+refute 'Q-001' '既定のファイルは読まなくなる'
+unset HOOK_QUESTIONS_FILE
+
+echo
+echo '=== session-start-questions: config.sh が無くても既定値で動く ==='
+run_qstart 'Q-001 予約のキャンセル期限' '既定のパスを読む' \
+  "$NOCONFIG/session-start-questions.sh"
+
+echo
+echo '=== stop-questions-reminder: 提示忘れの検出 ==='
+run_qstop 2 '未追跡の確認事項ファイルがあればブロックする' '{}'
+run_qstop 0 'フック起因の継続中は再度ブロックしない' '{"stop_hook_active":true}'
+
+git -C "$SESSION" add .claude/docs/questions.md
+git -C "$SESSION" -c user.email=test@example.com -c user.name=test \
+  commit -q -m 'docs: 確認事項'
+run_qstop 0 'コミット済みで変更が無ければ何も言わない' '{}'
+
+write_questions '### Q-001 予約のキャンセル期限
+
+- ブロック: 予約キャンセル API
+
+### Q-002 通知の文言
+
+### Q-003 追加の問い'
+run_qstop 2 'この作業で確認事項が増えていればブロックする' '{}'
+git -C "$SESSION" checkout -q -- .claude/docs/questions.md
+
+# 判定は「未回答が増えたか」であって「ファイルが dirty か」ではない。
+# /questions が回答済みへ移した直後にブロックしてしまうのを防ぐ
+echo
+echo '=== stop-questions-reminder: 回答側の更新ではブロックしない ==='
+write_questions '### Q-001 予約のキャンセル期限
+
+- ブロック: 予約キャンセル API'
+run_qstop 0 '未回答が減った（回答済みへ移した）ときはブロックしない' '{}'
+write_questions '（なし）'
+run_qstop 0 '未回答が空になったときはブロックしない' '{}'
+write_questions '### Q-001 予約のキャンセル期限
+
+- ブロック: 予約キャンセル API（追記）
+
+### Q-002 通知の文言'
+run_qstop 0 '見出しが同じなら本文を直してもブロックしない' '{}'
+
+git -C "$SESSION" checkout -q -- .claude/docs/questions.md
+rm -f "$SESSION/other-questions.md"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

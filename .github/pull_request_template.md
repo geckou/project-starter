@@ -9,6 +9,7 @@
 ## チェックリスト（Definition of Done）
 
 - [ ] `yarn type-check` / `yarn lint` / `yarn test` が通る
+- [ ] 差分のセルフレビューを通した（`/review`）
 - [ ] テスト方針の必須ケース（API 正常系 + 認証エラー、ルール許可 / 拒否）がある
 - [ ] `spec.md` が実装と一致している（実装中の仕様変更を反映済み）
 - [ ] 新しいドメイン用語を `planning.md` の用語集に追記した

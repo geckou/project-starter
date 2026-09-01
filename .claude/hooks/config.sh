@@ -29,3 +29,8 @@ HOOK_WATCH_PATHS=${HOOK_WATCH_PATHS:-'
 firestore.rules	firestore.rules が変更されました。yarn test:rules でルールテスト（許可/拒否）を実行してください。
 packages/shared	packages/shared が変更されました。全 workspace に影響するため yarn type-check を実行してください。
 '}
+
+# 確認事項キューの場所（CLAUDE.md「自律性の境界」）。
+# ドキュメントを Notion 等で持つ派生プロジェクトでも、キューだけはリポジトリ内に置く前提。
+# ファイルが存在しなければ関連フックは何もしない
+HOOK_QUESTIONS_FILE=${HOOK_QUESTIONS_FILE:-'.claude/docs/questions.md'}
