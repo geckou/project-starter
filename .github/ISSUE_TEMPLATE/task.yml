@@ -1,0 +1,54 @@
+name: 作業タスク（このリポジトリ内）
+description: 作業中に見つけた、今の PR に混ぜるべきでない作業を切り出す
+title: '[Task] '
+labels: ['task']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        作業中に見つけた問題を、今の PR に混ぜずに切り出すためのテンプレートです。
+        AI が自分で立てて自分で対応する前提で書きます（CLAUDE.md「見つけた問題は Issue に切る」）。
+
+        テンプレート起因の問題を親リポジトリへ報告する場合は、こちらではなくバグ報告 / 改善提案を使ってください。
+
+  - type: checkboxes
+    id: verified
+    attributes:
+      label: 確認事項
+      options:
+        - label: 問題の実在を確認した（推測ではなく、再現・該当箇所の確認をした）
+          required: true
+        - label: 既存の Issue に同じ内容がないことを確認した
+          required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 何が問題か
+      description: 2〜3 行。これだけ読んで対応要否が判断できる状態にする
+    validations:
+      required: true
+
+  - type: textarea
+    id: found
+    attributes:
+      label: 見つけた経緯
+      description: どの作業中に出たか。今の PR に混ぜなかった理由（関心事が違う / 影響範囲が別）
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 対象と完了条件
+      description: 変更するファイル（リポジトリ相対パス）と、何が満たされたら完了か
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: 調査ログ・詳細
+      description: 再現手順・検証結果・検討した代替案。長くなる場合は <details> で畳む
+    validations:
+      required: false
