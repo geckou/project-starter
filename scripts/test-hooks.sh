@@ -397,8 +397,32 @@ git -C "$SESSION" -c user.email=test@example.com -c user.name=test \
   commit -q -m 'docs: 確認事項'
 run_qstop 0 'コミット済みで変更が無ければ何も言わない' '{}'
 
-printf '\n### Q-003 追加の問い\n' >> "$QUESTIONS"
+write_questions '### Q-001 予約のキャンセル期限
+
+- ブロック: 予約キャンセル API
+
+### Q-002 通知の文言
+
+### Q-003 追加の問い'
 run_qstop 2 'この作業で確認事項が増えていればブロックする' '{}'
+git -C "$SESSION" checkout -q -- .claude/docs/questions.md
+
+# 判定は「未回答が増えたか」であって「ファイルが dirty か」ではない。
+# /questions が回答済みへ移した直後にブロックしてしまうのを防ぐ
+echo
+echo '=== stop-questions-reminder: 回答側の更新ではブロックしない ==='
+write_questions '### Q-001 予約のキャンセル期限
+
+- ブロック: 予約キャンセル API'
+run_qstop 0 '未回答が減った（回答済みへ移した）ときはブロックしない' '{}'
+write_questions '（なし）'
+run_qstop 0 '未回答が空になったときはブロックしない' '{}'
+write_questions '### Q-001 予約のキャンセル期限
+
+- ブロック: 予約キャンセル API（追記）
+
+### Q-002 通知の文言'
+run_qstop 0 '見出しが同じなら本文を直してもブロックしない' '{}'
 
 git -C "$SESSION" checkout -q -- .claude/docs/questions.md
 rm -f "$SESSION/other-questions.md"
