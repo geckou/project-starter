@@ -3,8 +3,9 @@
 //   // commitlint.config.cjs
 //   module.exports = { extends: ['@geckou/commitlint-config'] }
 //
-// type の値は .claude/hooks/pre-git-guard.sh にも書かれている（フックはシェルなので
-// npm パッケージを参照できない）。type を増減するときは両方を直す。
+// type の値は CLAUDE.md「コミットメッセージ規約」と .claude/hooks/pre-git-guard.sh にも
+// 書かれている（フックはシェルなので npm パッケージを参照できない）。
+// type を増減するときは、この 3 箇所とも直す。
 module.exports = {
   extends: ['@commitlint/config-conventional'],
   rules: {
