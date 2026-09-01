@@ -119,6 +119,38 @@ project-starter/
 │           ├── theme/           # デザイントークン（色・フォント・角丸）
 │           └── index.ts         # 一括エクスポート
 │
+├── .claude/                     # 第0層（制約層）: AI に規約を機械的に強制する
+│   ├── hooks/                   # 実行前後に割り込むフック（settings.json で登録）
+│   │   ├── config.sh            # スタック依存の値（runner・DoD タスク・監視パス）
+│   │   ├── pre-git-guard.sh     # ブランチ名・分岐元・コミットメッセージを実行前に検証
+│   │   ├── stop-dod-check.sh    # 終了時に DoD（type-check / lint / test）を自動実行
+│   │   └── ...
+│   ├── skills/                  # スラッシュコマンド（/next /review /questions 等）
+│   ├── docs/                    # プロダクトのドキュメント
+│   │   ├── planning.md          # 企画書
+│   │   ├── spec.md              # 仕様書（技術仕様の正）
+│   │   ├── roadmap.md           # ロードマップ（進捗の正）
+│   │   ├── questions.md         # 確認事項キュー（ユーザー確認待ちの判断）
+│   │   └── ...                  # architecture / layers / git-workflow / dependencies 等
+│   └── settings.json            # フックの登録
+│
+├── memory/                      # 進化的メモリ（フィードバックの蓄積と昇格）
+│   ├── evolution.md             # 昇格プロトコル（pain_count → CLAUDE.md → Hook）
+│   └── short-term/  long-term/  daily/
+│
+├── scripts/                     # セットアップ・デプロイ・検証スクリプト
+│   ├── setup.sh  use-env.sh  deploy.sh
+│   ├── add-layer.mjs  remove-layer.mjs  check-layers.mjs   # 層の加算・減算・検証
+│   └── test-hooks.sh  test-layers.sh  test-rules.sh  check-docs.sh
+│
+├── .github/
+│   ├── workflows/               # CI・デプロイ・タグ昇格・Template Sync 等
+│   ├── rulesets/                # ブランチ保護・Copilot 自動レビューの定義（gh api で取り込む）
+│   ├── ISSUE_TEMPLATE/
+│   └── copilot-instructions.md  # Copilot のレビュー方針
+│
+├── layers.json                  # 層マニフェスト（どのファイルがどの層か。機械可読）
+├── renovate/                    # 依存更新の preset（派生プロジェクトが extends する）
 ├── firebase.json                # Firebase Functions / Hosting / Emulators 設定
 ├── .firebaserc                  # Firebase プロジェクト ID
 ├── turbo.json                   # Turborepo タスク定義
@@ -278,6 +310,24 @@ yarn firebase:emulators
 このテンプレートは AI（Claude Code）が `.claude/docs/` のドキュメントを読んで自律的に開発を進める前提で設計されている。
 指示の仕方でフローへの乗り方が変わるので、場面別の言い回しを参考にする。
 
+### 止まらずに進む仕組み
+
+確認のたびに作業が止まると、人の空き時間が「AI が待っている状態」で埋まる。
+そうならないよう、判断が要る場面での動きを規約で決めてある（[CLAUDE.md](CLAUDE.md)「自律性の境界」）。
+
+| 出てきたもの | AI の動き | 人がやること |
+|---|---|---|
+| 仕様書にある実装・バグ修正 | そのまま進める | なし |
+| **判断が要ること** | `.claude/docs/questions.md` に積み、その作業を保留して別の作業へ移る | 空き時間に `/questions` でまとめて答える |
+| **今の PR に混ぜたくない問題** | Issue に切って、あとで自分で対応する | 見えていればよい |
+| 取り消せない操作（デプロイ・本番データ・force push） | その場で止めて聞く | 判断する |
+
+作業が一区切りしたら、**確認を待たずに push して PR を出す**。人がやるのはマージの判断だけ。
+PR は DoD（type-check / lint / test）とセルフレビュー（`/review`）を通してから出るので、
+自動レビューの指摘も含めて片付いた状態で届く。
+
+**進められる作業が尽きたら、そこで聞く。** キューは待ち行列であって逃げ場ではない。
+
 ### 場面別プロンプト例
 
 | 場面 | 言い方の例 |
@@ -290,6 +340,7 @@ yarn firebase:emulators
 | バグを直したい | 「XX すると ZZ になる。`/troubleshoot` して」 |
 | コードレビュー | 「`/review` でこのブランチを見て」 |
 | 溜まった確認事項に答える | 「`/questions`」（空き時間にまとめて答える） |
+| 切り出した Issue を消化する | 「`/next`」（未着手機能と open な Issue から選ぶ） |
 | セッションを終える | 「今日はここまで。`/wrap-up` して」 |
 
 ### 避けたほうがいい指示
@@ -303,6 +354,7 @@ yarn firebase:emulators
 | 機能 | セットアップ |
 |---|---|
 | PR 自動レビュー / `@claude` メンション | リポジトリの Secrets に `ANTHROPIC_API_KEY` を登録（未登録ならスキップされる）。`.github/workflows/claude.yml` |
+| Copilot の自動レビュー | `.github/rulesets/copilot-review.json` を `gh api` で 1 回取り込む。以後は PR を開くだけでレビューが走る（[`.claude/docs/git-workflow.md`](.claude/docs/git-workflow.md)） |
 | テンプレート更新の取り込み | 追加のシークレット登録は不要（親テンプレートは public）。取り込み対象外は `.templatesyncignore` で管理。`.github/workflows/template-sync.yml` |
 | CI をテンプレート参照にする | 派生側は `uses: geckou/project-starter/.github/workflows/ci.yml@v1` の 1 行だけ持つ。チェック内容の修正が取り込み作業ゼロで届く（[`.claude/docs/git-workflow.md`](.claude/docs/git-workflow.md)） |
 | 依存更新（Renovate） | `renovate.json5` がテンプレートの preset を参照する。Renovate の GitHub App のインストールが前提（[`.claude/docs/dependencies.md`](.claude/docs/dependencies.md)） |
@@ -322,6 +374,8 @@ yarn firebase:emulators
 | `yarn build:functions`           | Functions のみビルド        |
 | `yarn test`                      | 全テスト実行                |
 | `yarn test:rules`                | Firestore / Storage ルールのテスト（エミュレーター経由） |
+| `yarn test:hooks`                | `.claude/hooks/` の回帰テスト（node_modules 不要） |
+| `yarn check:docs`                | ドキュメントの参照切れ検出（node_modules 不要） |
 | `yarn lint`                      | 全アプリの ESLint 実行      |
 | `yarn lint:fix`                  | ESLint の自動修正           |
 | `yarn format`                    | Prettier でフォーマット     |
