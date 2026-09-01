@@ -67,9 +67,48 @@ yarn release eslint-config
 `origin/production` に含まれること・タグのバージョンが `package.json` の version と
 一致することを確認してから公開する。
 
-公開には `NPM_TOKEN` シークレットと `npm-publish` Environment が要る。
-Environment の「Deployment branches and tags」を `production` に限定しておくと、
-ワークフロー定義を書き換えた ref からトークンを引き出す経路も塞げる。
+#### 認証（Trusted Publishing）
+
+公開の認証は npm の **Trusted Publishing**（GitHub Actions の OIDC）で行う。
+`NPM_TOKEN` のような長期シークレットは持たない。実行のたびに短命なトークンが
+発行されるので、**盗まれて後から悪用される秘密が存在しない**。
+
+そのかわり、**npm 側でパッケージごとに Trusted Publisher の登録が要る**。
+npmjs.com のパッケージ設定（Settings → Trusted Publisher）で以下を登録する。
+
+| 項目 | 値 |
+| --- | --- |
+| Provider | GitHub Actions |
+| Organization / Repository | `geckou` / `project-starter` |
+| Workflow filename | `publish.yml` |
+| Environment | `npm-publish` |
+
+新しいパッケージを足したときは、この登録も 1 回だけ行う（登録前に公開しようとすると
+認証に失敗する）。
+
+npm 側の紐付けは「リポジトリ + ワークフロー」単位なので、**どの ref から起動されたか
+までは npm 側では縛れない**。そこは上の `production` 包含チェックと、`npm-publish`
+Environment の「Deployment branches and tags」で担保している。**許可するのは 2 つ**:
+
+| ref type | パターン | 用途 |
+| --- | --- | --- |
+| Tag | `*@*` | 通常のリリース（`yarn release`） |
+| Branch | `production` | `workflow_dispatch` での公開（初回リリース等） |
+
+**タグだけに限定すると `workflow_dispatch` が Environment 側で弾かれる。**
+どちらも起動元コミットの `production` 包含チェックを通るので、許可を 2 つにしても
+レビューを通っていないコードを公開できる経路は増えない。
+
+`Workflow filename` は**ファイル名だけ**を入れる（`.github/workflows/` のパスは付けない）。
+Organization / Repository / Workflow filename は**大文字小文字まで一致**する必要がある。
+
+移行が動くことを確認できたら、パッケージ設定の
+**「Require two-factor authentication and disallow tokens」を有効にする**。
+以後そのパッケージはトークンでは公開できなくなり、公開経路が Trusted Publishing だけに
+なる。**順番を逆にすると公開できなくなる**ので、必ず 1 回公開が通ってから有効にする。
+
+公開されたパッケージには provenance（どのコミット・どのワークフローから公開されたか
+の証明）が付く。npm のパッケージページから辿れる。
 
 ### 派生プロジェクトでは
 
