@@ -60,7 +60,16 @@ yarn release eslint-config
 ```
 
 公開済みのバージョンに対してタグを打っても publish はスキップされる（冪等）。
-公開には `NPM_TOKEN` シークレットが要る。
+
+**公開できるのは `production` に入っているコミットだけ。** タグも手動実行も任意の ref から
+起動できるので、そのままだと「version の変更を PR で入れてから公開する」手順を迂回して、
+レビューを通っていないコードを npm へ出せてしまう。ワークフローは起動元のコミットが
+`origin/production` に含まれること・タグのバージョンが `package.json` の version と
+一致することを確認してから公開する。
+
+公開には `NPM_TOKEN` シークレットと `npm-publish` Environment が要る。
+Environment の「Deployment branches and tags」を `production` に限定しておくと、
+ワークフロー定義を書き換えた ref からトークンを引き出す経路も塞げる。
 
 ### 派生プロジェクトでは
 

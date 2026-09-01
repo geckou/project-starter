@@ -432,7 +432,8 @@ ESLint / Prettier / commitlint の設定は、ツール側が**共有設定を n
   にもある。フックはシェルなので npm パッケージを参照できず、**ここだけは重複が残る**。
   type を増減するときは 3 箇所とも直す
 - 公開は `yarn release <パッケージのディレクトリ名>`。version を上げる PR をマージしてから、
-  `production` でタグを打つ（詳細は `packages/README.md`）
+  `production` でタグを打つ。**`production` に入っていないコミットからは公開できない**
+  （ワークフローが検査する。詳細は `packages/README.md`）
 
 ### 依存更新は Renovate の preset で配る
 
