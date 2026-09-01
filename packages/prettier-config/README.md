@@ -24,6 +24,9 @@ module.exports = { ...geckou }
 Tailwind を使う場合は、クラス並べ替えの基準になる CSS を足す。
 
 ```js
+// .prettierrc.cjs
+const geckou = require('@geckou/prettier-config')
+
 module.exports = {
   ...geckou,
   tailwindStylesheet: './apps/web/src/styles/globals.css',
