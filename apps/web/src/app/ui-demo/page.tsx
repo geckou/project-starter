@@ -40,7 +40,7 @@ export default function UiDemoPage() {
   const [memo, setMemo] = useState('')
   const [fruit, setFruit] = useState<string | number>('')
   const [checked, setChecked] = useState(false)
-  const [checkedList, setCheckedList] = useState<string[]>([])
+  const [checkedList, setCheckedList] = useState<(string | number)[]>([])
   const [buttonChecked, setButtonChecked] = useState(false)
   const [labeledChecked, setLabeledChecked] = useState(false)
   const [radio, setRadio] = useState<string | number>('apple')
