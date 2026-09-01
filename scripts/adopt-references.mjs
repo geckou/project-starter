@@ -154,13 +154,24 @@ function resolveRepository(repo) {
 
   // テンプレート自身を対象にすると、参照される側の reusable workflow を
   // 参照するだけのファイルで潰してしまう
-  if (root === TEMPLATE_ROOT || fs.existsSync(path.join(root, 'renovate/'))) {
+  if (isTemplateRepository(root)) {
     throw new Error(
       `テンプレート自身は移行対象にできません（参照される側です）: ${root}`
     )
   }
 
   return root
+}
+
+// テンプレート自身か。ファイルの有無では判定しない（renovate/ も reusable workflow の
+// 実体も Template Sync で派生へ配られるため、派生にも存在する）。
+// このスクリプトを動かしているリポジトリ本体か、origin がテンプレートを指すかで見る
+function isTemplateRepository(root) {
+  if (root === TEMPLATE_ROOT) return true
+
+  const config = readFileOrNull(path.join(root, '.git/config'))
+
+  return config !== null && /geckou\/project-starter(\.git)?\s*$/m.test(config)
 }
 
 function readFileOrNull(file) {

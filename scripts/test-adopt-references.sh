@@ -238,6 +238,33 @@ else
   pass "テンプレート自身はエラーになる"
 fi
 
+# テンプレートの別クローンも対象にできない（origin で判定する）
+template_clone=$(make_derived)
+git -C "$template_clone" remote add origin https://github.com/geckou/project-starter.git
+
+if adopt "$template_clone" > /dev/null 2>&1; then
+  fail "テンプレートの別クローンがエラーにならない"
+else
+  pass "テンプレートの別クローン（origin で判定）はエラーになる"
+fi
+
+rm -rf "$template_clone"
+
+# 逆に、Template Sync で renovate/ や reusable workflow の実体を受け取っている
+# 派生プロジェクトは正当な対象。ファイルの有無で拒むと移行できなくなる
+derived=$(make_derived)
+mkdir -p "$derived/renovate"
+printf '{}\n' > "$derived/renovate/default.json"
+git -C "$derived" remote add origin https://github.com/geckou/some-derived-project.git
+
+if adopt "$derived" > /dev/null 2>&1; then
+  pass "renovate/ を持つ派生（Template Sync 済み）は拒まれない"
+else
+  fail "renovate/ を持つ派生を誤って拒んだ" "$(adopt "$derived" 2>&1)"
+fi
+
+rm -rf "$derived"
+
 if node "$SCRIPT" > /dev/null 2>&1; then
   fail "--repo なしがエラーにならない"
 else
