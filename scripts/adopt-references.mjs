@@ -515,26 +515,40 @@ const PRETTIER_PRECEDING_CONFIGS = [
 ]
 
 // 参照を足す先。値は packages/<ディレクトリ> から取る（テンプレートの version が正）
-const ROOT_CONFIG_PACKAGES = [
-  { name: '@geckou/prettier-config', directory: 'prettier-config' },
-  { name: '@geckou/commitlint-config', directory: 'commitlint-config' },
-]
-const WORKSPACE_CONFIG_PACKAGES = [
-  { name: '@geckou/eslint-config', directory: 'eslint-config' },
-]
+// 依存の入れ替えはツールごとに扱う。設定ファイルを書き換えなかったツールは
+// 依存も触らない（独自の設定を残したまま実体を消すと、その設定が壊れる）
+const CONFIG_PACKAGES = {
+  eslint: {
+    name: '@geckou/eslint-config',
+    directory: 'eslint-config',
+    scope: 'workspace',
+  },
+  prettier: {
+    name: '@geckou/prettier-config',
+    directory: 'prettier-config',
+    scope: 'root',
+  },
+  commitlint: {
+    name: '@geckou/commitlint-config',
+    directory: 'commitlint-config',
+    scope: 'root',
+  },
+}
 
 // 参照方式では npm パッケージ側が持つ依存。派生が実体として持っていたら落とす
-const REMOVED_DEPENDENCIES = [
-  '@commitlint/config-conventional',
-  '@eslint/eslintrc',
-  'eslint-config-expo',
-  'eslint-config-next',
-  'eslint-config-prettier',
-  'eslint-plugin-import',
-  'prettier-plugin-tailwindcss',
-  'typescript-eslint',
-]
-const REMOVED_DEPENDENCY_PREFIXES = ['@typescript-eslint/']
+const REMOVED_DEPENDENCIES = {
+  eslint: [
+    '@eslint/eslintrc',
+    'eslint-config-expo',
+    'eslint-config-next',
+    'eslint-config-prettier',
+    'eslint-plugin-import',
+    'typescript-eslint',
+  ],
+  prettier: ['prettier-plugin-tailwindcss'],
+  commitlint: ['@commitlint/config-conventional'],
+}
+const REMOVED_DEPENDENCY_PREFIXES = { eslint: ['@typescript-eslint/'] }
 
 function normalize(content) {
   return content.replace(/\r\n/g, '\n').trim()
@@ -586,16 +600,19 @@ function detectWorkspaces(root) {
 }
 
 // Next.js なら ./next、Expo なら ./expo、それ以外の TypeScript パッケージは `.`。
-// どれでもなく eslint.config.mjs も無いワークスペース（アセット置き場等）は対象外
+// ESLint を使っていないワークスペース（アセット置き場等）は対象外。
+// 「使っている」は依存で判定する。eslint.config.mjs をまだ持たない構成でも生成できるように、
+// 既存の設定ファイルはその補助として見る
 function detectPresetKind(root, relativePath, dependencies) {
   if (dependencies.next || dependencies['eslint-config-next']) return 'next'
   if (dependencies.expo || dependencies['eslint-config-expo']) return 'expo'
 
-  const hasConfig = fs.existsSync(
-    path.join(root, relativePath, ESLINT_CONFIG_FILE)
-  )
+  const usesEslint =
+    dependencies.eslint !== undefined ||
+    dependencies['typescript-eslint'] !== undefined ||
+    fs.existsSync(path.join(root, relativePath, ESLINT_CONFIG_FILE))
 
-  return hasConfig ? 'base' : null
+  return usesEslint ? 'base' : null
 }
 
 // 既存が「テンプレートの既知の形」（参照形 or 移行前の形）と一致するときだけ置き換える。
@@ -679,8 +696,14 @@ function isKnownLegacyPrettierConfig(legacy) {
   if (legacy === null || typeof legacy !== 'object') return false
 
   const { tailwindStylesheet: _ignored, ...rest } = legacy
+  const expected = Object.entries(LEGACY_PRETTIER_CONFIG)
 
-  return JSON.stringify(rest) === JSON.stringify(LEGACY_PRETTIER_CONFIG)
+  // キーの順序は内容の差ではない（順序で比べると移行できる派生を取りこぼす）
+  if (Object.keys(rest).length !== expected.length) return false
+
+  return expected.every(
+    ([key, value]) => JSON.stringify(rest[key]) === JSON.stringify(value)
+  )
 }
 
 // tailwindStylesheet はプロジェクトの構成に依存するので、既存の値を引き継ぐ
@@ -732,15 +755,25 @@ function planCommitlintConfig(root, context) {
 
 // package.json は依存フィールドだけを触る。resolutions は派生ごとに値が違うので触らない
 // （.claude/docs/dependencies.md「配れないもの」）
-function planDependencies(root, workspaces) {
-  const changes = [planManifest(root, 'package.json', ROOT_CONFIG_PACKAGES)]
+function planDependencies(root, workspaces, context) {
+  const skipped = skippedGroups(workspaces, context.conflicts)
+  const rootGroups = ['eslint', 'prettier', 'commitlint'].filter(
+    (group) => !skipped.tools.has(group)
+  )
+  const changes = [planManifest(root, 'package.json', rootGroups, 'root')]
 
   for (const workspace of workspaces) {
+    // 設定ファイルを書き換えなかったワークスペースは package.json も触らない
+    if (skipped.workspaces.has(workspace.path)) continue
+
+    // ワークスペース側は自分の設定だけを見る（別のワークスペースが手つかずでも、
+    // このワークスペースの入れ替えは安全に行える）
     changes.push(
       planManifest(
         root,
         `${workspace.path}/package.json`,
-        WORKSPACE_CONFIG_PACKAGES
+        ['eslint'],
+        'workspace'
       )
     )
   }
@@ -748,7 +781,33 @@ function planDependencies(root, workspaces) {
   return changes.filter(Boolean)
 }
 
-function planManifest(root, relativePath, added) {
+// 手を入れなかった設定ファイルから、依存も触ってはいけない範囲を割り出す。
+// 独自の eslint.config.mjs を残したまま typescript-eslint を消すと lint が落ちる
+function skippedGroups(workspaces, conflicts) {
+  const files = new Set(conflicts.map((conflict) => conflict.file))
+  const skipped = { tools: new Set(), workspaces: new Set() }
+
+  for (const workspace of workspaces) {
+    if (!files.has(`${workspace.path}/${ESLINT_CONFIG_FILE}`)) continue
+
+    skipped.workspaces.add(workspace.path)
+    // ルートの ESLint 依存は全ワークスペースが使うので、1 つでも残せば消せない
+    skipped.tools.add('eslint')
+  }
+
+  if (
+    files.has(LEGACY_PRETTIER_CONFIG_PATH) ||
+    files.has(PRETTIER_CONFIG_PATH)
+  ) {
+    skipped.tools.add('prettier')
+  }
+
+  if (files.has(COMMITLINT_CONFIG_PATH)) skipped.tools.add('commitlint')
+
+  return skipped
+}
+
+function planManifest(root, relativePath, groups, scope) {
   const manifest = readJsonOrNull(path.join(root, relativePath))
 
   if (manifest === null) return null
@@ -761,12 +820,16 @@ function planManifest(root, relativePath, added) {
     if (!dependencies) continue
 
     for (const name of Object.keys(dependencies)) {
-      if (!isRemovedDependency(name)) continue
+      if (!isRemovedDependency(name, groups)) continue
 
       delete dependencies[name]
       changed = true
     }
   }
+
+  const added = groups
+    .map((group) => CONFIG_PACKAGES[group])
+    .filter((item) => item.scope === scope)
 
   for (const item of added) {
     const name = item.name
@@ -791,10 +854,13 @@ function planManifest(root, relativePath, added) {
   }
 }
 
-function isRemovedDependency(name) {
-  return (
-    REMOVED_DEPENDENCIES.includes(name) ||
-    REMOVED_DEPENDENCY_PREFIXES.some((prefix) => name.startsWith(prefix))
+function isRemovedDependency(name, groups) {
+  return groups.some(
+    (group) =>
+      REMOVED_DEPENDENCIES[group].includes(name) ||
+      (REMOVED_DEPENDENCY_PREFIXES[group] ?? []).some((prefix) =>
+        name.startsWith(prefix)
+      )
   )
 }
 
@@ -890,7 +956,7 @@ function main() {
     ...planEslintConfigs(root, workspaces, context),
     ...planPrettierConfig(root, context),
     planCommitlintConfig(root, context),
-    ...planDependencies(root, workspaces),
+    ...planDependencies(root, workspaces, context),
   ].filter(Boolean)
 
   if (changes.length === 0) {
@@ -941,6 +1007,8 @@ function printConflicts(conflicts) {
       console.log(`    ${line}`)
     }
   }
+
+  console.log('  （上記の設定が必要とする依存は package.json に残している）')
 }
 
 function printWarnings(root) {

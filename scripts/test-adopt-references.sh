@@ -288,6 +288,18 @@ MJS
   # eslint.config.mjs も ESLint への依存も持たないワークスペース（対象外）
   printf '{ "name": "shared" }\n' > "$dir/packages/shared/package.json"
 
+  # ESLint は使っているが eslint.config.mjs をまだ持たないワークスペース
+  mkdir -p "$dir/packages/core"
+  cat > "$dir/packages/core/package.json" <<'JSON'
+{
+  "name": "core",
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "typescript-eslint": "^8.67.0"
+  }
+}
+JSON
+
   # 移行前の .prettierrc（Prettier が .prettierrc.cjs より先に読む）
   cat > "$dir/.prettierrc" <<'JSON'
 {
@@ -357,6 +369,13 @@ if [ -f "$derived/packages/shared/eslint.config.mjs" ]; then
   fail "ESLint を使っていないワークスペースに eslint.config.mjs を作った"
 else
   pass "ESLint を使っていないワークスペースは対象にしない"
+fi
+
+# 判定は依存で行う。設定ファイルの有無だけで見ると、これから作る構成を取りこぼす
+if grep -q "^import geckou from '@geckou/eslint-config'$" "$derived/packages/core/eslint.config.mjs" 2> /dev/null; then
+  pass "ESLint に依存していれば eslint.config.mjs が無くても生成する"
+else
+  fail "eslint.config.mjs を持たない TS ワークスペースが対象外になった" "$output"
 fi
 
 # テンプレート側の実体との一致（生成物が古くなっていないこと）
@@ -469,7 +488,24 @@ else
   fail "--dry-run で設定ファイルが変わった" "$output"
 fi
 
+# キーの順序だけが違う .prettierrc も「テンプレートの既知の形」として扱う
+cat > "$derived/.prettierrc" <<'JSON'
+{
+  "printWidth": 80,
+  "tabWidth": 2,
+  "plugins": ["prettier-plugin-tailwindcss"],
+  "singleQuote": true,
+  "semi": false,
+  "trailingComma": "es5"
+}
+JSON
 output=$(adopt "$derived")
+
+if [ ! -f "$derived/.prettierrc" ] && [ -f "$derived/.prettierrc.cjs" ]; then
+  pass "キーの順序が違う .prettierrc も移行する"
+else
+  fail "キーの順序の違いで独自設定と誤判定した" "$output"
+fi
 
 if grep -rq "@geckou/eslint-config/expo" "$derived/apps"; then
   fail "mobile が無いのに ./expo のプリセットを生成した" "$output"
@@ -514,6 +550,38 @@ if printf '%s' "$output" | grep -q -- '--force'; then
   pass "手を入れなかったファイルを差分つきで印字する"
 else
   fail "手を入れなかったファイルが印字されない" "$output"
+fi
+
+# 設定を残したまま実体を消すと、その設定が壊れる（lint / format が落ちる）
+if has_dependency "$derived/apps/functions/package.json" "typescript-eslint"; then
+  pass "手つかずの eslint.config.mjs が必要とする依存を残す"
+else
+  fail "独自設定を残したまま ESLint の実体を消した" "$(cat "$derived/apps/functions/package.json")"
+fi
+
+if has_dependency "$derived/package.json" "prettier-plugin-tailwindcss"; then
+  pass "手つかずの .prettierrc が必要とする依存を残す"
+else
+  fail "独自の .prettierrc を残したまま Prettier の実体を消した" "$(cat "$derived/package.json")"
+fi
+
+if has_dependency "$derived/package.json" "@geckou/prettier-config"; then
+  fail "手つかずの .prettierrc があるのに参照だけ足した" "$(cat "$derived/package.json")"
+else
+  pass "手つかずのツールには参照も足さない"
+fi
+
+if has_dependency "$derived/package.json" "@geckou/commitlint-config"; then
+  pass "手つかずでないツール（commitlint）の入れ替えは行う"
+else
+  fail "commitlint の入れ替えまで止めた" "$(cat "$derived/package.json")"
+fi
+
+if has_dependency "$derived/apps/web/package.json" "eslint-config-next"; then
+  fail "別のワークスペースの手つかずに巻き込まれて入れ替えが止まった" \
+    "$(cat "$derived/apps/web/package.json")"
+else
+  pass "手つかずでないワークスペースの入れ替えは行う"
 fi
 
 output=$(adopt "$derived" --force)
