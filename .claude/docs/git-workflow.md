@@ -257,15 +257,40 @@ Template Sync のファイルコピーと違い、コンフリクトも発生し
 
 ### 切り替え手順（派生プロジェクト側）
 
-1. `.github/workflows/ci.yml` を上記の参照だけの内容に置き換える
+既存の派生プロジェクトの切り替えは **`scripts/adopt-references.mjs`** が行う。
+
+```bash
+node scripts/adopt-references.mjs --repo <派生プロジェクトのパス> --dry-run
+node scripts/adopt-references.mjs --repo <派生プロジェクトのパス>
+```
+
+スクリプトがやること:
+
+1. `.github/workflows/ci.yml` を上の推奨形で**生成する**
 2. `.templatesyncignore` に `.github/workflows/ci.yml` を追加する
    （テンプレート側の実体で上書きされないようにするため）
-3. **Required status check の名前を `ci / ci` に変える。** reusable workflow を呼ぶと
-   チェック名が `<呼び出し側のジョブ ID> / <呼ばれる側のジョブ ID>` になる。
-   `.github/rulesets/production.json` を取り込んでいる場合、`{ "context": "ci" }` のままだと
-   **出力されないチェックを待ち続けてマージできなくなる**
+3. `renovate.json5` を生成する（`apps/mobile` があれば `//renovate/mobile` も `extends`）
+4. テンプレートとの設定差分を埋める（`.prettierignore` の生成ファイル除外）
+5. 残る手動作業（下記）を印字する
 
-`/init-project` の手順に含めてある。
+**既存の `ci.yml` を書き換えるのではなく生成する**のは、古いトリガーを引き継がないため。
+`production` への push をトリガーに残すと、`deploy.yml` が同内容のチェックを実行するので
+**check が二重に走る**。層構成は実ファイル（`apps/mobile/` の有無）で判定するので、
+`layers.json` を持たない古い派生でも動く。冪等なので、途中まで手作業で移行済みでも流してよい。
+
+スクリプトが**やらない**こと（人にしかできない・触るべきでない）:
+
+- **Required status check の名前を `ci / ci` に変える。** reusable workflow を呼ぶと
+  チェック名が `<呼び出し側のジョブ ID> / <呼ばれる側のジョブ ID>` になる。
+  `.github/rulesets/production.json` を取り込んでいる場合、`{ "context": "ci" }` のままだと
+  **出力されないチェックを待ち続けてマージできなくなる**
+- Renovate App のインストールと Silent mode の解除、Dependency graph / Dependabot alerts の
+  有効化（→ `.claude/docs/dependencies.md`「派生プロジェクトでの前提」）
+- Template Sync の設定
+- ルート `package.json` の `resolutions`。派生ごとに値が違うため触らない
+  （→ `.claude/docs/dependencies.md`「配れないもの」）
+
+新規プロジェクトはこの手順を `/init-project` に含めてある。
 
 ### 依存更新（Renovate）の PR は branch-guard の例外
 
