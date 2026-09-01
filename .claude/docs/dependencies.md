@@ -44,16 +44,22 @@
 
 1. Renovate の GitHub App を派生プロジェクトにインストールする。preset 側
    （`geckou/project-starter`）は public なので、追加のアクセス設定は要らない
-2. **脆弱性アラートを使うための設定を有効にする。** `vulnerabilityAlerts` は GitHub の
+2. **Silent mode を切る。** App を入れただけでは PR が来ない。Mend の管理画面
+   （app.mend.io）でリポジトリの Settings > Dependencies を開き、**Silent mode を OFF**、
+   **Automated PRs を ON** にする。Silent mode はジョブを実行しても PR も
+   Dependency Dashboard も作らないモードで、**組織の既定が Silent になっていることがある**。
+   ジョブが DONE なのに何も起きないときはこれを疑う（設定ファイルの問題ではない）。
+   リポジトリごとに上書きするより、組織側の既定を変えるほうが以後の派生で手当てが要らない
+3. **脆弱性アラートを使うための設定を有効にする。** `vulnerabilityAlerts` は GitHub の
    アラートを読んで PR を作る仕組みなので、リポジトリ設定で **Dependency graph** と
    **Dependabot alerts** を有効化し、App に alerts の読み取りを許可する。
    private リポジトリでは既定で無効なことがあり、**気付かないままセキュリティ更新だけ
    止まる**（Settings > Advanced Security から有効化する）
-3. `renovate.json5` を置く（Template Sync で配られる）
-4. Dependabot とは**併存させない**。同じ更新で PR が二重に立つため、
+4. `renovate.json5` を置く（Template Sync で配られる）
+5. Dependabot とは**併存させない**。同じ更新で PR が二重に立つため、
    Dependabot の設定ファイル（`.github/` 配下）が残っていれば削除する
    （テンプレート側では削除済み）
-5. `renovate/*` から `production` への PR は `branch-guard.yml` が例外として許可する
+6. `renovate/*` から `production` への PR は `branch-guard.yml` が例外として許可する
    （依存更新はリリース単位に束ねる意味が薄いため）。マージ = 本番デプロイになる点は
    変わらないので、タイミングは人が選ぶ
 
