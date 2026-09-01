@@ -341,3 +341,31 @@ jobs:
   pr-title:
     uses: geckou/project-starter/.github/workflows/pr-title-lint.yml@v1
 ```
+
+## Copilot の自動レビュー
+
+PR ごとに手でレビューを依頼しなくて済むよう、**Copilot code review を ruleset で常時 ON にする**。
+定義は `.github/rulesets/copilot-review.json`。取り込みは production の保護と同じ手順:
+
+```bash
+gh api repos/{owner}/{repo}/rulesets \
+  --method POST \
+  --input .github/rulesets/copilot-review.json
+```
+
+`production.json` と分けているのは、対象が違うため。マージ保護は `production` 向けの PR だけを
+守ればよいが、レビューは `feat/* → release/*` を含む**全ての PR**に欲しい
+（`ref_name.include` が `~ALL` なのはそのため。ここで指す「全ブランチ」は PR の**マージ先**）。
+`production.json` は Pro 以上のプランでないと効かないが、こちらは Copilot 側の要件だけで動くので、
+片方だけ取り込む構成にもできる。
+
+パラメータの既定値と、変えたくなる場面:
+
+| パラメータ | 既定 | 意味 |
+| --- | --- | --- |
+| `review_on_push` | `false` | PR を開いたときだけレビューする。`true` にすると push のたびに走る（差分が細かいうちに気付けるが、コメントとコストは増える） |
+| `review_draft_pull_requests` | `false` | Draft のうちはレビューしない。`true` にすると人にレビューを頼む前に机上のミスを拾える |
+
+レビューの観点と言語は `.github/copilot-instructions.md` が決める。Copilot code review が
+使えるプラン・組織設定でない場合は取り込みが失敗する（その場合は `.github/workflows/claude.yml`
+の auto-review だけで運用する。両方入れて二重にレビューさせてもよい）。

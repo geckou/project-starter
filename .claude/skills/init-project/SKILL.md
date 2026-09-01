@@ -128,6 +128,18 @@ mobile 層を外した場合はこの手順を飛ばす。
 reusable workflow を呼ぶとチェック名が変わるため、`.github/rulesets/production.json` の
 `{ "context": "ci" }` のままだと出力されないチェックを待ち続けてマージできなくなる。
 
+**Copilot の自動レビューを ruleset で入れる。**
+
+```bash
+gh api repos/{owner}/{repo}/rulesets \
+  --method POST \
+  --input .github/rulesets/copilot-review.json
+```
+
+PR ごとにレビューを依頼する手間が無くなる。`production.json` とは別の ruleset なので、
+プランの都合で `production.json` を取り込めない場合でもこちらだけ入れられる。
+詳細は `.claude/docs/git-workflow.md`「Copilot の自動レビュー」を参照。
+
 **依存更新（Renovate）**
 
 `renovate.json5` はテンプレートから配られるのでそのまま使う。**Renovate の GitHub App を
@@ -161,6 +173,7 @@ Dependabot の設定ファイルが残っていれば削除する（PR が二重
 - [ ] `apps/mobile/app.config.ts` の識別子を変更した（mobile 層を残した場合）
 - [ ] CLAUDE.md の Figma URL を設定した
 - [ ] CI を reusable workflow の参照に切り替え、`.templatesyncignore` に追加した
+- [ ] Copilot の自動レビュー ruleset（`.github/rulesets/copilot-review.json`）を取り込んだ
 - [ ] Renovate の GitHub App をインストールし、Silent mode を OFF にした
 - [ ] Dependency graph / Dependabot alerts を有効化した（脆弱性の PR が来るようにする）
 - [ ] `.claude/docs/` と `memory/` を初期化した
