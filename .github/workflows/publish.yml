@@ -24,8 +24,9 @@ name: Publish package
 # を登録しておく必要がある（→ packages/README.md）。
 #
 # あわせて npm-publish Environment を通す。npm 側の紐付けは「リポジトリ + ワークフロー」
-# 単位なので、どの ref から起動されたかはこのワークフロー自身の検査と、
-# リポジトリ設定の「Deployment branches and tags」（タグ `*@*` に限定）で担保する。
+# 単位なので、どの ref から起動されたかはこのワークフロー自身の検査と、リポジトリ設定の
+# 「Deployment branches and tags」で担保する。許可するのはタグ `*@*`（通常のリリース）と
+# production ブランチ（workflow_dispatch）の 2 つ。タグだけにすると dispatch が弾かれる。
 on:
   push:
     tags: ['*@*']

@@ -88,7 +88,16 @@ npmjs.com のパッケージ設定（Settings → Trusted Publisher）で以下�
 
 npm 側の紐付けは「リポジトリ + ワークフロー」単位なので、**どの ref から起動されたか
 までは npm 側では縛れない**。そこは上の `production` 包含チェックと、`npm-publish`
-Environment の「Deployment branches and tags」（タグ `*@*` に限定）で担保している。
+Environment の「Deployment branches and tags」で担保している。**許可するのは 2 つ**:
+
+| ref type | パターン | 用途 |
+| --- | --- | --- |
+| Tag | `*@*` | 通常のリリース（`yarn release`） |
+| Branch | `production` | `workflow_dispatch` での公開（初回リリース等） |
+
+**タグだけに限定すると `workflow_dispatch` が Environment 側で弾かれる。**
+どちらも起動元コミットの `production` 包含チェックを通るので、許可を 2 つにしても
+レビューを通っていないコードを公開できる経路は増えない。
 
 `Workflow filename` は**ファイル名だけ**を入れる（`.github/workflows/` のパスは付けない）。
 Organization / Repository / Workflow filename は**大文字小文字まで一致**する必要がある。
