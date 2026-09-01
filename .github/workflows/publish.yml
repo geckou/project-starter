@@ -12,15 +12,20 @@ name: Publish package
 # **公開できるのは production に入っているコミットだけ。** タグも workflow_dispatch も
 # 任意の ref から起動できるため、そのままだと「version の変更を PR で production へ
 # 入れてから公開する」という手順を迂回して、レビューを通っていないコードを npm へ
-# 出せてしまう（NPM_TOKEN もその ref のワークフロー定義から使える）。
-# 下の 2 つの検査でそれを塞いでいる。
+# 出せてしまう（公開の権限はこのワークフローファイルに紐づくので、ref を選べば
+# 検査ごと書き換えられる）。下の 2 つの検査でそれを塞いでいる。
 #
 #   1. タグ（または dispatch した ref）のコミットが origin/production に含まれること
 #   2. タグのバージョン部分が、対象 package.json の version と一致すること
 #
-# あわせて npm-publish Environment を通す。リポジトリ設定で
-# 「Deployment branches and tags」を production に限定し、必要なら承認者を設定すると、
-# ワークフロー定義を書き換えた ref からトークンを引き出す経路も塞げる。
+# 公開の認証は npm の Trusted Publishing（GitHub Actions の OIDC）で行う。
+# NPM_TOKEN のような長期シークレットは持たず、実行のたびに短命なトークンが発行される。
+# npm 側で各パッケージに Trusted Publisher（このリポジトリ + このワークフローファイル名）
+# を登録しておく必要がある（→ packages/README.md）。
+#
+# あわせて npm-publish Environment を通す。npm 側の紐付けは「リポジトリ + ワークフロー」
+# 単位なので、どの ref から起動されたかはこのワークフロー自身の検査と、
+# リポジトリ設定の「Deployment branches and tags」（タグ `*@*` に限定）で担保する。
 on:
   push:
     tags: ['*@*']
@@ -32,6 +37,8 @@ on:
 
 permissions:
   contents: read
+  # Trusted Publishing（OIDC）で npm へ認証するために必要
+  id-token: write
 
 jobs:
   publish:
@@ -111,16 +118,19 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
+          # Trusted Publishing は Node >= 22.14.0 を要求する
           node-version: 22
           registry-url: https://registry.npmjs.org/
+
+      # Node 22 に同梱の npm は 10 系。Trusted Publishing は npm >= 11.5.1 が要る
+      - name: Use npm that supports trusted publishing
+        run: npm install -g npm@^11.5.1
 
       # 公開済みのバージョンに対して起動されることがある（初回リリースを
       # workflow_dispatch で行い、記録のために後からタグを打つ場合など）。
       # その場合 npm publish は必ず失敗するので、実行を冪等にする
       - name: Publish to npm
         working-directory: packages/${{ steps.target.outputs.package }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           NAME="$(node -p "require('./package.json').name")"
           VERSION="$(node -p "require('./package.json').version")"
@@ -133,4 +143,6 @@ jobs:
             exit 0
           fi
 
-          npm publish --access public
+          # --provenance: どのコミット・どのワークフローから公開されたかの証明を
+          # npm に添付する（OIDC で公開するときだけ付けられる）
+          npm publish --access public --provenance
