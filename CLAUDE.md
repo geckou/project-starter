@@ -10,7 +10,7 @@ Turborepo モノレポ。Next.js 15 (Web) + Expo 52 (Mobile) + Firebase Cloud Fu
 このテンプレートは2つの層でできている。
 
 - **第0層（制約層）** — `.claude/hooks/`、本ファイルの規約、`memory/`、プロセス系スキル
-  （`/kickoff` `/next` `/wrap-up` `/new-skill`）、commitlint・ESLint 共通ルール・Prettier。
+  （`/kickoff` `/next` `/questions` `/wrap-up` `/new-skill`）、commitlint・ESLint 共通ルール・Prettier。
   **スタックに依存しない。** AI と人間に規約を機械的に強制するのがこの層の役割
 - **スタック層** — 上記の Turborepo 構成・Firebase・課金。参照実装であり、案件によって差し替わる。
   `core` を基点に `firebase` → `functions` → `mobile` / `billing` の opt-in 層に分かれる
@@ -69,6 +69,7 @@ functions 層を持たない構成は API を持たない。「API Routes で代
 | 企画書 | `.claude/docs/planning.md` | プロダクト背景・ターゲット・ペルソナ・用語集・機能一覧 |
 | 仕様書 | `.claude/docs/spec.md` | 画面一覧・データモデル・API・セキュリティ（**最新・正**） |
 | ロードマップ | `.claude/docs/roadmap.md` | 機能ステータス表（**進捗の正**）・残タスク・セッション引き継ぎ |
+| 確認事項キュー | `.claude/docs/questions.md` | ユーザー確認待ちの判断（→「自律性の境界」）|
 | Figma | `<Figma URL>`（⚠️ scaffold 後に実際の URL へ置換。未使用なら行ごと削除） | デザインカンプ |
 
 技術仕様は仕様書を、進捗・タスク状態はロードマップの機能ステータス表を正とする。
@@ -140,20 +141,47 @@ functions 層を持たない構成は API を持たない。「API Routes で代
 
 ### 自律性の境界
 
-**確認なしで進めてよい**
+**確認が必要になっても、原則としてセッションを止めない。** 確認事項は
+`.claude/docs/questions.md`（確認事項キュー）に積み、その部分を避けるか仮決定して実装を進める。
+ユーザーは空き時間にまとめて答える（`/questions`）。
+
+止まるかどうかの基準は「**後から取り消せるか**」。git で戻せる判断は進めてよく、
+外に出てしまうもの・戻せないものだけがその場の確認を要する。以下の4段階で扱う。
+
+**1. そのまま進める**
 
 - 仕様書に定義済みの機能の実装・テスト・リファクタ
 - バグ修正（挙動を仕様書に合わせる方向）
 - ドキュメントの整合更新
 
-**ユーザー確認が必須**
+**2. 仮決定して進める（キューに積む）**
 
-- 依存パッケージの追加・メジャーアップデート
-- データモデル（スキーマ・コレクション構造）の変更
-- セキュリティルール・認証まわりの方針変更
-- 課金・外部サービス連携に関わる変更
-- 仕様書にない機能の追加（→ 仕様書ファースト）
-- デプロイ・本番環境への操作
+推奨案を採用して実装し、キューに「仮決定」として積む。コードなので回答が違えば直せる。
+
+- データモデル（スキーマ・コレクション構造）の設計・変更
+- セキュリティルール・認証まわりの方針
+- 命名・UI の細部・エラーメッセージの文言
+- 仕様書にない挙動の細部（→ spec.md に「(要確認)」付きで追記してから実装する）
+
+**3. その作業だけ保留して、別の作業へ移る（キューに積む）**
+
+仮決定でリスクを作りたくないもの。その機能の他の部分か、ロードマップの次のタスクへ移る。
+
+- 依存パッケージの追加・メジャーアップデート（`yarn.lock` とサプライチェーンに影響する）
+- 課金・外部サービス連携の配線（テストモードを超える設定）
+- 仕様書にない**機能そのもの**の追加（→ 仕様書ファースト）
+
+**4. その場で止めて聞く（キューに積まない）**
+
+取り消せない・外に出る操作。確認が取れるまで実行しない。
+
+- デプロイ・本番環境への操作、本番データの変更・削除
+- 外部への送信・公開（メール送信、決済の実行、公開リポジトリへの投稿）
+- 履歴の書き換え（force push）、ブランチやファイルの削除
+
+**積み方**: 1項目 = 1判断。推奨案と「回答が変わったとき何を直すか」を必ず書く
+（フォーマットは `.claude/docs/questions.md`）。**積んだまま黙って終わらない** —
+セッション終了時に未回答を提示する（Stop フックが検出する）。
 
 境界は派生プロジェクトの方針に合わせて調整してよい。
 
@@ -289,11 +317,13 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 | タイミング | フック | 内容 |
 |---|---|---|
 | SessionStart | `session-start-git-context.sh` | `git fetch origin --prune` を実行し、現在ブランチ・`origin/production` との差分・進行中の `release/*` を文脈に入れる（古い情報のまま作業を始めるのを防ぐ） |
+| SessionStart | `session-start-questions.sh` | 未回答の確認事項（`.claude/docs/questions.md`）を冒頭の文脈に入れる |
 | PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名・分岐元・fetch 鮮度・コミットメッセージ形式・`--no-verify` 迂回・`production` への直接 push を**実行前にブロック**。`release/*` への push はユーザー承認を求める。検査対象は**このリポジトリへの git 操作だけ**（コマンド中の `cd` / `git -C` を解釈し、別リポジトリへの操作は素通しする） |
 | PostToolUse (Bash) | `post-git-branch-reminder.sh` | ブランチ作成直後、進行中の `release/*` があればマージ要否の確認を促す |
 | PostToolUse (Edit/Write) | `post-edit-reminder.sh` | `firestore.rules` / `packages/shared` 変更時に検証コマンドをリマインド |
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
 | Stop | `stop-roadmap-reminder.sh` | 作業があるのに `roadmap.md` 未更新ならリマインド |
+| Stop | `stop-questions-reminder.sh` | この作業で確認事項を積んだのに提示していなければ、終了前に一覧を出させる |
 
 ### スタック依存の値は `config.sh` に置く
 
@@ -306,6 +336,7 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 | `HOOK_DOD_TASKS` | DoD として実行するタスク |
 | `HOOK_CODE_EXTENSIONS` | DoD の対象になるコードファイルの拡張子 |
 | `HOOK_WATCH_PATHS` | 変更時にリマインドするパスと文言 |
+| `HOOK_QUESTIONS_FILE` | 確認事項キューの場所 |
 
 `config.sh` は `.templatesyncignore` に登録してあり、テンプレート更新で上書きされない。
 逆にテンプレート側で設定項目が増えても自動では流れてこないため、**フック本体は
@@ -363,6 +394,7 @@ preset の1コミットで全派生へ届く。判断（メジャーは Dashboar
 |---|---|
 | `/kickoff` | 新規プロジェクトのヒアリング → 企画書・仕様書・ロードマップ作成 |
 | `/next` | ロードマップから次のタスクを選定して提案 |
+| `/questions` | 溜まった確認事項をまとめて提示し、回答を実装・仕様書へ反映 |
 | `/wrap-up` | セッション終了処理（引き継ぎ・メモリ記録・コミット） |
 | `/new-page` | Next.js の新規ページ作成 |
 | `/new-component` | React コンポーネント作成 |
@@ -384,7 +416,7 @@ preset の1コミットで全派生へ届く。判断（メジャーは Dashboar
 | `/deploy` | デプロイ手順ガイド |
 | `/troubleshoot` | ビルドエラー・型エラーの診断と修正 |
 
-`/kickoff` `/next` `/wrap-up` `/new-skill` は**第0層**（進め方のスキル。スタックに依存しない）。
+`/kickoff` `/next` `/questions` `/wrap-up` `/new-skill` は**第0層**（進め方のスキル。スタックに依存しない）。
 `/new-*` の scaffold 系と `/add-*` `/init-project` `/deploy` は**スタック層**（生成物がスタックに直結する）。
 スキルを追加するときは、どちらに属するかを意識して書く。
 
@@ -520,6 +552,7 @@ gh issue create \
 - `.claude/docs/planning.md` — 企画書（プロダクト背景・ターゲット・ペルソナ・用語集・機能一覧）
 - `.claude/docs/spec.md` — 仕様書（画面一覧・データモデル・API・セキュリティ）
 - `.claude/docs/roadmap.md` — ロードマップ（機能ステータス表・残タスク・セッション引き継ぎ）
+- `.claude/docs/questions.md` — 確認事項キュー（ユーザー確認待ちの判断と、その積み方）
 - `.claude/docs/layers.md` — 層構成と層マニフェスト（層の外し方・マーカー・検証）
 - `.claude/docs/dependencies.md` — 依存更新の方針（Renovate preset・automerge・配れないもの）
 - `.claude/docs/architecture.md` — API方針、Firebase使い分け、認証、データ取得、環境変数、Zustand、Storage、FCM、Sentry、i18n、課金（Stripe / IAP）、Tailwind、コンポーネント整理

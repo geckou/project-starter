@@ -16,7 +16,7 @@
 
 | 層 | 中身 | スタック依存 |
 | --- | --- | --- |
-| **第0層（制約層）** | `.claude/hooks/`、`CLAUDE.md` の規約、`memory/`、プロセス系スキル（`/kickoff` `/next` `/wrap-up` `/new-skill`）、commitlint・ESLint 共通ルール・Prettier | **なし** |
+| **第0層（制約層）** | `.claude/hooks/`、`CLAUDE.md` の規約、`memory/`、プロセス系スキル（`/kickoff` `/next` `/questions` `/wrap-up` `/new-skill`）、commitlint・ESLint 共通ルール・Prettier | **なし** |
 | **スタック層** | Next.js + Firebase Hosting + CI/deploy + 環境切替、Firebase（Auth/Firestore/Storage）、Expo、課金 | あり |
 
 **第0層はスタック層に属さない。** スタックが変わっても、規約を機械的に強制する仕組みはそのまま使える。
@@ -289,6 +289,7 @@ yarn firebase:emulators
 | 仕様を変えたい | 「XX の仕様を YY に変えたい。仕様書から直して」 |
 | バグを直したい | 「XX すると ZZ になる。`/troubleshoot` して」 |
 | コードレビュー | 「`/review` でこのブランチを見て」 |
+| 溜まった確認事項に答える | 「`/questions`」（空き時間にまとめて答える） |
 | セッションを終える | 「今日はここまで。`/wrap-up` して」 |
 
 ### 避けたほうがいい指示
