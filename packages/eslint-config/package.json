@@ -1,6 +1,6 @@
 {
   "name": "@geckou/eslint-config",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shared ESLint flat config for geckou projects (base / next / expo)",
   "type": "module",
   "main": "./index.js",
