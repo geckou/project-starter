@@ -119,8 +119,9 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          # Trusted Publishing は Node >= 22.14.0 を要求する
-          node-version: 22
+          # Trusted Publishing は Node >= 22.14.0 を要求する。範囲で書くのは、
+          # `22` だとランナーのツールキャッシュ次第で 22.14 未満が選ばれうるため
+          node-version: '>=22.14.0'
           registry-url: https://registry.npmjs.org/
 
       # Node 22 に同梱の npm は 10 系。Trusted Publishing は npm >= 11.5.1 が要る
