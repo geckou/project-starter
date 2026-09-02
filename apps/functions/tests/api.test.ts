@@ -24,6 +24,7 @@ vi.mock('firebase-functions/v2/https', () => ({
   onRequest: (_options: unknown, handler: unknown) => handler,
 }))
 
+// layer:billing:start
 // 課金は @geckou/billing 側でテスト済み。ここでは Express の配線だけを見る
 const mockCreateCheckoutSession = vi.fn()
 const mockCreatePortalSession = vi.fn()
@@ -38,6 +39,7 @@ vi.mock('../src/lib/billing', () => ({
     handleRevenueCatWebhook: mockHandleRevenueCatWebhook,
   }),
 }))
+// layer:billing:end
 
 import { app } from '../src/api'
 
@@ -106,6 +108,7 @@ describe('api', () => {
     })
   })
 
+  // layer:billing:start
   describe('POST /billing/checkout', () => {
     it('トークンなしで 401 を返す', async () => {
       const response = await fetch(`${baseUrl}/billing/checkout`, {
@@ -220,4 +223,5 @@ describe('api', () => {
       expect(argument.rawBody.toString('utf-8')).toBe(payload)
     })
   })
+  // layer:billing:end
 })
