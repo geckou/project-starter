@@ -98,6 +98,13 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'yarn'
 
+      # リリース時の API 差分検査の回帰テスト。npm レジストリには接続しない
+      # （公開物は --published-tarball で差し替える）。
+      # node と npm pack を使うので、setup-node の後に置く（.nvmrc のバージョンで走らせる）
+      - name: API Diff Guard Test
+        if: hashFiles('scripts/test-api-diff.sh') != ''
+        run: bash scripts/test-api-diff.sh
+
       - run: yarn install --frozen-lockfile
 
       # turbo のローカルキャッシュを実行間で持ち越し、変更のないパッケージの
