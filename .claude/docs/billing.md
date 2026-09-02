@@ -165,7 +165,8 @@ yarn dev:functions
 # 2. 別ターミナルで Stripe CLI から Webhook を転送する
 stripe listen --forward-to \
   http://localhost:5001/<project-id>/asia-northeast1/api/webhooks/stripe
-# 表示された whsec_... を apps/functions/.env の STRIPE_WEBHOOK_SECRET に入れて再起動
+# 表示された whsec_... をルートの .env.develop の STRIPE_WEBHOOK_SECRET に入れ、
+# yarn env:develop で配布し直してから再起動
 
 # 3. Web を起動して /billing から購入
 yarn dev:web
@@ -210,12 +211,17 @@ REVENUECAT_API_KEY_APPLE=appl_...
 REVENUECAT_API_KEY_GOOGLE=goog_...
 ```
 
-`apps/functions/.env`:
+ルートの `.env.<環境名>`:
 
 ```bash
 # RevenueCat Dashboard > Integrations > Webhooks で設定する任意の文字列
 REVENUECAT_WEBHOOK_AUTH=Bearer <任意の長いランダム文字列>
 ```
+
+> ⚠️ `apps/functions/.env` を直接編集しない。`yarn env:<環境名>` が
+> ルートの `.env.<環境名>` から毎回生成し直すため、書いた値は次の環境切替で消える。
+> 新しいキーを足すときは `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` と
+> `apps/functions/.env.example` にも追記する。
 
 ### 2-4. Webhook を登録する
 
@@ -304,7 +310,7 @@ Firestore やStorage の**ルールで課金状態を条件にしたい場合**�
 カスタムクレームへの同期を有効にする。
 
 ```bash
-# apps/functions/.env
+# ルートの .env.<環境名>（apps/functions/.env は yarn env:* が生成する）
 SYNC_SUBSCRIPTION_CLAIMS=true
 ```
 

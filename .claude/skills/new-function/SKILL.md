@@ -87,4 +87,7 @@ export const onUserCreate = onDocumentCreated(
 - 変数は `const` を使う。比較は `===` / `!==` を使う
 - 略語は避ける（`req` / `res` はフレームワーク慣例のため例外）
 - 配列は複数形にする（`users`, `tokens`）
-- Functions 固有の環境変数は `apps/functions/.env` に追加し、ルートの `.env.example` の Functions セクションを更新する
+- Functions 固有の環境変数は**ルートの `.env.<環境名>`** に追加する。
+  `apps/functions/.env` は `yarn env:<環境名>` が毎回生成し直すので直接編集しない。
+  新しいキーは `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` と
+  `apps/functions/.env.example`、ルートの `.env.example` の Functions セクションにも追記する
