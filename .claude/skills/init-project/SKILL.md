@@ -28,8 +28,8 @@ node scripts/remove-layer.mjs mobile billing     # 例: Web のみ・課金な�
 ```
 
 外したあとは `yarn format` で整形する（`yarn install` は次の手順で走る）。
-判断がつかない層は残しておいてよい。**外した層を後から戻す加算スキル（`/add-*`）は未実装**のため、
-迷ったら残す方が安全（`layers.json` に定義は残っている）。
+判断がつかない層は残しておいてよい。外した層は加算スキル（`/add-firebase` `/add-functions`
+`/add-mobile` `/add-billing`。実体は `scripts/add-layer.mjs`）で後から戻せる。
 
 ### 2. scripts/setup.sh の実行
 

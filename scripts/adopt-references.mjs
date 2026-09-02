@@ -61,15 +61,9 @@ const CI_WORKFLOW_CONTENT = `name: CI
 on:
   pull_request:
     branches: [production, 'release/**']
-    # アプリの動作に影響しない変更では回さない（Actions 分の節約）
-    paths-ignore:
-      - '**/*.md'
-      - '.claude/docs/**'
-      - '.claude/skills/**'
-      - '.claude/launch.json'
-      - '.vscode/**'
-      - '.editorconfig'
-      - 'LICENSE'
+    # paths-ignore は使わない。除外に当たった PR ではワークフローが起動せず、
+    # required status check が Pending のままマージできなくなるため。
+    # 重いステップの省略は呼ばれる側（ci.yml）が差分を見て判断する
 
 # 同じ PR に連続 push したとき、古い実行を打ち切る
 concurrency:

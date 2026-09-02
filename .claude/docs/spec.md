@@ -17,6 +17,8 @@
 | 公開 | `/` | トップ | | 不要 | | |
 | 公開 | `/login` | ログイン | | 不要 | | |
 | 要認証 | `/dashboard` | ダッシュボード | | 必要 | | middleware は Cookie 存在チェックのみ。実検証（verifySessionCookie）はページ側 |
+| 要認証 | `/billing` | 課金 | 購読状態の表示と Checkout / ポータルへの導線 | 必要 | | billing 層。層を外すと消える |
+| 公開 | `/ui-demo` | UI デモ | `@geckou/ui-react` の表示確認用。派生プロジェクトでは削除してよい | 不要 | | |
 
 ### 1-2. Mobile
 
@@ -31,6 +33,8 @@
 
 | コレクション | パス | 説明 | 関連機能 |
 | --- | --- | --- | --- |
+| ユーザー | `users/{uid}` | 本人のみ読み書き可。`subscription` / `stripeCustomerId` はサーバー専用（`firestore.rules`） | |
+| 課金イベント | `billing_events/{eventId}` | Webhook の処理済みイベント（冪等性のため Functions のみが書く。クライアントからは読み書き不可） | billing 層 |
 
 ### スキーマ詳細
 
@@ -40,8 +44,19 @@
 
 ## 3. API エンドポイント一覧
 
+すべて `apps/functions/src/api.ts`（`/api` 配下）。
+
 | メソッド | パス | 概要 | 認証 | 関連機能 | リクエスト | レスポンス |
 | --- | --- | --- | --- | --- | --- | --- |
+| GET | `/health` | 死活確認 | 不要 | | | `{ status: 'ok' }` |
+| GET | `/me` | サインイン中の uid を返す（認証付きの例） | 必要 | | | `{ uid }` |
+| POST | `/billing/checkout` | Stripe Checkout のセッションを作る | 必要 | billing 層 | `{ priceId }` | `{ url }` |
+| POST | `/billing/portal` | Stripe カスタマーポータルの URL を返す | 必要 | billing 層 | | `{ url }` |
+| POST | `/webhooks/stripe` | Stripe Webhook（署名検証あり） | 署名 | billing 層 | Stripe のイベント | `{ received: true }` |
+| POST | `/webhooks/revenuecat` | RevenueCat Webhook（Authorization ヘッダー検証） | ヘッダー | billing 層 | RevenueCat のイベント | `{ received: true }` |
+
+Next.js 側の Route Handler は `POST/DELETE /api/session`（セッション cookie の発行・破棄）のみ。
+アプリの API は `apps/functions` に置く（→ `.claude/docs/architecture.md`）。
 
 ---
 

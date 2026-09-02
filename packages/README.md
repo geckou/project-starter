@@ -26,7 +26,8 @@ reusable workflow のような URL 参照にはできない。
 | `commitlint-config/` | `@geckou/commitlint-config` | `commitlint.config.cjs` |
 
 ESLint はサブパスで層に対応する。`.` は TypeScript パッケージ（`apps/functions` /
-`packages/shared`）、`./next` は Next.js アプリ、`./expo` は Expo アプリ。
+`packages/shared`）、`./next` は Next.js アプリ、`./expo` は Expo アプリ、
+`./react` は React（Next.js 以外）、`./vue` は Vue / Nuxt。
 **プリセットは重ねて使わない**（それぞれ単独で完結する。重ねると同じプラグインを
 別々の実体で登録することになり、ESLint が `Cannot redefine plugin` で落ちる）。
 

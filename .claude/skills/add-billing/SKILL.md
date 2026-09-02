@@ -46,7 +46,8 @@ yarn format
 | アプリ内課金だけ | RevenueCat（`STRIPE_*` は空でよい。mobile 層が前提） |
 | 両方 | 両方。同じ `users/{uid}.subscription` に集約される |
 
-未設定側のエンドポイントは 503 を返すので、片方だけでも動く。
+未設定側のエンドポイントはエラーを返すので、片方だけでも動く
+（Stripe は 503、RevenueCat Webhook は 500）。
 
 ### 2-2. 外部サービス側の設定（`.claude/docs/billing.md`）
 

@@ -24,8 +24,7 @@ Cloud Functions なら Web・Mobile・外部サービス（Webhook 等）全て�
 
 `apps/functions` を持たない構成（core / core + firebase）は、**API を持たない**。
 API・Firestore / Auth トリガー・スケジュール実行のいずれかが必要になった時点で
-functions 層を足す（`/add-functions`。未実装のため現状は `layers.json` の functions 層を
-手で戻す）。「API Routes で代用する」という選択肢は取らない。
+functions 層を足す（`/add-functions`）。「API Routes で代用する」という選択肢は取らない。
 
 なお `hosting.frameworksBackend` による SSR 用の関数は、framework アダプタが自動生成して
 Cloud Functions (2nd gen) にデプロイするもので、`apps/functions` とは別物。
@@ -144,8 +143,9 @@ import { uploadFile, deleteFile, getFileUrl } from '@geckou/shared/storage'
 | Mobile    | `apps/mobile/src/lib/sentry.ts`     | `@sentry/react-native` |
 | Functions | `apps/functions/src/lib/sentry.ts`  | `@sentry/node`         |
 
-※ Sentry パッケージインストール後、各ファイルの import 行に付いている
-`// @ts-ignore` と直上の `// eslint-disable-next-line` の2行を削除すること。
+※ Sentry パッケージのインストール後、各ファイル先頭の抑制コメントを削除すること。
+Functions / Mobile は `// @ts-nocheck` の 1 行、Web は `// @ts-ignore` と
+直上の `// eslint-disable-next-line` の 2 行。
 
 ## i18n（多言語対応）
 
@@ -192,7 +192,8 @@ Apple / Google への月次の取引報告（External Purchase Server API / exte
 
 決済ロジックの本体は **[`@geckou/billing`](https://github.com/geckou/kit)**（npm パッケージ）にある。
 権利状態の反映（冪等性・順序制御）・Stripe / RevenueCat Webhook・Checkout / ポータル作成・
-カスタムクレーム同期はパッケージ側で実装され、修正は Dependabot の bump PR として届く。
+カスタムクレーム同期はパッケージ側で実装され、修正は Renovate の更新 PR として届く
+（`renovate.json5`。→ `.claude/docs/dependencies.md`）。
 リポジトリ内に残るのは配線と、プロジェクトごとに編集するフックのみ。
 
 | 層 | ファイル | 役割 |

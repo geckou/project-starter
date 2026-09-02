@@ -72,7 +72,7 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 上記の手順は Hook で強制される（`.claude/hooks/pre-git-guard.sh`）。ブランチ作成コマンドは次の場合に実行前ブロックされる。
 
 - 直近 15 分以内に fetch していない（= remote の情報が古い状態で切ろうとしている）
-- ブランチ名が命名規則（`feat/` `fix/` `refactor/` `test/` `docs/` `release/` `hotfix/`）に合わない
+- ブランチ名が命名規則（`feat/` `fix/` `refactor/` `chore/` `test/` `docs/` `release/` `hotfix/`）に合わない
 - 分岐元が `production` でない（例外: `fix/*` は `release/*` からも可）
 
 セッション開始時には `.claude/hooks/session-start-git-context.sh` が自動で fetch し、進行中の `release/*` を文脈に載せる。
@@ -239,12 +239,6 @@ name: CI
 on:
   pull_request:
     branches: [production, 'release/**']
-    paths-ignore:
-      - '**/*.md'
-      - '.claude/docs/**'
-      - '.claude/skills/**'
-      - '.vscode/**'
-      - 'LICENSE'
 
 jobs:
   ci:
