@@ -152,6 +152,9 @@ run 2 '他ブランチから production へ明示' \
   'git push origin feat/existing:refs/heads/production' feat/existing
 run 0 'production 上でも別ブランチの push は通す' \
   'git push origin feat/existing'
+run 2 'git push --all（refspec を書かずに全ブランチを更新する）' \
+  'git push --all origin' feat/existing
+run 2 'git push --mirror' 'git push --mirror origin' feat/existing
 run 0 '作業ブランチからの push' 'git push -u origin feat/existing' feat/existing
 
 echo

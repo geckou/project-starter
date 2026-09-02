@@ -29,17 +29,28 @@ jobs:
       pull-requests: write
 
     steps:
+      # 未設定のまま動かすと、毎週「CI が 1 つも走らない = マージできない PR」を
+      # 作り続けることになる。黙って続けるより、ここで落として気付けるようにする
+      - name: Require TEMPLATE_SYNC_TOKEN
+        env:
+          TEMPLATE_SYNC_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
+        run: |
+          if [ -z "$TEMPLATE_SYNC_TOKEN" ]; then
+            echo "::error::TEMPLATE_SYNC_TOKEN が未設定です。GITHUB_TOKEN が起こしたイベントはワークフローを起動しないため、このまま PR を作っても ci / branch-guard が走らずマージできません。PAT または GitHub App のトークンをリポジトリの Secrets に登録してください"
+            exit 1
+          fi
+
       # push と PR 作成を GITHUB_TOKEN 以外のトークンで行う。
       # GITHUB_TOKEN のままだと、作られた PR で CI が 1 つも走らない
       - uses: actions/checkout@v7
         with:
-          token: ${{ secrets.TEMPLATE_SYNC_TOKEN || github.token }}
+          token: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
 
       - uses: AndreasAugustin/actions-template-sync@v2
         with:
           source_repo_path: geckou/project-starter
           upstream_branch: production
-          source_gh_token: ${{ secrets.TEMPLATE_SYNC_TOKEN || github.token }}
+          source_gh_token: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
           pr_title: 'chore: テンプレート更新の取り込み'
           pr_labels: template-sync
           pr_commit_msg: 'chore: テンプレート更新の取り込み'

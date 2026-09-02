@@ -349,6 +349,12 @@ fi
 
 # --- push ---------------------------------------------------------------
 if has '(^|[[:space:]])git[[:space:]]+push'; then
+  # --all / --mirror は refspec を書かずに全ブランチ（production を含む）を更新する。
+  # 宛先を 1 つずつ解決する下の判定では拾えないので、ここで落とす
+  if has '(^|[[:space:]])git[[:space:]]+push[^|;&]*[[:space:]](--all|--mirror)([[:space:]]|$)'; then
+    deny 'git push --all / --mirror は禁止です（production を含む全ブランチを更新するため）。push するブランチを明示してください。'
+  fi
+
   # push の宛先ブランチを refspec から取り出す。
   # `git push` / `git push origin` / `git push origin HEAD` はどれも現在ブランチが
   # 宛先になるため、文字列に production が現れなくても production への push になる。

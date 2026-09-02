@@ -153,7 +153,7 @@ function stageSource(sourceDir, sourceManifest, remaining) {
 /**
  * ワークスペース（apps/* と packages/*）の package.json の name を集める。
  *
- * `publishedOnly: false` のときは npm へ公開するワークスペース（`private` が無いもの）を
+ * `includePublished: false` のときは npm へ公開するワークスペース（`private` が無いもの）を
  * 除く。派生は /init-project でそれらを削除して npm から取るため、スコープを
  * 書き換えると存在しないパッケージを指してしまう（`@myproj/eslint-config` 等）。
  */
