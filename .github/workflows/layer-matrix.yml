@@ -39,6 +39,9 @@ env:
 jobs:
   variant:
     runs-on: ubuntu-latest
+    # テンプレート本体専用。派生プロジェクトでは何もしない
+    # （派生では毎 PR で 7 構成 × yarn install が走り、layers.json を持たない派生では必ず失敗する）
+    if: github.repository == 'geckou/project-starter'
     strategy:
       # 1構成の失敗で他を打ち切らない（どの層で壊れたかを一度に知りたい）
       fail-fast: false

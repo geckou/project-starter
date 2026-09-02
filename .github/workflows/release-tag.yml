@@ -34,6 +34,9 @@ concurrency:
 jobs:
   move-tag:
     runs-on: ubuntu-latest
+    # テンプレート本体専用。派生プロジェクトでは何もしない
+    # （派生の v1 タグを動かしてしまう）
+    if: github.repository == 'geckou/project-starter'
     permissions:
       contents: write
 

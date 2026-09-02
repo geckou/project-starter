@@ -16,6 +16,9 @@ env:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    # テンプレート本体専用。派生プロジェクトでは何もしない
+    # （派生では毎週 Issue が起票される）
+    if: github.repository == 'geckou/project-starter'
     permissions:
       contents: read
       issues: write

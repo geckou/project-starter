@@ -63,6 +63,23 @@ rm -rf packages/eslint-config packages/prettier-config packages/commitlint-confi
 `deps` / `json` のエントリ）を消す。実在しないパスは `node scripts/check-layers.mjs` が
 検出する。
 
+### 3.6. テンプレート専用の導線を削除する
+
+パッケージ公開とテンプレート自身の検証のための仕組みは、派生プロジェクトでは使わない。
+ワークフロー側は `if: github.repository == 'geckou/project-starter'` で起動しないが、
+ファイルが残っていると読む人を惑わせるので消してよい（`.templatesyncignore` に
+入っているので、消しても Template Sync で戻ってこない）。
+
+```bash
+rm -f .github/workflows/publish.yml .github/workflows/layer-matrix.yml \
+  .github/workflows/smoke-test.yml .github/workflows/release-tag.yml
+rm -f scripts/release.sh scripts/geckou-release scripts/install-release-command.sh \
+  scripts/test-release-command.sh scripts/check-api-diff.mjs scripts/test-api-diff.sh \
+  scripts/check-workspace-ranges.mjs scripts/test-workspace-ranges.sh
+```
+
+`ci.yml` の該当ステップは `hashFiles` で存在を見ているため、消しても CI は緑のまま通る。
+
 ### 4. `@geckou/*` スコープの一括リネーム
 
 ワークスペース内部のスコープ `@geckou/*` を `@<project-name>/*` に一括置換する。
@@ -192,6 +209,7 @@ Dependabot の設定ファイルが残っていれば削除する（PR が二重
 - [ ] `yarn setup` を実行した（.firebaserc / .env.*）
 - [ ] ルート `package.json` の `name` を変更した
 - [ ] `packages/{eslint,prettier,commitlint}-config` を削除し、`layers.json` から該当の行を消した
+- [ ] テンプレート専用のワークフロー・スクリプト（公開導線・layer-matrix・smoke-test・release-tag）を削除した
 - [ ] `@geckou/` の grep が npm から取得する外部パッケージ（`ui-react` / `ui-core` / `billing` /
       `firebase-client` / `firebase-server` / `eslint-config` / `prettier-config` /
       `commitlint-config`）と
