@@ -39,7 +39,9 @@ function parseArguments(argv) {
       const value = argv[index]
 
       if (value === undefined || value.startsWith('-')) {
-        throw new Error('--published-tarball にはファイルのパスを指定してください')
+        throw new Error(
+          '--published-tarball にはファイルのパスを指定してください'
+        )
       }
 
       if (!fs.existsSync(value)) {
