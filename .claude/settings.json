@@ -5,11 +5,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh .claude/hooks/session-start-git-context.sh"
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start-git-context.sh"
           },
           {
             "type": "command",
-            "command": "sh .claude/hooks/session-start-questions.sh"
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start-questions.sh"
           }
         ]
       }
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh .claude/hooks/pre-git-guard.sh"
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pre-git-guard.sh"
           }
         ]
       }
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh .claude/hooks/post-edit-reminder.sh"
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-edit-reminder.sh"
           }
         ]
       },
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh .claude/hooks/post-git-branch-reminder.sh"
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/post-git-branch-reminder.sh"
           }
         ]
       }
@@ -50,15 +50,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh .claude/hooks/stop-dod-check.sh"
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-dod-check.sh"
           },
           {
             "type": "command",
-            "command": "sh .claude/hooks/stop-roadmap-reminder.sh"
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-roadmap-reminder.sh"
           },
           {
             "type": "command",
-            "command": "sh .claude/hooks/stop-questions-reminder.sh"
+            "command": "sh \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-questions-reminder.sh"
           }
         ]
       }

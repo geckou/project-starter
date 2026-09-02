@@ -53,6 +53,14 @@ module.exports = { ...geckou, tailwindStylesheet: './apps/web/src/styles/globals
 タグ（`<ディレクトリ名>@<バージョン>`）を打つと `.github/workflows/publish.yml` が
 npm へ公開する。`production` への直接 push は禁止なので、version を上げるのは通常の PR。
 
+> **リリース用の仕組みの正はこのリポジトリ。** `scripts/release.sh` /
+> `check-api-diff.mjs` / `geckou-release` / `install-release-command.sh` /
+> `test-api-diff.sh` / `test-release-command.sh` / `.github/workflows/publish.yml` は
+> [`geckou/kit`](https://github.com/geckou/kit) と [`geckou/ui`](https://github.com/geckou/ui)
+> にも同じものがある。**直すときはここを直してから 2 リポジトリへ配る。**
+> `install-release-command.sh` は 3 リポジトリで中身が同じであることを前提にしている
+> （どこから実行しても同じ `geckou-release` が入る）。
+
 ```bash
 # 1. packages/<パッケージ>/package.json の version を上げる PR を出してマージする
 # 2. production でタグを打つ（複数まとめて指定できる）
