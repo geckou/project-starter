@@ -59,6 +59,12 @@ git checkout production && git pull --ff-only
 yarn release eslint-config prettier-config commitlint-config
 ```
 
+**version を上げる PR には、それを参照するワークスペースのレンジの更新も含める。**
+`^0.2.0` のまま 0.3.0 に上げると、そのバージョンはレンジ外になり、yarn はローカルの
+パッケージではなく npm 上の旧版をダウンロードして使う。lint も type-check も通ってしまい、
+`yarn.lock` に tarball の行が増えるのが唯一の手がかりになる。
+`node scripts/check-workspace-ranges.mjs` が検出する（CI と `release.sh` の両方で実行）。
+
 `yarn release` はタグを打つだけで、version は上げない。**HEAD が `origin/production` と
 一致していなければ止まる** — 手元が古いままタグを打つと、GitHub は「タグが指すコミットの
 ワークフローファイル」で実行するため、古い `publish.yml` が動いて意図しない中身が
