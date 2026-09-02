@@ -603,6 +603,16 @@ else
   fail "外部パッケージまで書き換えた"
 fi
 
+# npm へ公開するワークスペース（packages/*-config）は派生に存在せず npm から取るため、
+# スコープを書き換えると yarn install が解決できなくなる
+if grep -q '"@geckou/eslint-config"' "$renamed/apps/functions/package.json" &&
+  grep -q "@geckou/eslint-config" "$renamed/apps/functions/eslint.config.mjs"; then
+  pass "npm へ公開する設定パッケージ（@geckou/eslint-config）は書き換えない"
+else
+  fail "公開パッケージまで書き換えた" \
+    "$(grep -n '@geckou\|@myapp' "$renamed/apps/functions/package.json" "$renamed/apps/functions/eslint.config.mjs" 2>&1)"
+fi
+
 if json_has "$renamed/apps/functions/package.json" "json.name === '@myapp/functions'"; then
   pass "取り込んだワークスペース自身の name もローカルのスコープになる"
 else

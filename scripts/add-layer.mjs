@@ -150,8 +150,14 @@ function stageSource(sourceDir, sourceManifest, remaining) {
   }
 }
 
-/** ワークスペース（apps/* と packages/*）の package.json の name を集める */
-function workspacePackageNames(root) {
+/**
+ * ワークスペース（apps/* と packages/*）の package.json の name を集める。
+ *
+ * `publishedOnly: false` のときは npm へ公開するワークスペース（`private` が無いもの）を
+ * 除く。派生は /init-project でそれらを削除して npm から取るため、スコープを
+ * 書き換えると存在しないパッケージを指してしまう（`@myproj/eslint-config` 等）。
+ */
+function workspacePackageNames(root, { includePublished = true } = {}) {
   const names = []
 
   for (const group of ['apps', 'packages']) {
@@ -166,9 +172,12 @@ function workspacePackageNames(root) {
 
       if (!fs.existsSync(manifest)) continue
 
-      const { name } = readJson(manifest)
+      const { name, private: isPrivate } = readJson(manifest)
 
-      if (typeof name === 'string') names.push(name)
+      if (typeof name !== 'string') continue
+      if (!includePublished && isPrivate !== true) continue
+
+      names.push(name)
     }
   }
 
@@ -194,8 +203,12 @@ function detectScopeRename(stageDir, root) {
 
   if (!sourceScope || !localScope || sourceScope === localScope) return null
 
-  // テンプレート側のワークスペース名（＝内部パッケージ）だけを置き換え対象にする
-  const internal = new Set(sourceNames.map(baseOf))
+  // テンプレート側のワークスペース名（＝内部パッケージ）だけを置き換え対象にする。
+  // npm へ公開するワークスペース（packages/*-config）は派生に存在せず npm から取るため、
+  // 書き換えると yarn install が解決できなくなる
+  const internal = new Set(
+    workspacePackageNames(stageDir, { includePublished: false }).map(baseOf)
+  )
 
   return { sourceScope, localScope, internal }
 }
