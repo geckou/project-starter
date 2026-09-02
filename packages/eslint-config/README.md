@@ -68,6 +68,9 @@ export default [
 
 ## 方針
 
+- **ESLint 本体の推奨（`eslint:recommended`）を含む。** typescript-eslint の `recommended` は
+  これを含まないため、各プリセットで明示的に足している（`no-useless-escape` / `no-empty` /
+  `no-fallthrough` など）。`no-undef` は TypeScript が見るので `.ts` / `.tsx` / `.vue` では無効
 - **フォーマット系のルールは持たない。** Prettier に委譲する（`eslint-config-prettier` で無効化済み）。
   フォーマットは [`@geckou/prettier-config`](https://www.npmjs.com/package/@geckou/prettier-config) を使う
 - 共通の値（無視するパス・共有ルール）は `rules.js` に置き、各プリセットから参照する。

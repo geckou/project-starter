@@ -11,6 +11,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import js from '@eslint/js'
 import { FlatCompat } from '@eslint/eslintrc'
 
 import { commonIgnores, sharedRules } from './rules.js'
@@ -21,6 +22,7 @@ const compat = new FlatCompat({
 
 export default [
   { ignores: [...commonIgnores, '.next/**', 'next-env.d.ts'] },
+  js.configs.recommended,
   ...compat.extends('next/core-web-vitals', 'next/typescript', 'prettier'),
   {
     rules: {

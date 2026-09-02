@@ -8,6 +8,7 @@
 // Next.js / Expo のアプリは ./next / ./expo を使う。プリセットは互いに
 // 独立していて、重ねて使わない（同じプラグインを別々の実体で登録すると
 // ESLint が Cannot redefine plugin で落ちるため）。
+import js from '@eslint/js'
 import prettier from 'eslint-config-prettier'
 import tseslint from 'typescript-eslint'
 
@@ -15,6 +16,9 @@ import { commonIgnores, sharedRules, typescriptRules } from './rules.js'
 
 export default tseslint.config(
   { ignores: commonIgnores },
+  // ESLint 本体の推奨（no-useless-escape / no-empty など）。typescript-eslint の
+  // recommended はこれを含まないので、明示的に足す
+  js.configs.recommended,
   ...tseslint.configs.recommended,
   prettier,
   {

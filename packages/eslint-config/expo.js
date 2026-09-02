@@ -10,6 +10,7 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import js from '@eslint/js'
 import { FlatCompat } from '@eslint/eslintrc'
 import typescriptEslint from '@typescript-eslint/eslint-plugin'
 import tsParser from '@typescript-eslint/parser'
@@ -22,6 +23,7 @@ const compat = new FlatCompat({
 
 export default [
   { ignores: [...commonIgnores, '.expo/**'] },
+  js.configs.recommended,
   ...compat.extends('expo', 'prettier'),
   {
     plugins: {
