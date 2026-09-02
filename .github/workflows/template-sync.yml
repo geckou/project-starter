@@ -7,7 +7,13 @@ name: Template Sync
 # 1. 取り込みたくないファイル（プロジェクト固有にカスタマイズしたもの）は .templatesyncignore に追記する
 # 2. 差分 PR が作られたら、内容を確認してマージする（コンフリクトは PR 上で解決）
 #
-# 親テンプレートは public なので、追加のシークレット登録は不要（github.token で読める）。
+# 3. リポジトリのシークレットに TEMPLATE_SYNC_TOKEN（PAT または GitHub App のトークン）を登録する
+#
+# 親テンプレートは public なので読み取り自体は github.token でもできるが、
+# GITHUB_TOKEN が起こしたイベントは新しいワークフローを起動しないという GitHub の仕様があり、
+# その場合この workflow が作る PR で ci / branch-guard / docs-check が一切走らない
+# （required check が Expected のままマージできない）。PR にワークフローを起こすために
+# TEMPLATE_SYNC_TOKEN が要る。
 
 on:
   schedule:
@@ -23,13 +29,17 @@ jobs:
       pull-requests: write
 
     steps:
+      # push と PR 作成を GITHUB_TOKEN 以外のトークンで行う。
+      # GITHUB_TOKEN のままだと、作られた PR で CI が 1 つも走らない
       - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.TEMPLATE_SYNC_TOKEN || github.token }}
 
       - uses: AndreasAugustin/actions-template-sync@v2
         with:
           source_repo_path: geckou/project-starter
           upstream_branch: production
-          source_gh_token: ${{ github.token }}
+          source_gh_token: ${{ secrets.TEMPLATE_SYNC_TOKEN || github.token }}
           pr_title: 'chore: テンプレート更新の取り込み'
           pr_labels: template-sync
           pr_commit_msg: 'chore: テンプレート更新の取り込み'

@@ -28,6 +28,12 @@ jobs:
             release/*|hotfix/*)
               echo "OK: $HEAD_REF から production への PR は許可されています"
               ;;
+            chore/template_sync*)
+              # Template Sync が作る PR。テンプレート更新の取り込みはリリース単位に
+              # 束ねる意味が薄いため、renovate/* と同じ扱いで許可する
+              # （production へのマージは本番デプロイを発火するので、タイミングは人が選ぶ）
+              echo "OK: $HEAD_REF はテンプレート更新の取り込みのため許可されています"
+              ;;
             renovate/*)
               # 依存更新（Renovate）はプロダクトの機能変更ではなく、リリース単位に
               # 束ねる意味が薄いため例外として許可する。ただし production への
