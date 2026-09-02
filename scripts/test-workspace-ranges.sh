@@ -11,7 +11,7 @@ set -u
 #   5. ~ は minor を固定する
 #   6. "*" と workspace: は常に通す
 #   7. 外部パッケージ（ローカルに無い名前）は見ない
-#   8. 判定できないレンジは警告して素通しする
+#   8. 判定できないレンジ（複合レンジ・git 参照）は警告して素通しする
 #   9. dependencies 以外のフィールドも見る
 
 cd "$(dirname "$0")/.."
@@ -161,15 +161,17 @@ fi
 
 echo "8. 判定できないレンジは警告して素通しする"
 
-make_repo 0.3.0 'github:geckou/lib#main'
-output=$(run)
-status=$?
+for range in 'github:geckou/lib#main' '>=1.2.0 <2.0.0' '^1.0.0 || ^2.0.0'; do
+  make_repo 9.9.9 "$range"
+  output=$(run)
+  status=$?
 
-if [ "$status" -eq 0 ] && echo "$output" | grep -q '\[warn\]'; then
-  pass "警告して通す"
-else
-  fail "警告して通す" "$output"
-fi
+  if [ "$status" -eq 0 ] && echo "$output" | grep -q '\[warn\]'; then
+    pass "警告して通す: [$range]"
+  else
+    fail "警告して通す: [$range]" "$output"
+  fi
+done
 
 echo "9. dependencies 以外も見る"
 

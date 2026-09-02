@@ -44,8 +44,10 @@ const collectWorkspaces = () =>
       .map((file) => ({ file, json: readJson(file) }))
   })
 
+// 全体一致で見る。前方一致にすると `>=1.2.0 <2.0.0` のような複合レンジから
+// 先頭の 1.2.0 だけを拾って「判定できた」ことにしてしまう
 const parseVersion = (value) => {
-  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(value)
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(value.trim())
 
   return match ? match.slice(1, 4).map(Number) : null
 }
