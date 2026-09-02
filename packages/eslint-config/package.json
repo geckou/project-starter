@@ -1,19 +1,23 @@
 {
   "name": "@geckou/eslint-config",
-  "version": "0.1.1",
-  "description": "Shared ESLint flat config for geckou projects (base / next / expo)",
+  "version": "0.2.0",
+  "description": "Shared ESLint flat config for geckou projects (base / next / expo / vue / react)",
   "type": "module",
   "main": "./index.js",
   "exports": {
     ".": "./index.js",
     "./next": "./next.js",
     "./expo": "./expo.js",
+    "./vue": "./vue.js",
+    "./react": "./react.js",
     "./package.json": "./package.json"
   },
   "files": [
     "index.js",
     "next.js",
     "expo.js",
+    "vue.js",
+    "react.js",
     "rules.js",
     "README.md",
     "LICENSE"
@@ -40,7 +44,10 @@
     "eslint-config-next": "^15.5.23",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-import": "^2.31.0",
-    "typescript-eslint": "^8.67.0"
+    "eslint-plugin-react-hooks": "^7.0.0",
+    "eslint-plugin-vue": "^10.0.0",
+    "typescript-eslint": "^8.67.0",
+    "vue-eslint-parser": "^10.0.0"
   },
   "peerDependencies": {
     "eslint": ">=9"

@@ -29,3 +29,15 @@ export const typescriptRules = {
     },
   ],
 }
+
+// Vue のテンプレート記法に関する規約。属性・イベント名はケバブケースへ
+// 変換せず、コンポーネント側の props / emits 名のまま書く
+export const vueRules = {
+  // 'multi-line' は Prettier の折り返しと衝突する（1 行だった if が
+  // 折り返された瞬間に違反になる）。行の形に依存しない 'all' を使う
+  curly: ['error', 'all'],
+  // 1 語のコンポーネント名（Button.vue 等）を許可する
+  'vue/multi-word-component-names': 'off',
+  'vue/attribute-hyphenation': ['error', 'never', { ignore: ['custom-prop'] }],
+  'vue/v-on-event-hyphenation': ['error', 'never', { autofix: false }],
+}
