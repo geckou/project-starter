@@ -9,6 +9,7 @@
 // Hooks のルール（依存配列の漏れ・条件付き呼び出し）はテストで拾えない
 // ため、このプリセットの主目的はそこにある。
 import reactHooks from 'eslint-plugin-react-hooks'
+import js from '@eslint/js'
 import prettier from 'eslint-config-prettier'
 import tseslint from 'typescript-eslint'
 
@@ -16,6 +17,7 @@ import { commonIgnores, sharedRules } from './rules.js'
 
 export default [
   { ignores: commonIgnores },
+  js.configs.recommended,
   ...tseslint.configs.recommended,
   prettier,
   {
