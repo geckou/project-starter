@@ -11,7 +11,7 @@ set -u
 #   5. 未登録のパッケージ名は止める
 #   6. 複数のリポジトリに同名のパッケージがあれば止める
 #   7. 別々のリポジトリのパッケージをまとめて指定したら止める
-#   8. 消えたリポジトリの登録は無視する
+#   8. 消えたリポジトリの登録は無視する。worktree（.git がファイル）は無視しない
 #   9. レジストリが無い / パッケージ未指定は止める
 #
 # 実際のタグ打ちは行わない。release.sh は引数を書き出すだけのものに差し替える。
@@ -161,6 +161,21 @@ if [ -f "$WORK/kit/args.txt" ]; then
   pass "存在しない登録があっても動く"
 else
   fail "存在しない登録があっても動く" "$output"
+fi
+
+# git worktree / submodule では .git がディレクトリではなくファイルになる。
+# .git のディレクトリ判定で実在チェックをすると、ここで見落とす
+make_repo "$WORK/worktree-style" wt-package
+rm -rf "$WORK/worktree-style/.git"
+printf 'gitdir: /somewhere/.git/worktrees/x\n' > "$WORK/worktree-style/.git"
+printf '%s\n' "$WORK/worktree-style" >> "$GECKOU_RELEASE_REGISTRY"
+
+output=$(cd / && "$COMMAND" wt-package 2>&1)
+
+if [ -f "$WORK/worktree-style/args.txt" ]; then
+  pass "worktree（.git がファイル）でも解決できる"
+else
+  fail "worktree（.git がファイル）でも解決できる" "$output"
 fi
 
 echo "9. レジストリが無い / パッケージ未指定"
