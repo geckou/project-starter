@@ -25,12 +25,23 @@ function getAdminApp() {
   return initializeApp()
 }
 
-// 環境変数が未設定の場合（テンプレート初期状態）はビルドを通すためスキップ
-const isConfigured =
-  process.env.FIREBASE_SERVICE_ACCOUNT_KEY ||
-  process.env.GOOGLE_APPLICATION_CREDENTIALS
+// 初期化を試み、失敗したときだけ「未設定」として扱う。
+//
+// 環境変数の有無で判定してはいけない。Cloud Functions / Cloud Run の ADC は
+// メタデータサーバー経由で認証するため GOOGLE_APPLICATION_CREDENTIALS が付かず、
+// 「本番は ADC を使う」という .env.example どおりの設定で保護ページが 500 になる。
+// テンプレート初期状態（認証情報がまったく無い）でもビルドは通す必要があるため、
+// throw は握って Proxy へフォールバックする
+function initAdminApp() {
+  try {
+    return getAdminApp()
+  } catch (error) {
+    console.warn('firebase-admin の初期化に失敗しました', error)
+    return null
+  }
+}
 
-const adminApp = isConfigured ? getAdminApp() : null
+const adminApp = initAdminApp()
 
 // 未設定のままアクセスした場合に原因が分かるエラーを投げる
 // （null のままだと「Cannot read properties of null」になり原因が追えない）
@@ -38,7 +49,7 @@ function createNotConfiguredProxy<T extends object>(): T {
   return new Proxy({} as T, {
     get() {
       throw new Error(
-        'firebase-admin が未設定です。FIREBASE_SERVICE_ACCOUNT_KEY または GOOGLE_APPLICATION_CREDENTIALS を設定してください'
+        'firebase-admin を初期化できませんでした。Cloud Run / Cloud Functions では ADC が自動で使われます。それ以外の環境では FIREBASE_SERVICE_ACCOUNT_KEY または GOOGLE_APPLICATION_CREDENTIALS を設定してください'
       )
     },
   })
