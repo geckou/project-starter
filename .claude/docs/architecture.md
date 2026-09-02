@@ -128,6 +128,19 @@ const { user, loading } = useAuthStore()
 import { uploadFile, deleteFile, getFileUrl } from '@geckou/shared/storage'
 ```
 
+### アップロードの制限（`storage.rules`）
+
+`users/{uid}/**` への書き込みは本人のみで、さらに次の 2 つを満たすものに限る。
+
+| 制限 | 値 | 理由 |
+| --- | --- | --- |
+| サイズ | 10MB 未満 | 無制限だと課金と悪用の入口になる |
+| 種別 | `image/*` | 参照実装の想定（アバター・写真） |
+
+画像以外も置くプロジェクトは `contentType` の条件を広げる。削除は
+`request.resource` を持たないため、この 2 条件を課さない（`allow delete` を別に書く）。
+拒否ケースは `tests/storage-rules.test.ts` にあり、`yarn test:rules` で検証する。
+
 ## プッシュ通知（FCM）
 
 | 場面       | ファイル                                       | 用途                          |
