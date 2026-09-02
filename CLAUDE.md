@@ -435,7 +435,8 @@ ESLint / Prettier / commitlint の設定は、ツール側が**共有設定を n
 - `type-enum` の値は本ファイルの「コミットメッセージ規約」と `.claude/hooks/pre-git-guard.sh`
   にもある。フックはシェルなので npm パッケージを参照できず、**ここだけは重複が残る**。
   type を増減するときは 3 箇所とも直す
-- 公開は `yarn release <パッケージのディレクトリ名>...`（複数可）。version を上げる PR をマージしてから、
+- 公開は `yarn release <パッケージのディレクトリ名>...`（複数可。`bash scripts/install-release-command.sh` を
+  一度実行すると `geckou-release <名前>...` をどこからでも使える）。version を上げる PR をマージしてから、
   `production` でタグを打つ。**`production` に入っていないコミットからは公開できない**
   （ワークフローが検査する。詳細は `packages/README.md`）
 - **公開済みの型定義と比べて、破壊的変更が patch に載っていないかを `release.sh` が検査する。**
@@ -527,6 +528,8 @@ node scripts/adopt-references.mjs --repo <派生のパス>  # 既存の派生を
 bash scripts/test-adopt-references.sh                 # 上記スクリプトの回帰テスト
 
 yarn release <パッケージのディレクトリ名>...           # packages/*-config を npm へ公開する（複数可）
+bash scripts/install-release-command.sh               # geckou-release をどこからでも使えるようにする
+bash scripts/test-release-command.sh                  # 上記コマンドの回帰テスト
 bash scripts/test-api-diff.sh        # リリース時の API 差分検査の回帰テスト
 ```
 

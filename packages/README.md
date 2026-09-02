@@ -66,6 +66,31 @@ yarn release eslint-config prettier-config commitlint-config
 
 公開済みのバージョンに対してタグを打っても publish はスキップされる（冪等）。
 
+#### どこからでも実行する
+
+`yarn release` はリポジトリの中でしか動かない（yarn がスクリプトを引けないため）。
+各リポジトリで一度だけ次を実行すると、`geckou-release` がどのディレクトリからでも使える。
+
+```bash
+bash scripts/install-release-command.sh
+```
+
+やっているのは 2 つだけ。リポジトリの絶対パスを
+`~/.config/geckou/release-repos` へ登録し、`scripts/geckou-release` を
+`~/.local/bin` へ置く（場所は `XDG_CONFIG_HOME` / `XDG_BIN_HOME` に従う）。
+
+```bash
+geckou-release eslint-config          # project-starter のものだと自動で分かる
+geckou-release core vue --force       # ui のもの
+```
+
+パッケージ名から**どのリポジトリのものかを引いて**、そのリポジトリの
+`scripts/release.sh` に渡すだけで、検査もタグ打ちも `release.sh` が行う。
+`packages/<名前>` が見つからないとき・複数のリポジトリに同名があるとき・
+別々のリポジトリのものをまとめて指定したときは、何もせずに止まる。
+
+リポジトリを移動したら、そのリポジトリでもう一度実行する。
+
 **タグを打つ前に、公開済みの型定義と比べて破壊的変更が patch に載っていないかを検査する。**
 差分があると止まるので、minor 以上に上げ直すか、互換性のある追加だと分かっていれば `--force` を付ける。
 

@@ -40,6 +40,7 @@
     "test:rules": "bash scripts/test-rules.sh",
     "test:hooks": "bash scripts/test-hooks.sh",
     "test:api-diff": "bash scripts/test-api-diff.sh",
+    "test:release-command": "bash scripts/test-release-command.sh",
     "check:docs": "bash scripts/check-docs.sh",
     "release": "bash scripts/release.sh"
   },
