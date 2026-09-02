@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.29.7",
-    "@geckou/eslint-config": "^0.1.0",
+    "@geckou/eslint-config": "^0.2.0",
     "@types/react": "~18.3.0",
     "eslint": "^9.39.5",
     "tailwindcss": "^3.4.0",

@@ -33,6 +33,8 @@
         "scripts/use-env.sh",
         "packages/eslint-config/index.js",
         "packages/eslint-config/next.js",
+        "packages/eslint-config/react.js",
+        "packages/eslint-config/vue.js",
         "packages/eslint-config/rules.js",
         "packages/prettier-config/index.cjs",
         "packages/commitlint-config/index.cjs",

@@ -424,13 +424,13 @@ ESLint / Prettier / commitlint の設定は、ツール側が**共有設定を n
 
 | パッケージ | 参照する側 |
 | --- | --- |
-| `@geckou/eslint-config`（`.` / `./next` / `./expo`） | 各ワークスペースの `eslint.config.mjs` |
+| `@geckou/eslint-config`（`.` / `./next` / `./expo` / `./vue` / `./react`） | 各ワークスペースの `eslint.config.mjs` |
 | `@geckou/prettier-config` | `.prettierrc.cjs` |
 | `@geckou/commitlint-config` | `commitlint.config.cjs` |
 
 - **ルールを変えるときは `packages/*-config` を直す。** 参照側のファイルに書き足すのは、
   プロジェクト固有の値だけ（例: `.prettierrc.cjs` の `tailwindStylesheet`）
-- ESLint のプリセットは**重ねて使わない**。`.` / `./next` / `./expo` はそれぞれ単独で完結する
+- ESLint のプリセットは**重ねて使わない**。各プリセットはそれぞれ単独で完結する
   （同じプラグインを別々の実体で登録すると ESLint が `Cannot redefine plugin` で落ちるため）
 - `type-enum` の値は本ファイルの「コミットメッセージ規約」と `.claude/hooks/pre-git-guard.sh`
   にもある。フックはシェルなので npm パッケージを参照できず、**ここだけは重複が残る**。
