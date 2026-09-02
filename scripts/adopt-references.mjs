@@ -103,7 +103,6 @@ const PRETTIER_IGNORE_ENTRIES = [
 const MANUAL_STEPS = [
   'Renovate の GitHub App をインストールし、Mend（app.mend.io）で Silent mode を OFF / Automated PRs を ON にする（→ .claude/docs/dependencies.md）',
   'リポジトリ設定で Dependency graph と Dependabot alerts を有効化する（vulnerabilityAlerts がこれを読む）',
-  'ブランチ保護の Required status check の名前を `ci / ci` に変える（reusable workflow はチェック名が「呼び出し側のジョブ ID / 呼ばれる側のジョブ ID」になる）',
   'Template Sync（.github/workflows/template-sync.yml と TEMPLATE_SYNC_TOKEN）を設定する',
   'Dependabot の設定ファイルが残っていれば削除する（Renovate と PR が二重に立つ）',
 ]

@@ -302,10 +302,6 @@ ESLint / Prettier / commitlint も npm パッケージの参照に切り替え�
 
 スクリプトが**やらない**こと（人にしかできない・触るべきでない）:
 
-- **Required status check の名前を `ci / ci` に変える。** reusable workflow を呼ぶと
-  チェック名が `<呼び出し側のジョブ ID> / <呼ばれる側のジョブ ID>` になる。
-  `.github/rulesets/production.json` を取り込んでいる場合、`{ "context": "ci" }` のままだと
-  **出力されないチェックを待ち続けてマージできなくなる**
 - Renovate App のインストールと Silent mode の解除、Dependency graph / Dependabot alerts の
   有効化（→ `.claude/docs/dependencies.md`「派生プロジェクトでの前提」）
 - Template Sync の設定
