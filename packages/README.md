@@ -66,6 +66,24 @@ yarn release eslint-config prettier-config commitlint-config
 
 公開済みのバージョンに対してタグを打っても publish はスキップされる（冪等）。
 
+**タグを打つ前に、公開済みの型定義と比べて破壊的変更が patch に載っていないかを検査する。**
+差分があると止まるので、minor 以上に上げ直すか、互換性のある追加だと分かっていれば `--force` を付ける。
+
+```console
+$ yarn release firebase-client
+[error] @geckou/firebase-client の型定義が変わっているのに patch 上げになっています（0.1.1 → 0.1.1）
+    変更 dist/index.d.ts
+      -export declare function initFirebase(config: {
+      +export declare function initFirebase(breakingRequiredArgument: string, config: {
+
+  破壊的変更なら minor 以上に上げてください。互換性のある追加なら --force で続行できます。
+```
+
+型定義を持たないパッケージ（`packages/*-config` のような素の JS）は API の判定ができないので、
+内容が変わっていることを警告するだけで止めない。未公開・ネットワーク不通・ビルド失敗のときも
+素通しする（事故を防ぐ安全網であって、公開を守る仕組みではない。そちらは `publish.yml` の
+`production` 包含チェック）。
+
 **公開できるのは `production` に入っているコミットだけ。** タグも手動実行も任意の ref から
 起動できるので、そのままだと「version の変更を PR で入れてから公開する」手順を迂回して、
 レビューを通っていないコードを npm へ出せてしまう。ワークフローは起動元のコミットが

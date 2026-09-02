@@ -438,6 +438,9 @@ ESLint / Prettier / commitlint の設定は、ツール側が**共有設定を n
 - 公開は `yarn release <パッケージのディレクトリ名>...`（複数可）。version を上げる PR をマージしてから、
   `production` でタグを打つ。**`production` に入っていないコミットからは公開できない**
   （ワークフローが検査する。詳細は `packages/README.md`）
+- **公開済みの型定義と比べて、破壊的変更が patch に載っていないかを `release.sh` が検査する。**
+  差分があると止まるので、minor 以上に上げ直すか、互換の追加だと分かっていれば `--force` を付ける
+  （検査できない場合は素通しする安全網。実装は `scripts/check-api-diff.mjs`）
 
 ### 依存更新は Renovate の preset で配る
 
@@ -524,6 +527,7 @@ node scripts/adopt-references.mjs --repo <派生のパス>  # 既存の派生を
 bash scripts/test-adopt-references.sh                 # 上記スクリプトの回帰テスト
 
 yarn release <パッケージのディレクトリ名>...           # packages/*-config を npm へ公開する（複数可）
+bash scripts/test-api-diff.sh        # リリース時の API 差分検査の回帰テスト
 ```
 
 ## テンプレート起因の問題を親リポジトリに報告
