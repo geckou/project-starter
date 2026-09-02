@@ -111,6 +111,17 @@ jobs:
         if: hashFiles('scripts/test-release-command.sh') != ''
         run: bash scripts/test-release-command.sh
 
+      # packages/* の version が、それを参照するワークスペースのレンジを
+      # 満たしているか。満たしていないと yarn が npm の旧版を落としてきて、
+      # ローカルの変更が使われないまま lint も type-check も通ってしまう
+      - name: Workspace Range Check
+        if: hashFiles('scripts/check-workspace-ranges.mjs') != ''
+        run: node scripts/check-workspace-ranges.mjs
+
+      - name: Workspace Range Check Test
+        if: hashFiles('scripts/test-workspace-ranges.sh') != ''
+        run: bash scripts/test-workspace-ranges.sh
+
       - run: yarn install --frozen-lockfile
 
       # turbo のローカルキャッシュを実行間で持ち越し、変更のないパッケージの
