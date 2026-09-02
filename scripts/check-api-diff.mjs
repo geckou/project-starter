@@ -35,7 +35,18 @@ function parseArguments(argv) {
 
     if (argument === '--published-tarball') {
       index += 1
-      options.publishedTarball = argv[index] ?? ''
+
+      const value = argv[index]
+
+      if (value === undefined || value.startsWith('-')) {
+        throw new Error('--published-tarball にはファイルのパスを指定してください')
+      }
+
+      if (!fs.existsSync(value)) {
+        throw new Error(`--published-tarball のファイルがありません: ${value}`)
+      }
+
+      options.publishedTarball = value
     } else if (options.package === null) {
       options.package = argument
     } else {

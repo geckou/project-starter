@@ -60,8 +60,12 @@ JSON
 # 公開済みの tarball を作る
 pack_published() {
   local dir=$1
-  (cd "$dir/packages/demo" && npm pack --silent --pack-destination "$dir" > /dev/null 2>&1)
-  echo "$dir/geckou-demo-0.1.1.tgz"
+  local packed
+
+  # ファイル名は npm の命名に任せる（version を変えても壊れないように）
+  packed=$(cd "$dir/packages/demo" && npm pack --silent --pack-destination "$dir" 2>/dev/null | tail -1)
+
+  echo "$dir/$packed"
 }
 
 check() {
@@ -211,6 +215,22 @@ if (cd "$work" && node "$SCRIPT") > /dev/null 2>&1; then
   fail "引数なしがエラーにならない"
 else
   pass "引数なしはエラーになる"
+fi
+
+output=$(cd "$work" && node "$SCRIPT" demo --published-tarball 2>&1)
+
+if printf '%s' "$output" | grep -q 'パスを指定'; then
+  pass "--published-tarball の値が無ければ、その旨のエラーになる"
+else
+  fail "値なしのエラーが分かりにくい" "$output"
+fi
+
+output=$(cd "$work" && node "$SCRIPT" demo --published-tarball /nope.tgz 2>&1)
+
+if printf '%s' "$output" | grep -q 'ファイルがありません'; then
+  pass "--published-tarball のファイルが無ければ、その旨のエラーになる"
+else
+  fail "存在しないファイルのエラーが分かりにくい" "$output"
 fi
 
 rm -rf "$work"
