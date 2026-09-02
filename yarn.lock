@@ -2120,20 +2120,6 @@
   resolved "https://registry.yarnpkg.com/@geckou/billing/-/billing-0.1.3.tgz#89e511a72a151eb4aad6d5d0de056fd0d11ea907"
   integrity sha512-S7BhlGCLqsUZK563FFlgj/UpzVLHzC9l+xXh81c6Wu39oN4P4SF7VClxevYT74mwmCTjL+CtUti5aX4aQBiglw==
 
-"@geckou/eslint-config@^0.1.0":
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/@geckou/eslint-config/-/eslint-config-0.1.1.tgz#18b91ebcf642b3ad14ae1be07c5a4930c7eb193a"
-  integrity sha512-Tm6u9wW9o3TQS6T9GH7UcZfY+siPNfAUtmBc3brFWHodva8KNC5KLj09vzVJdxXMQIuJEpsnZb6eG9OYKlH4GQ==
-  dependencies:
-    "@eslint/eslintrc" "^3.0.0"
-    "@typescript-eslint/eslint-plugin" "^8.0.0"
-    "@typescript-eslint/parser" "^8.0.0"
-    eslint-config-expo "~8.0.0"
-    eslint-config-next "^15.5.23"
-    eslint-config-prettier "^9.0.0"
-    eslint-plugin-import "^2.31.0"
-    typescript-eslint "^8.67.0"
-
 "@geckou/firebase-client@^0.1.0":
   version "0.1.0"
   resolved "https://registry.yarnpkg.com/@geckou/firebase-client/-/firebase-client-0.1.0.tgz#2e96fddb22ca00d9902ac0a78a337eb0be9ac318"
@@ -5882,7 +5868,7 @@ eslint-plugin-jsx-a11y@^6.10.0:
     safe-regex-test "^1.0.3"
     string.prototype.includes "^2.0.1"
 
-eslint-plugin-react-hooks@^4.6.2, eslint-plugin-react-hooks@^5, eslint-plugin-react-hooks@^5.0.0, eslint-plugin-react-hooks@^7.0.0:
+eslint-plugin-react-hooks@^4.6.2, eslint-plugin-react-hooks@^5, eslint-plugin-react-hooks@^5.0.0:
   version "5.2.0"
   resolved "https://registry.yarnpkg.com/eslint-plugin-react-hooks/-/eslint-plugin-react-hooks-5.2.0.tgz#1be0080901e6ac31ce7971beed3d3ec0a423d9e3"
   integrity sha512-+f15FfK64YQwZdJNELETdn5ibXEUQmW1DZL6KXhNnc2heoy/sg9VJJeT7n8TlMWouzWqSWavFkIhHyIbIAEapg==

@@ -21,8 +21,10 @@ export default [
   {
     files: ['**/*.{ts,tsx,js,jsx}'],
     plugins: { 'react-hooks': reactHooks },
-    // flat config の同梱プリセットは版によって名前が変わる（recommended /
-    // recommended-latest）ため、ルール定義だけを取り出して使う
+    // v5 の configs.recommended は eslintrc 形式（plugins を含む）なので、
+    // そのまま flat config に展開できない。ルール定義だけを取り出して使う。
+    // v7 の recommended は React Compiler のルール群まで含み内容が別物なので、
+    // 依存は ^5.0.0 に固定している
     rules: reactHooks.configs.recommended.rules,
   },
   {

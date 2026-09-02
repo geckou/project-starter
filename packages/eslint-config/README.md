@@ -52,7 +52,8 @@ import vue from '@geckou/eslint-config/vue'
 export default vue
 ```
 
-Vue と React が同居するリポジトリでは、`files` で対象を分けた上で並べる。
+Vue と React が同居するリポジトリでは、**それぞれのディレクトリに絞って**並べる。
+対象が重なると同じファイルに 2 つのプリセットが当たる。
 
 ```js
 // リポジトリ直下の eslint.config.mjs
@@ -60,12 +61,10 @@ import react from '@geckou/eslint-config/react'
 import vue from '@geckou/eslint-config/vue'
 
 export default [
-  ...vue.map((config) => ({ ...config, files: config.files ?? ['**/*.vue', '**/*.ts'] })),
+  ...vue.map((config) => ({ ...config, files: ['packages/vue/**/*.{vue,ts}'] })),
   ...react.map((config) => ({ ...config, files: ['packages/react/**/*.{ts,tsx}'] })),
 ]
 ```
-
-プロジェクト固有のルールを足す場合は、配列に足す形で書く。
 
 ## 方針
 
