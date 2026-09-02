@@ -69,10 +69,14 @@ rm -rf packages/eslint-config packages/prettier-config packages/commitlint-confi
 
 > ⚠️ **npm から取得する外部パッケージは置換しない。**
 > `@geckou/ui-react` / `@geckou/ui-core`（[`geckou/ui`](https://github.com/geckou/ui) 管理）、
-> `@geckou/billing`（[`geckou/kit`](https://github.com/geckou/kit) 管理）、
+> `@geckou/billing` / `@geckou/firebase-client` / `@geckou/firebase-server`
+> （[`geckou/kit`](https://github.com/geckou/kit) 管理）、
 > `@geckou/eslint-config` / `@geckou/prettier-config` / `@geckou/commitlint-config`
 > （テンプレート本体から公開している第0層の設定）が対象であり、
-> リネームすると依存が解決できなくなる。下の手順はこの 6 つを除外している。
+> リネームすると依存が解決できなくなる。下の手順はこの 8 つを除外している。
+>
+> 判断の基準は「`private: true` のワークスペースかどうか」。npm から取るものは
+> ワークスペースとして存在しないので、増えたらこのリストにも足す。
 
 対象は package.json の name / 依存だけでなく、以下すべてに及ぶ:
 
@@ -106,7 +110,7 @@ grep -rl '@geckou/' $EXCLUDES . | grep -v "$SELF"
 # 一括置換（npm から取得する外部パッケージは温存する）
 # デリミタは # を使う。| だと正規表現の選択と衝突する
 grep -rl '@geckou/' $EXCLUDES . | grep -v "$SELF" \
-  | xargs sed -i '' -E 's#@geckou/(ui-react|ui-core|billing|eslint-config|prettier-config|commitlint-config)#@@KEEP@@\1#g; s#@geckou/#@<project-name>/#g; s#@@KEEP@@#@geckou/#g'
+  | xargs sed -i '' -E 's#@geckou/(ui-react|ui-core|billing|firebase-client|firebase-server|eslint-config|prettier-config|commitlint-config)#@@KEEP@@\1#g; s#@geckou/#@<project-name>/#g; s#@@KEEP@@#@geckou/#g'
 
 # 置換漏れの確認
 # （温存した外部パッケージと、SKILL.md 内の記述だけが残っていれば完了）
@@ -189,7 +193,8 @@ Dependabot の設定ファイルが残っていれば削除する（PR が二重
 - [ ] ルート `package.json` の `name` を変更した
 - [ ] `packages/{eslint,prettier,commitlint}-config` を削除し、`layers.json` から該当の行を消した
 - [ ] `@geckou/` の grep が npm から取得する外部パッケージ（`ui-react` / `ui-core` / `billing` /
-      `eslint-config` / `prettier-config` / `commitlint-config`）と
+      `firebase-client` / `firebase-server` / `eslint-config` / `prettier-config` /
+      `commitlint-config`）と
       `.claude/skills/init-project/SKILL.md`（この手順書自身）以外 0 件になった
 - [ ] `yarn install` 後に `yarn type-check` / `yarn test` が通る
 - [ ] `apps/mobile/app.config.ts` の識別子を変更した（mobile 層を残した場合）
