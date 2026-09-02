@@ -105,6 +105,12 @@ jobs:
         if: hashFiles('scripts/test-api-diff.sh') != ''
         run: bash scripts/test-api-diff.sh
 
+      # どこからでも公開できるようにするコマンドの回帰テスト。
+      # 偽のリポジトリを作って動かすだけなので node も yarn も要らない
+      - name: Release Command Test
+        if: hashFiles('scripts/test-release-command.sh') != ''
+        run: bash scripts/test-release-command.sh
+
       - run: yarn install --frozen-lockfile
 
       # turbo のローカルキャッシュを実行間で持ち越し、変更のないパッケージの
