@@ -141,6 +141,46 @@ run 2 '解決できないパスへの cd は安全側（検査対象に残す）
   'cd "$OTHER_REPO" && git commit -m "なにか"'
 
 echo
+echo '=== production への push は書き方を問わず止める ==='
+run 2 'git push（引数なし）' 'git push'
+run 2 'git push origin HEAD' 'git push origin HEAD'
+run 2 'git push -u origin HEAD' 'git push -u origin HEAD'
+run 2 'git push origin（リモートのみ）' 'git push origin'
+run 2 'リダイレクトを区切りと誤認しない' 'git push 2>&1'
+run 2 'refs/heads/production を明示' 'git push origin HEAD:refs/heads/production'
+run 2 '他ブランチから production へ明示' \
+  'git push origin feat/existing:refs/heads/production' feat/existing
+run 0 'production 上でも別ブランチの push は通す' \
+  'git push origin feat/existing'
+run 0 '作業ブランチからの push' 'git push -u origin feat/existing' feat/existing
+
+echo
+echo '=== hotfix/* への push も確認を求める（staging へデプロイされる） ==='
+run 0 'hotfix/* への push は ask（deny ではない）' \
+  'git push origin hotfix/1.0.1' feat/existing
+
+echo
+echo '=== 検査の迂回を止める ==='
+run 2 '絶対パスの git（production 直コミット）' "/usr/bin/git commit -m 'feat: x'"
+run 2 '絶対パスの git（規約外メッセージ）' \
+  "/usr/bin/git commit -m 'なにか'" feat/existing
+run 2 '-c core.hooksPath で husky を無効化' \
+  "git -c core.hooksPath=/dev/null commit -m 'feat: x'" feat/existing
+run 2 'here-string を heredoc と誤認しない' \
+  "grep <<<'pattern' file
+git commit -m 'wip'" feat/existing
+
+echo
+echo '=== 書き方の違いで取りこぼさない・誤検知しない ==='
+run 2 'checkout -B も命名規則を見る' 'git checkout -B wip'
+run 2 'checkout -q -b（フラグが間に入る）' 'git checkout -q -b wip'
+run 0 'クォート付きのブランチ名' 'git checkout -b "feat/user-profile"'
+run 0 '--message=<メッセージ>' 'git commit --message=feat:\ x' feat/existing
+run 0 'fetch の production は force push の対象ではない' \
+  'git fetch origin production && git push --force-with-lease origin feat/existing' \
+  feat/existing
+
+echo
 echo '=== 分岐元をフラグと誤認しない ==='
 run 0 'checkout -b <name> -q（分岐元は現在ブランチ = production）' \
   'git checkout -b docs/example -q'

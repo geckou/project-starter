@@ -234,7 +234,7 @@ functions 層を持たない構成は API を持たない。「API Routes で代
   未回答の確認事項でブロックされている部分があるならそれも
 - DoD が通ってから出す。**セルフレビュー（`/review`）もここに含む** — 赤い PR も、
   自分で読めば分かる指摘が残った PR も、人に見せない
-- `release/*` への push はデプロイを発火するため、`pre-git-guard.sh` が承認を求める（PR 経由は対象外）
+- `release/*` / `hotfix/*` への push はデプロイを発火するため、`pre-git-guard.sh` が承認を求める（PR 経由は対象外）
 - **マージは人**。特に `release/*` → `production` はレビュー必須（→「マージルール」）
 
 ## テスト方針
@@ -376,7 +376,7 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 |---|---|---|
 | SessionStart | `session-start-git-context.sh` | `git fetch origin --prune` を実行し、現在ブランチ・`origin/production` との差分・進行中の `release/*` を文脈に入れる（古い情報のまま作業を始めるのを防ぐ） |
 | SessionStart | `session-start-questions.sh` | 未回答の確認事項（`.claude/docs/questions.md`）を冒頭の文脈に入れる |
-| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名・分岐元・fetch 鮮度・コミットメッセージ形式・`--no-verify` 迂回・`production` への直接 push を**実行前にブロック**。`release/*` への push はユーザー承認を求める。検査対象は**このリポジトリへの git 操作だけ**（コマンド中の `cd` / `git -C` を解釈し、別リポジトリへの操作は素通しする） |
+| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名・分岐元・fetch 鮮度・コミットメッセージ形式・`--no-verify` / `-c core.hooksPath` による迂回・`production` への直接 push を**実行前にブロック**。`release/*` / `hotfix/*` への push はユーザー承認を求める。検査対象は**このリポジトリへの git 操作だけ**（コマンド中の `cd` / `git -C` を解釈し、別リポジトリへの操作は素通しする） |
 | PostToolUse (Bash) | `post-git-branch-reminder.sh` | ブランチ作成直後、進行中の `release/*` があればマージ要否の確認を促す |
 | PostToolUse (Edit/Write) | `post-edit-reminder.sh` | `firestore.rules` / `packages/shared` 変更時に検証コマンドをリマインド |
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
