@@ -72,7 +72,7 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 上記の手順は Hook で強制される（`.claude/hooks/pre-git-guard.sh`）。ブランチ作成コマンドは次の場合に実行前ブロックされる。
 
 - 直近 15 分以内に fetch していない（= remote の情報が古い状態で切ろうとしている）
-- ブランチ名が命名規則（`feat/` `fix/` `refactor/` `test/` `docs/` `release/` `hotfix/`）に合わない
+- ブランチ名が命名規則（`feat/` `fix/` `refactor/` `chore/` `test/` `docs/` `release/` `hotfix/`）に合わない
 - 分岐元が `production` でない（例外: `fix/*` は `release/*` からも可）
 
 セッション開始時には `.claude/hooks/session-start-git-context.sh` が自動で fetch し、進行中の `release/*` を文脈に載せる。
@@ -239,12 +239,6 @@ name: CI
 on:
   pull_request:
     branches: [production, 'release/**']
-    paths-ignore:
-      - '**/*.md'
-      - '.claude/docs/**'
-      - '.claude/skills/**'
-      - '.vscode/**'
-      - 'LICENSE'
 
 jobs:
   ci:
@@ -302,10 +296,6 @@ ESLint / Prettier / commitlint も npm パッケージの参照に切り替え�
 
 スクリプトが**やらない**こと（人にしかできない・触るべきでない）:
 
-- **Required status check の名前を `ci / ci` に変える。** reusable workflow を呼ぶと
-  チェック名が `<呼び出し側のジョブ ID> / <呼ばれる側のジョブ ID>` になる。
-  `.github/rulesets/production.json` を取り込んでいる場合、`{ "context": "ci" }` のままだと
-  **出力されないチェックを待ち続けてマージできなくなる**
 - Renovate App のインストールと Silent mode の解除、Dependency graph / Dependabot alerts の
   有効化（→ `.claude/docs/dependencies.md`「派生プロジェクトでの前提」）
 - Template Sync の設定

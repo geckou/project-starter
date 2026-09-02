@@ -8,9 +8,22 @@ service firebase.storage {
       allow read, write: if false;
     }
 
-    // ユーザー領域: 本人のみ読み書き可
+    // ユーザー領域: 本人のみ読み書き可。
+    // アップロードは 10MB 以下の画像に限る（無制限だと課金と悪用の入口になる）。
+    // 画像以外も置くプロジェクトは contentType の条件を広げる
     match /users/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      function isOwner() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+      allow read: if isOwner();
+
+      allow write: if isOwner()
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+
+      // 削除は request.resource を持たないため、サイズ・種別の条件を付けられない
+      allow delete: if isOwner();
     }
 
     // 例: 公開ファイル（認証済みユーザーのみ読み取り可、書き込みはサーバーのみ）

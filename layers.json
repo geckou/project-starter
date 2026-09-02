@@ -244,6 +244,7 @@
         "packages/shared/src/types/index.ts",
         "packages/shared/tests/types.test.ts",
         "apps/functions/src/api.ts",
+        "apps/functions/tests/api.test.ts",
         "apps/mobile/app.config.ts",
         ".env.example",
         "scripts/use-env.sh",

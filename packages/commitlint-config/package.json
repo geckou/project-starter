@@ -1,6 +1,6 @@
 {
   "name": "@geckou/commitlint-config",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Shared commitlint config for geckou projects",
   "type": "commonjs",
   "main": "./index.cjs",

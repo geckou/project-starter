@@ -1,5 +1,8 @@
 name: Publish package
 
+# **このファイルの正は geckou/project-starter/.github/workflows/publish.yml。**
+# geckou/kit・geckou/ui にも同じものがあるが、直すときはまずここを直してから配ること。
+#
 # 第0層の設定パッケージ（@geckou/eslint-config / prettier-config / commitlint-config）を
 # npm へ公開する。geckou/kit と同じタグ駆動で、タグは
 # <パッケージのディレクトリ名>@<バージョン>（例: eslint-config@0.1.0）。

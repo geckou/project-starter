@@ -26,7 +26,8 @@ reusable workflow のような URL 参照にはできない。
 | `commitlint-config/` | `@geckou/commitlint-config` | `commitlint.config.cjs` |
 
 ESLint はサブパスで層に対応する。`.` は TypeScript パッケージ（`apps/functions` /
-`packages/shared`）、`./next` は Next.js アプリ、`./expo` は Expo アプリ。
+`packages/shared`）、`./next` は Next.js アプリ、`./expo` は Expo アプリ、
+`./react` は React（Next.js 以外）、`./vue` は Vue / Nuxt。
 **プリセットは重ねて使わない**（それぞれ単独で完結する。重ねると同じプラグインを
 別々の実体で登録することになり、ESLint が `Cannot redefine plugin` で落ちる）。
 
@@ -51,6 +52,14 @@ module.exports = { ...geckou, tailwindStylesheet: './apps/web/src/styles/globals
 
 タグ（`<ディレクトリ名>@<バージョン>`）を打つと `.github/workflows/publish.yml` が
 npm へ公開する。`production` への直接 push は禁止なので、version を上げるのは通常の PR。
+
+> **リリース用の仕組みの正はこのリポジトリ。** `scripts/release.sh` /
+> `check-api-diff.mjs` / `geckou-release` / `install-release-command.sh` /
+> `test-api-diff.sh` / `test-release-command.sh` / `.github/workflows/publish.yml` は
+> [`geckou/kit`](https://github.com/geckou/kit) と [`geckou/ui`](https://github.com/geckou/ui)
+> にも同じものがある。**直すときはここを直してから 2 リポジトリへ配る。**
+> `install-release-command.sh` は 3 リポジトリで中身が同じであることを前提にしている
+> （どこから実行しても同じ `geckou-release` が入る）。
 
 ```bash
 # 1. packages/<パッケージ>/package.json の version を上げる PR を出してマージする

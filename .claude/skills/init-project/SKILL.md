@@ -28,8 +28,8 @@ node scripts/remove-layer.mjs mobile billing     # 例: Web のみ・課金な�
 ```
 
 外したあとは `yarn format` で整形する（`yarn install` は次の手順で走る）。
-判断がつかない層は残しておいてよい。**外した層を後から戻す加算スキル（`/add-*`）は未実装**のため、
-迷ったら残す方が安全（`layers.json` に定義は残っている）。
+判断がつかない層は残しておいてよい。外した層は加算スキル（`/add-firebase` `/add-functions`
+`/add-mobile` `/add-billing`。実体は `scripts/add-layer.mjs`）で後から戻せる。
 
 ### 2. scripts/setup.sh の実行
 
@@ -63,16 +63,37 @@ rm -rf packages/eslint-config packages/prettier-config packages/commitlint-confi
 `deps` / `json` のエントリ）を消す。実在しないパスは `node scripts/check-layers.mjs` が
 検出する。
 
+### 3.6. テンプレート専用の導線を削除する
+
+パッケージ公開とテンプレート自身の検証のための仕組みは、派生プロジェクトでは使わない。
+ワークフロー側は `if: github.repository == 'geckou/project-starter'` で起動しないが、
+ファイルが残っていると読む人を惑わせるので消してよい（`.templatesyncignore` に
+入っているので、消しても Template Sync で戻ってこない）。
+
+```bash
+rm -f .github/workflows/publish.yml .github/workflows/layer-matrix.yml \
+  .github/workflows/smoke-test.yml .github/workflows/release-tag.yml
+rm -f scripts/release.sh scripts/geckou-release scripts/install-release-command.sh \
+  scripts/test-release-command.sh scripts/check-api-diff.mjs scripts/test-api-diff.sh \
+  scripts/check-workspace-ranges.mjs scripts/test-workspace-ranges.sh
+```
+
+`ci.yml` の該当ステップは `hashFiles` で存在を見ているため、消しても CI は緑のまま通る。
+
 ### 4. `@geckou/*` スコープの一括リネーム
 
 ワークスペース内部のスコープ `@geckou/*` を `@<project-name>/*` に一括置換する。
 
 > ⚠️ **npm から取得する外部パッケージは置換しない。**
 > `@geckou/ui-react` / `@geckou/ui-core`（[`geckou/ui`](https://github.com/geckou/ui) 管理）、
-> `@geckou/billing`（[`geckou/kit`](https://github.com/geckou/kit) 管理）、
+> `@geckou/billing` / `@geckou/firebase-client` / `@geckou/firebase-server`
+> （[`geckou/kit`](https://github.com/geckou/kit) 管理）、
 > `@geckou/eslint-config` / `@geckou/prettier-config` / `@geckou/commitlint-config`
 > （テンプレート本体から公開している第0層の設定）が対象であり、
-> リネームすると依存が解決できなくなる。下の手順はこの 6 つを除外している。
+> リネームすると依存が解決できなくなる。下の手順はこの 8 つを除外している。
+>
+> 判断の基準は「`private: true` のワークスペースかどうか」。npm から取るものは
+> ワークスペースとして存在しないので、増えたらこのリストにも足す。
 
 対象は package.json の name / 依存だけでなく、以下すべてに及ぶ:
 
@@ -106,7 +127,7 @@ grep -rl '@geckou/' $EXCLUDES . | grep -v "$SELF"
 # 一括置換（npm から取得する外部パッケージは温存する）
 # デリミタは # を使う。| だと正規表現の選択と衝突する
 grep -rl '@geckou/' $EXCLUDES . | grep -v "$SELF" \
-  | xargs sed -i '' -E 's#@geckou/(ui-react|ui-core|billing|eslint-config|prettier-config|commitlint-config)#@@KEEP@@\1#g; s#@geckou/#@<project-name>/#g; s#@@KEEP@@#@geckou/#g'
+  | xargs sed -i '' -E 's#@geckou/(ui-react|ui-core|billing|firebase-client|firebase-server|eslint-config|prettier-config|commitlint-config)#@@KEEP@@\1#g; s#@geckou/#@<project-name>/#g; s#@@KEEP@@#@geckou/#g'
 
 # 置換漏れの確認
 # （温存した外部パッケージと、SKILL.md 内の記述だけが残っていれば完了）
@@ -143,10 +164,6 @@ mobile 層を外した場合はこの手順を飛ばす。
 `.github/workflows/ci.yml` を参照だけの内容に置き換え、`.templatesyncignore` に
 `.github/workflows/ci.yml` を追加する（テンプレートの実体で上書きされないようにするため）。
 置き換える内容と理由は `.claude/docs/git-workflow.md`「CI の配布（reusable workflow）」を参照。
-
-**Ruleset を取り込む場合は required status check の名前を `ci / ci` に変える。**
-reusable workflow を呼ぶとチェック名が変わるため、`.github/rulesets/production.json` の
-`{ "context": "ci" }` のままだと出力されないチェックを待ち続けてマージできなくなる。
 
 **Copilot の自動レビューを ruleset で入れる。**
 
@@ -188,8 +205,10 @@ Dependabot の設定ファイルが残っていれば削除する（PR が二重
 - [ ] `yarn setup` を実行した（.firebaserc / .env.*）
 - [ ] ルート `package.json` の `name` を変更した
 - [ ] `packages/{eslint,prettier,commitlint}-config` を削除し、`layers.json` から該当の行を消した
+- [ ] テンプレート専用のワークフロー・スクリプト（公開導線・layer-matrix・smoke-test・release-tag）を削除した
 - [ ] `@geckou/` の grep が npm から取得する外部パッケージ（`ui-react` / `ui-core` / `billing` /
-      `eslint-config` / `prettier-config` / `commitlint-config`）と
+      `firebase-client` / `firebase-server` / `eslint-config` / `prettier-config` /
+      `commitlint-config`）と
       `.claude/skills/init-project/SKILL.md`（この手順書自身）以外 0 件になった
 - [ ] `yarn install` 後に `yarn type-check` / `yarn test` が通る
 - [ ] `apps/mobile/app.config.ts` の識別子を変更した（mobile 層を残した場合）

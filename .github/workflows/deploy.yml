@@ -86,8 +86,12 @@ jobs:
       - run: yarn install --frozen-lockfile
 
       # layer:mobile:start
+      # ワークスペース名は /init-project でリネームされるため、実行時に読む
+      # （ci.yml / smoke-test.yml と同じ）
       - name: Generate Expo type declarations
-        run: yarn workspace @geckou/mobile exec expo customize tsconfig.json
+        run: |
+          yarn workspace "$(node -p "require('./apps/mobile/package.json').name")" \
+            exec expo customize tsconfig.json
       # layer:mobile:end
 
       # turbo のローカルキャッシュを実行間で持ち越し、変更のないパッケージの

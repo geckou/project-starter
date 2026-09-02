@@ -9,7 +9,54 @@ import { adminAuth } from '@/lib/firebase-admin'
 const SESSION_COOKIE_NAME = 'session'
 const SESSION_EXPIRES_IN_MS = 1000 * 60 * 60 * 24 * 5 // 5日
 
+/**
+ * クロスサイトからの呼び出しを弾く（ログイン CSRF = セッション固定への対策）。
+ *
+ * Next.js の Server Actions には Origin 検査があるが、Route Handler には無い。
+ * 攻撃者サイトから enctype="text/plain" のフォームで攻撃者自身の idToken を
+ * top-level POST させると、被害者のブラウザに攻撃者アカウントの cookie が発行される
+ * （sameSite: 'lax' はトップレベルナビゲーションの Set-Cookie を受け付ける）。
+ *
+ * ヘッダーが 1 つも無いのはブラウザ以外からの呼び出し（curl・テスト）なので通す。
+ */
+function isSameSite(request: Request): boolean {
+  const fetchSite = request.headers.get('sec-fetch-site')
+
+  if (fetchSite) {
+    return fetchSite === 'same-origin' || fetchSite === 'none'
+  }
+
+  // Sec-Fetch-Site を送らない古いブラウザ向け。POST には Origin が必ず付く
+  const origin = request.headers.get('origin')
+
+  if (!origin) return true
+
+  try {
+    return new URL(origin).host === new URL(request.url).host
+  } catch {
+    return false
+  }
+}
+
+/** text/plain フォームによる JSON 偽装を弾く */
+function isJsonRequest(request: Request): boolean {
+  const contentType = request.headers.get('content-type') ?? ''
+
+  return contentType.split(';')[0].trim().toLowerCase() === 'application/json'
+}
+
 export async function POST(request: Request) {
+  if (!isSameSite(request)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  if (!isJsonRequest(request)) {
+    return NextResponse.json(
+      { error: 'Content-Type must be application/json' },
+      { status: 400 }
+    )
+  }
+
   let idToken: unknown
 
   try {
@@ -43,8 +90,26 @@ export async function POST(request: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
+  if (!isSameSite(request)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
   const cookieStore = await cookies()
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)?.value
+
+  // リフレッシュトークンを失効させる。cookie を消すだけだと、漏れた cookie が
+  // 最長 5 日そのまま使える（保護ページは verifySessionCookie(cookie, true) で
+  // 失効を見ているため、revoke すれば即座に無効になる）
+  if (sessionCookie) {
+    try {
+      const decoded = await adminAuth.verifySessionCookie(sessionCookie)
+      await adminAuth.revokeRefreshTokens(decoded.sub)
+    } catch {
+      // 既に無効な cookie。サインアウト自体は成功として扱う
+    }
+  }
+
   cookieStore.delete(SESSION_COOKIE_NAME)
 
   return NextResponse.json({ success: true })

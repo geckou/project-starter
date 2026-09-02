@@ -28,7 +28,9 @@ cmd=$(printf '%s' "$cmd" | awk '
   }
   {
     print
+    # <<<"x"（here-string）は heredoc ではない。誤認すると以降の行が検査から落ちる
     if (match($0, /<<-?[[:space:]]*"?'"'"'?[A-Za-z_][A-Za-z_0-9]*'"'"'?"?/) &&
+        (RSTART == 1 || substr($0, RSTART - 1, 1) != "<") &&
         $0 !~ /git[[:space:]]+commit/ &&
         $0 !~ /(^|[[:space:]|;&(])(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) {
       marker = substr($0, RSTART, RLENGTH)
@@ -86,6 +88,9 @@ NL='
 '
 SUB_OPEN=$(printf '\001(')
 SUB_CLOSE=$(printf '\001)')
+# 絞り込みループ（サブシェル）から親へ渡す印。変数は引き継げないため行として出す
+MARK_DIR=$(printf '\001dir')
+MARK_HOOKSPATH=$(printf '\001hookspath')
 
 segments=$(printf '%s' "$cmd" | awk '
   BEGIN {
@@ -109,6 +114,12 @@ segments=$(printf '%s' "$cmd" | awk '
       if (c == "(" || c == ")") {
         print seg; seg = ""
         print (c == "(") ? sub_open : sub_close
+        continue
+      }
+      # 2>&1 や &> はリダイレクトであってコマンドの区切りではない。
+      # 区切り扱いすると `git push 2>&1` が `git push 2>` になり判定から外れる
+      if (c == "&" && (seg ~ />[[:space:]]*$/ || substr(all, i + 1, 1) == ">")) {
+        seg = seg c
         continue
       }
       if (c == ";" || c == "\n" || c == "&" || c == "|") {
@@ -175,7 +186,19 @@ cmd=$(printf '%s\n' "$segments" | {
         ;;
     esac
 
-    printf '%s' "$seg" | grep -Eq '(^|[[:space:]])git([[:space:]]|$)' || continue
+    printf '%s' "$seg" | grep -Eq '(^|[[:space:]/])git([[:space:]]|$)' || continue
+
+    # /usr/bin/git のような絶対パス呼び出しを `git` へ正規化する。
+    # 以降の判定は全て `git <サブコマンド>` の形を見るため、ここで揃えないと
+    # パス付きの呼び出しだけが検査を素通りする
+    seg=$(printf '%s' "$seg" |
+      sed -E 's#(^|[[:space:]])[^[:space:]]*/git([[:space:]]|$)#\1git\2#g')
+
+    # -c core.hooksPath=... は husky（commitlint / lint-staged）を無効化する。
+    # 下でグローバルオプションを剥がす前に見ないと素通りする
+    case $seg in
+      *-c[[:space:]]core.hooksPath*) printf '%s\n' "$MARK_HOOKSPATH" ;;
+    esac
 
     # git -C / --git-dir はセグメント単位で実行ディレクトリを上書きする
     git_dir_opt=$(printf '%s' "$seg" | awk '
@@ -230,9 +253,18 @@ cmd=$(printf '%s\n' "$segments" | {
       seg=$next
     done
 
+    # 判定に使う「現在ブランチ」は、このセグメントが実際に動くディレクトリで見る。
+    # セッションの HEAD で判定すると、git -C <同一リポの別 worktree> で逆の結果になる
+    printf '%s%s\n' "$MARK_DIR" "$target_dir"
     printf '%s\n' "$seg"
   done
 })
+
+[ -n "$cmd" ] || exit 0
+
+hooks_path_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_HOOKSPATH$")
+guard_dir=$(printf '%s\n' "$cmd" | sed -n "s/^$MARK_DIR//p" | head -1)
+cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_DIR" | grep -v "^$MARK_HOOKSPATH$")
 
 [ -n "$cmd" ] || exit 0
 
@@ -252,7 +284,7 @@ $DOC" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",
 
 has() { printf '%s' "$cmd" | grep -Eq "$1"; }
 
-current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+current=$(git -C "${guard_dir:-.}" rev-parse --abbrev-ref HEAD 2>/dev/null)
 
 # --- 検証のスキップ禁止 -------------------------------------------------
 # lint-staged（pre-commit のフォーマット / lint）を迂回されると壊れたコードが入る。
@@ -260,6 +292,10 @@ current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 if { has '(^|[[:space:]])git[[:space:]]+(commit|push)' && has '(^|[[:space:]])--no-verify([[:space:]]|$)'; } ||
   has '(^|[[:space:]])git[[:space:]]+commit[[:space:]]+-n([[:space:]]|$)'; then
   deny '--no-verify / commit -n による検証スキップは禁止です。pre-commit の lint-staged（フォーマット / lint）まで飛ばしてしまうため、失敗したら迂回せず原因を直してください。'
+fi
+
+if [ "${hooks_path_bypass:-0}" -gt 0 ]; then
+  deny '-c core.hooksPath による husky の無効化は禁止です（--no-verify と同じ迂回）。失敗したら迂回せず原因を直してください。'
 fi
 
 # --- コミット -----------------------------------------------------------
@@ -278,7 +314,9 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
   # メッセージの渡し方は -m / --message と -F / --file の 2 通り。
   # どちらも検証する（--amend --no-edit のようなメッセージ再利用は対象外）。
   if has '(^|[[:space:]])(-m|--message)([[:space:]]|=)'; then
-    has "(^|[[:space:]\"'])($TYPES)(\([^)]+\))?: [^[:space:]]" || deny "$msg_ng"
+    # `--message=feat:\ x` のように、シェルのエスケープ付きで渡される形も通す
+    has "(^|[[:space:]\"'=])($TYPES)(\([^)]+\))?:(\\\\)?[[:space:]][^[:space:]]" ||
+      deny "$msg_ng"
   fi
 
   if has '(^|[[:space:]])(-F|--file)([[:space:]]|=)'; then
@@ -311,29 +349,87 @@ fi
 
 # --- push ---------------------------------------------------------------
 if has '(^|[[:space:]])git[[:space:]]+push'; then
-  # 明示指定と、production 上での引数なし push（= 現在ブランチへの push）の両方を見る
-  if has '(^|[[:space:]])git[[:space:]]+push[^|;&]*[[:space:]]production([[:space:]]|$)' ||
-    has '(^|[[:space:]])git[[:space:]]+push[^|;&]*:production([[:space:]]|$)' ||
-    { [ "$current" = "production" ] && has '(^|[[:space:]])git[[:space:]]+push[[:space:]]*($|[&|;])'; }; then
-    deny 'production への直接 push は禁止です（PR 必須）。'
+  # --all / --mirror は refspec を書かずに全ブランチ（production を含む）を更新する。
+  # 宛先を 1 つずつ解決する下の判定では拾えないので、ここで落とす
+  if has '(^|[[:space:]])git[[:space:]]+push[^|;&]*[[:space:]](--all|--mirror)([[:space:]]|$)'; then
+    deny 'git push --all / --mirror は禁止です（production を含む全ブランチを更新するため）。push するブランチを明示してください。'
   fi
 
-  if has '(--force([[:space:]]|$)|--force-with-lease|(^|[[:space:]])-f([[:space:]]|$))' &&
-    { has '[[:space:]](production|release/[^[:space:]]+)([[:space:]]|$)' || case "$current" in production | release/*) true ;; *) false ;; esac; }; then
-    deny 'production / release/* への force push は禁止です。'
-  fi
+  # push の宛先ブランチを refspec から取り出す。
+  # `git push` / `git push origin` / `git push origin HEAD` はどれも現在ブランチが
+  # 宛先になるため、文字列に production が現れなくても production への push になる。
+  # 各行を「<force か> <宛先>」で出す（宛先が現在ブランチなら @CURRENT）
+  push_targets=$(printf '%s\n' "$cmd" | awk '
+    /(^|[[:space:]])git[[:space:]]+push([[:space:]]|$)/ {
+      force = 0
+      remote_seen = 0
+      refspecs = 0
+      started = 0
 
-  # release/* への push は「ブランチ作成時」と「PR マージ」のみ許可（判別できないため確認する）
-  if has '(^|[[:space:]])git[[:space:]]+push[^|;&]*[[:space:]]release/' ||
-    { case "$current" in release/*) has '(^|[[:space:]])git[[:space:]]+push[[:space:]]*($|[&|;])' ;; *) false ;; esac; }; then
-    ask "release/* への push は staging への自動デプロイを発火します。ブランチ作成時または PR マージ以外の push は禁止です。実行してよいかユーザーに確認してください。"
-  fi
+      for (i = 1; i <= NF; i++) {
+        if (!started) { if ($i == "push") started = 1; continue }
+
+        if (substr($i, 1, 1) == "-") {
+          if ($i ~ /^(--force([^-]|$)|--force-with-lease|-f$)/) force = 1
+          # 値を取るオプションは次のトークンを読み飛ばす
+          if ($i == "-o" || $i == "--push-option" || $i == "--repo" ||
+              $i == "--receive-pack" || $i == "--exec" || $i == "-4" && 0) i++
+          continue
+        }
+
+        if (!remote_seen) { remote_seen = 1; continue }
+
+        refspecs++
+        dst = $i
+        if (index(dst, ":") > 0) dst = substr(dst, index(dst, ":") + 1)
+        sub(/^refs\/heads\//, "", dst)
+        sub(/^\+/, "", dst)
+        if (dst == "HEAD" || dst == "") dst = "@CURRENT"
+        print force " " dst
+      }
+
+      # refspec を書かない形は現在ブランチが宛先（push.default = simple / current）
+      if (refspecs == 0) print force " @CURRENT"
+    }
+  ')
+
+  printf '%s\n' "$push_targets" | while IFS=' ' read -r force dst; do
+    [ -n "$dst" ] || continue
+    [ "$dst" = "@CURRENT" ] && dst=$current
+
+    case "$dst" in
+      production) exit 10 ;;
+    esac
+
+    if [ "$force" = "1" ]; then
+      case "$dst" in
+        production | release/*) exit 11 ;;
+      esac
+    fi
+
+    case "$dst" in
+      release/* | hotfix/*) exit 12 ;;
+    esac
+  done
+  push_verdict=$?
+
+  case "$push_verdict" in
+    10) deny 'production への直接 push は禁止です（PR 必須）。' ;;
+    11) deny 'production / release/* への force push は禁止です。' ;;
+    12)
+      ask "release/* / hotfix/* への push は staging への自動デプロイを発火します。ブランチ作成時または PR マージ以外の push は禁止です。実行してよいかユーザーに確認してください。"
+      ;;
+  esac
 fi
 
 # --- ブランチ作成 -------------------------------------------------------
+# -B / -C（既存ブランチのリセット付き作成）も、間に挟まる他のフラグも見る
+NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[bB]|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[cC])'
+
 newbranch=$(printf '%s' "$cmd" |
-  grep -oE '(^|[[:space:]])git[[:space:]]+(checkout[[:space:]]+-b|switch[[:space:]]+-c)[[:space:]]+[^[:space:];&|]+' |
+  grep -oE "(^|[[:space:]])git[[:space:]]+$NEW_BRANCH_RE[[:space:]]+[^[:space:];&|]+" |
   head -1 | awk '{print $NF}')
+newbranch=$(unquote "$newbranch")
 
 if [ -n "$newbranch" ]; then
   case "$newbranch" in
@@ -376,9 +472,16 @@ if [ -n "$newbranch" ]; then
   # git checkout -b docs/example -q の -q を分岐元と誤認してしまう。
   newbranch_re=$(printf '%s' "$newbranch" | sed 's|[^a-zA-Z0-9_/-]|\\&|g')
   base=$(printf '%s' "$cmd" |
-    grep -oE "(checkout[[:space:]]+-b|switch[[:space:]]+-c)[[:space:]]+$newbranch_re([[:space:]]+[^[:space:];&|]+)*" |
+    grep -oE "$NEW_BRANCH_RE[[:space:]]+\"?'?$newbranch_re'?\"?([[:space:]]+[^[:space:];&|]+)*" |
     head -1 |
-    awk '{ for (i = 4; i <= NF; i++) if (substr($i, 1, 1) != "-") { print $i; exit } }')
+    awk '{ stage = 0
+           for (i = 1; i <= NF; i++) {
+             # -b / -B / -c / -C の次の非フラグがブランチ名、その次が分岐元
+             if (stage == 0) { if ($i ~ /^-[bBcC]$/) stage = 1; continue }
+             if (substr($i, 1, 1) == "-") continue
+             if (stage == 1) { stage = 2; continue }
+             print $i; exit
+           } }')
   # 同一コマンド内で production へ切り替えてから分岐する（ドキュメントの手順）ケースを
   # 現在ブランチ起点と誤判定しないよう、チェーンの前半を分岐元として扱う
   if [ -z "$base" ] && has '(^|[[:space:]])git[[:space:]]+(checkout|switch)[[:space:]]+production([[:space:]]|$|&|;)'; then

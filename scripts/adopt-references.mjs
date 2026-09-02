@@ -61,15 +61,9 @@ const CI_WORKFLOW_CONTENT = `name: CI
 on:
   pull_request:
     branches: [production, 'release/**']
-    # アプリの動作に影響しない変更では回さない（Actions 分の節約）
-    paths-ignore:
-      - '**/*.md'
-      - '.claude/docs/**'
-      - '.claude/skills/**'
-      - '.claude/launch.json'
-      - '.vscode/**'
-      - '.editorconfig'
-      - 'LICENSE'
+    # paths-ignore は使わない。除外に当たった PR ではワークフローが起動せず、
+    # required status check が Pending のままマージできなくなるため。
+    # 重いステップの省略は呼ばれる側（ci.yml）が差分を見て判断する
 
 # 同じ PR に連続 push したとき、古い実行を打ち切る
 concurrency:
@@ -103,7 +97,6 @@ const PRETTIER_IGNORE_ENTRIES = [
 const MANUAL_STEPS = [
   'Renovate の GitHub App をインストールし、Mend（app.mend.io）で Silent mode を OFF / Automated PRs を ON にする（→ .claude/docs/dependencies.md）',
   'リポジトリ設定で Dependency graph と Dependabot alerts を有効化する（vulnerabilityAlerts がこれを読む）',
-  'ブランチ保護の Required status check の名前を `ci / ci` に変える（reusable workflow はチェック名が「呼び出し側のジョブ ID / 呼ばれる側のジョブ ID」になる）',
   'Template Sync（.github/workflows/template-sync.yml と TEMPLATE_SYNC_TOKEN）を設定する',
   'Dependabot の設定ファイルが残っていれば削除する（Renovate と PR が二重に立つ）',
 ]
