@@ -155,8 +155,14 @@ run 0 'fix/* は release/* から切れる' \
   'git checkout -b fix/typo -q release/1.0.0' feat/existing
 
 echo
+echo '=== chore/ は許可する（バージョン上げ・依存更新の置き場） ==='
+run 0 'chore/* を production から切る' 'git checkout -b chore/bump-prettier-config'
+run 2 'chore/ もケバブケースを外れると弾く' 'git checkout -b chore/Bump_Config'
+
+echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
+run 2 '許可リストに無いプレフィックス' 'git checkout -b feature/user-profile'
 run 2 'ブランチ名がケバブケースでない' 'git checkout -b feat/UserProfile'
 run 0 'production へ切り替えてから分岐' \
   'git checkout production && git checkout -b feat/user-profile' feat/existing

@@ -337,9 +337,9 @@ newbranch=$(printf '%s' "$cmd" |
 
 if [ -n "$newbranch" ]; then
   case "$newbranch" in
-    feat/* | fix/* | refactor/* | test/* | docs/* | release/* | hotfix/* | claude/*) ;;
+    feat/* | fix/* | refactor/* | chore/* | test/* | docs/* | release/* | hotfix/* | claude/*) ;;
     *)
-      deny "ブランチ命名規則違反です: $newbranch。feat/ fix/ refactor/ test/ docs/ release/ hotfix/ のいずれかで始めてください。"
+      deny "ブランチ命名規則違反です: $newbranch。feat/ fix/ refactor/ chore/ test/ docs/ release/ hotfix/ のいずれかで始めてください。"
       ;;
   esac
 
