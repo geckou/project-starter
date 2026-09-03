@@ -104,7 +104,8 @@ describe('api', () => {
 
       expect(response.status).toBe(200)
       expect(await response.json()).toEqual({ uid: 'user-1' })
-      expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token')
+      // 0.2.0 から checkRevoked（既定 false）が第2引数で渡る
+      expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token', false)
     })
   })
 
