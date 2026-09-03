@@ -104,7 +104,9 @@ node -e "
       continue;
     }
 
-    const base = pattern.slice(0, pattern.indexOf('*')).replace(/\/\$/, '');
+    // 末尾の / は付いたままでよい（existsSync も readdirSync も受け付ける）。
+    // ここで正規表現を書くと、シェルのエスケープを通った後の姿が読みにくくなる
+    const base = pattern.slice(0, pattern.indexOf('*'));
     if (!fs.existsSync(base)) continue;
 
     for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
