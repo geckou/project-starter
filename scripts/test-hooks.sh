@@ -130,6 +130,22 @@ run 2 'release/* への force push' 'git push --force origin release/1.0.0' feat
 run 0 'release/* への push は ask（deny ではない）' \
   'git push origin release/1.0.0' feat/existing
 run 2 '--no-verify による検証スキップ' "git commit --no-verify -m 'feat: x'" feat/existing
+run 2 '束ねた短縮フラグ（-am）でも規約を検証する' \
+  "git commit -am 'wip'" feat/existing
+run 2 '束ねた短縮フラグ（-qm）でも規約を検証する' \
+  "git commit -qm 'wip'" feat/existing
+run 2 '束ねた短縮フラグに紛れた -n（-an）を止める' \
+  "git commit -an -m 'feat: x'" feat/existing
+run 2 '束ねた短縮フラグに紛れた -n（-nm）を止める' \
+  "git commit -nm 'feat: x'" feat/existing
+run 2 '-m に値が直付けされた形（-m"wip"）でも規約を検証する' \
+  'git commit -m"wip"' feat/existing
+run 0 '束ねた短縮フラグでも規約に沿っていれば通す' \
+  "git commit -am 'feat: なにかを追加'" feat/existing
+run 0 'コミットメッセージ中の -n を禁止フラグと誤認しない' \
+  "git commit -m 'fix: -n の扱いを直す'" feat/existing
+run 0 'git push -n（dry-run）は commit の -n 禁止に巻き込まない' \
+  'git push -n origin feat/existing' feat/existing
 run 2 'cd で戻ってきた後の production コミット' \
   "cd $OTHER && cd $SESSION && git commit -m 'feat: x'"
 run 2 'git -C でセッションのリポジトリを指定' \
