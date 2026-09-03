@@ -208,14 +208,18 @@ node scripts/adopt-references.mjs --repo <派生プロジェクトのパス>
 
 `apps/web` には設定済み。新しいアプリで使う場合は以下を設定する。
 
-1. `package.json` に `"@geckou/ui-react": "^0.1.0"` を追加
-2. `next.config.ts` の `transpilePackages` に `'@geckou/ui-react'` を追加
-3. `tailwind.config.ts` の `content` に `'../../node_modules/@geckou/ui-react/src/**/*.{ts,tsx}'` を追加
-4. グローバル CSS に `@import '@geckou/ui-react/styles/tokens.css';` を追加（デザイントークン）
+1. `package.json` に `"@geckou/ui-react": "^0.2.0"` を追加
+2. `tailwind.config.ts` の `content` に `'../../node_modules/@geckou/ui-react/dist/**/*.js'` を追加
+3. グローバル CSS に `@import '@geckou/ui-react/styles/tokens.css';` を追加（デザイントークン）
+
+0.2.0 から dist（ビルド済み）を配るので `transpilePackages` は要らない。
+Tailwind は **v4 が必須**（コンポーネントが `bg-(--x)` / `flex-none!` など v4 の記法を
+直書きしている）。スキャン対象は `src` ではなく `dist` を指す（`files: ["dist"]` のため
+tarball に `src` は入らない）。
 
 ### 既存の派生プロジェクトへの導入
 
-**上記 1〜4 は Template Sync では届かない。** `.templatesyncignore` が `apps/`・
+**上記 1〜3 は Template Sync では届かない。** `.templatesyncignore` が `apps/`・
 ルート `package.json`・`yarn.lock` を除外しているため、いずれも同期対象外。
 導入したいプロジェクトで一度だけ手作業で設定する。
 
@@ -223,7 +227,7 @@ node scripts/adopt-references.mjs --repo <派生プロジェクトのパス>
 yarn workspace <web ワークスペース名> add @geckou/ui-react
 ```
 
-そのうえで 2〜4 を設定する。以後の更新は `yarn up @geckou/ui-react` で受け取れる。
+そのうえで 2〜3 を設定する。以後の更新は `yarn up @geckou/ui-react` で受け取れる。
 
 ## shared の構成
 

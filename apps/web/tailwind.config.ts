@@ -4,7 +4,8 @@ import type { Config } from 'tailwindcss'
 const config: Config = {
   content: [
     './src/**/*.{js,jsx,ts,tsx}',
-    '../../node_modules/@geckou/ui-react/src/**/*.{ts,tsx}',
+    // 0.2.0 から dist 配布。src は tarball に含まれないのでスキャンできない
+    '../../node_modules/@geckou/ui-react/dist/**/*.js',
   ],
   theme: {
     extend: {
