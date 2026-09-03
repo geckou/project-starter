@@ -220,8 +220,12 @@ gh api repos/{owner}/{repo}/rulesets \
   --input .github/rulesets/production.json
 ```
 
-内容: production の削除・force push 禁止、PR 必須（レビュー1件）、Required status checks（`ci` / `guard`）。
+内容: production の削除・force push 禁止、PR 必須（レビュー1件）、Required status checks（`guard` / `ci / ci`）。
 `hotfix/*` の緊急セルフマージを許す場合は、取り込み後に UI で bypass 設定を調整する。
+
+`yarn setup`（`scripts/setup.sh`）もこの定義をそのまま取り込む。**保護の定義はこのファイルが正**で、
+legacy の branch protection API とは二重管理にしない（required check 名が片方だけ古いと、
+production への PR が存在しないチェックを待ち続けてマージできなくなる）。
 
 ### Free プランのプライベートリポジトリの場合
 

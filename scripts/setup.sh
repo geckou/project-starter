@@ -132,9 +132,22 @@ setup_branch_protection() {
     return
   fi
 
-  # 既存の保護ルールチェック
-  if gh api "repos/$REPO/branches/production/protection" &> /dev/null 2>&1; then
-    echo "[skip] production ブランチの保護ルールは設定済みです"
+  # 保護の定義は .github/rulesets/production.json に一本化してある。
+  # ここで legacy の branch protection API を別に叩くと required check 名が
+  # 二重管理になり、片方だけ古い名前（"ci"）のまま残ると production への PR が
+  # 存在しないチェックを待ち続けて永遠にマージできなくなる
+  RULESET_FILE="$(dirname "$0")/../.github/rulesets/production.json"
+  if [ ! -f "$RULESET_FILE" ]; then
+    echo "[skip] $RULESET_FILE が見つかりません"
+    return
+  fi
+
+  RULESET_NAME=$(node -p "require('$RULESET_FILE').name" 2>/dev/null || echo 'production-protection')
+
+  # 既存の ruleset チェック
+  if gh api "repos/$REPO/rulesets" --jq '.[].name' 2>/dev/null |
+    grep -qx "$RULESET_NAME"; then
+    echo "[skip] production ブランチの保護ルール（$RULESET_NAME）は設定済みです"
     return
   fi
 
@@ -144,35 +157,21 @@ setup_branch_protection() {
     return
   fi
 
-  # ブランチ保護ルールを設定
+  # ruleset を取り込む
   # （set -e 環境下でも失敗時に else 節へ到達できるよう if で直接判定する）
-  if gh api "repos/$REPO/branches/production/protection" \
-    --method PUT \
-    --input - <<'JSON' > /dev/null
-{
-  "required_status_checks": {
-    "strict": true,
-    "contexts": ["ci"]
-  },
-  "enforce_admins": true,
-  "required_pull_request_reviews": {
-    "required_approving_review_count": 1
-  },
-  "restrictions": null,
-  "allow_force_pushes": false,
-  "allow_deletions": false
-}
-JSON
-  then
-    echo "[done] production ブランチに保護ルールを設定しました"
-    echo "  - CI (ci ジョブ) パス必須 (strict: true)"
+  if gh api "repos/$REPO/rulesets" \
+    --method POST \
+    --input "$RULESET_FILE" > /dev/null; then
+    echo "[done] production ブランチに保護ルール（$RULESET_NAME）を設定しました"
+    echo "  - Required status checks: guard / ci / ci"
     echo "  - PR 必須 + 1名以上のレビュー承認"
-    echo "  - 直接 push 禁止"
     echo "  - force push 禁止"
     echo "  - ブランチ削除禁止"
   else
     echo "[error] ブランチ保護の設定に失敗しました"
     echo "  → リポジトリの Admin 権限があるか確認してください"
+    echo "  → Free プランのプライベートリポジトリでは Rulesets を使えません"
+    echo "    （.claude/docs/git-workflow.md「マージルールの強制」を参照）"
   fi
 }
 
