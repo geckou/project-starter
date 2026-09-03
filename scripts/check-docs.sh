@@ -22,6 +22,7 @@ ALLOW_MISSING='
 apps/functions/.env
 apps/mobile/.env.local
 .claude/docs/roadmap-archive.md
+packages/shared/dist/
 '
 
 # 言及を拾う対象の接頭辞。これ以外（page.tsx のような汎用名や、
