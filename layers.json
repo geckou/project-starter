@@ -62,6 +62,9 @@
       "summary": "Firebase の認証・DB・ストレージと、そのルール・エミュレーター・ルールテスト・Admin SDK。外すと apps/web はサインインを持たない静的寄りの構成になる。",
       "files": [
         "apps/web/src/lib/firebase.ts",
+        "apps/web/src/lib/firebase-app.ts",
+        "apps/web/src/lib/firebase-firestore.ts",
+        "apps/web/src/lib/firebase-storage.ts",
         "apps/web/src/lib/firebase-admin.ts",
         "apps/web/src/app/api/session",
         "apps/web/src/app/login",
