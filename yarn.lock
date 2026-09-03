@@ -2135,10 +2135,10 @@
   resolved "https://registry.yarnpkg.com/@geckou/ui-core/-/ui-core-0.2.0.tgz#c172cae41b37c999d19cb1554770f2604b490a9f"
   integrity sha512-nUBGEBtUw9rMQUQTA2OufXONdDqlw1J4zzlPAzr8LPTmk7O5jcWGjLcTw9KE3YSTp7mwuvHGOG9359nSzmoYSw==
 
-"@geckou/ui-react@^0.2.0":
-  version "0.2.0"
-  resolved "https://registry.yarnpkg.com/@geckou/ui-react/-/ui-react-0.2.0.tgz#63ddec34e0abf354326d360555600e5102168e9a"
-  integrity sha512-yYzsDs3thSMUPIokuWH9gsMumD0NTxMsYMA+uQRppsPp3ttRowJryqqUVH7oR2MB0ArYkRJYFuyxX3vMUbFTdg==
+"@geckou/ui-react@^0.3.0":
+  version "0.3.0"
+  resolved "https://registry.yarnpkg.com/@geckou/ui-react/-/ui-react-0.3.0.tgz#607c32500ee5c1506fde4751ecca660d1ee1267b"
+  integrity sha512-KlTErfSGfE3XW5+ZH3QWi4ZH0MqnCXqD80yWI7VGhRk+vvsZQ6SW8wyA02sP/X4imlPFhatNtUya4wZq9TujOA==
   dependencies:
     "@geckou/ui-core" "^0.2.0"
 
