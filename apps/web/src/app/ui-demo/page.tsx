@@ -47,6 +47,8 @@ export default function UiDemoPage() {
   const [toggled, setToggled] = useState(false)
   const [date, setDate] = useState('')
   const [birthday, setBirthday] = useState('')
+  // 0.2.0 から DateRangePicker は制御コンポーネント（値の形は Vue 版と同じ）
+  const [period, setPeriod] = useState({ start: '', end: '' })
   const [isModalShown, setIsModalShown] = useState(false)
   const [searchable, setSearchable] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -137,7 +139,11 @@ export default function UiDemoPage() {
           value={birthday}
           onChange={setBirthday}
         />
-        <DateRangePicker />
+        <DateRangePicker
+          name="demo-period"
+          value={period}
+          onChange={setPeriod}
+        />
       </section>
 
       <section className="flex flex-col gap-4" data-demo="button">

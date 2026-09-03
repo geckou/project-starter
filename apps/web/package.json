@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@geckou/shared": "*",
-    "@geckou/ui-react": "^0.1.0",
+    "@geckou/ui-react": "^0.2.0",
     "firebase": "^11.0.0",
     "firebase-admin": "^13.10.0",
     "next": "^15.5.23",
