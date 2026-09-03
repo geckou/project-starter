@@ -29,6 +29,11 @@ export async function apiClient<T>(
   }
 
   if (authenticated && auth) {
+    // currentUser を同期的に読むだけだと、永続化されたセッションの復元が
+    // 終わる前に呼んだ呼び出しが Authorization なしで飛び、API が 401 を返す。
+    // 復元の完了を待ってから読む
+    await auth.authStateReady()
+
     const user = auth.currentUser
 
     if (user) {

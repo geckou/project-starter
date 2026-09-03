@@ -150,7 +150,11 @@
       "requires": "firebase",
       "removable": true,
       "summary": "API・Firestore / Auth トリガー・スケジュール実行の置き場所。API は全クライアントがこの1本を共有する（architecture.md）。外すとプロジェクトは API を持たない。",
-      "files": ["apps/functions", "apps/web/src/lib/api-client.ts"],
+      "files": [
+        "apps/functions",
+        "apps/web/src/lib/api-client.ts",
+        "apps/web/tests/api-client.test.ts"
+      ],
       "blocks": [
         ".env.example",
         "scripts/use-env.sh",
@@ -245,6 +249,8 @@
         "packages/shared/tests/types.test.ts",
         "apps/functions/src/api.ts",
         "apps/functions/tests/api.test.ts",
+        "apps/web/tests/middleware.test.ts",
+        "apps/web/src/middleware.ts",
         "apps/mobile/app.config.ts",
         ".env.example",
         "scripts/use-env.sh",
