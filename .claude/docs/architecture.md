@@ -143,6 +143,13 @@ const { user, loading } = useAuthStore()
 import { uploadFile, deleteFile, getFileUrl } from '@geckou/shared/storage'
 ```
 
+Firebase の初期化は SDK ごとに分けてある（`apps/web/src/lib/firebase-app.ts` が app、
+`firebase.ts` が Auth、`firebase-firestore.ts` が Firestore、`firebase-storage.ts` が Storage）。
+Auth しか要らないページに Firestore SDK が乗らないようにするため。
+**エミュレーターへの接続は各 SDK のモジュールが持つ**が、`NEXT_PUBLIC_USE_FIREBASE_EMULATOR=true`
+のときは `firebase-app.ts` が Firestore / Storage を動的 import して接続を確定させるので、
+利用側で意識する必要はない（本番のバンドルには入らない）。
+
 ### アップロードの制限（`storage.rules`）
 
 `users/{uid}/**` への書き込みは本人のみで、さらに次の 2 つを満たすものに限る。

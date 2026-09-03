@@ -99,6 +99,8 @@ const MANUAL_STEPS = [
   'リポジトリ設定で Dependency graph と Dependabot alerts を有効化する（vulnerabilityAlerts がこれを読む）',
   'Template Sync（.github/workflows/template-sync.yml と TEMPLATE_SYNC_TOKEN）を設定する',
   'Dependabot の設定ファイルが残っていれば削除する（Renovate と PR が二重に立つ）',
+  // ruleset はリポジトリ外の状態なので、このスクリプトからは直せない
+  'production の ruleset を取り込み済みなら、required status check の名前を「ci」から「ci / ci」へ更新する（CI を参照形にするとチェック名が変わるため。→ .claude/docs/git-workflow.md「マージルールの強制」）',
 ]
 
 // 依存を入れ替えたときだけ必要になる残作業

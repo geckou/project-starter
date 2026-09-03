@@ -142,7 +142,23 @@ setup_branch_protection() {
     return
   fi
 
-  RULESET_NAME=$(node -p "require('$RULESET_FILE').name" 2>/dev/null || echo 'production-protection')
+  # require() はモジュール解決なので、相対パス（yarn setup = bash scripts/setup.sh）だと
+  # 必ず MODULE_NOT_FOUND になる。ファイルとして読む
+  RULESET_NAME=$(node -p \
+    "JSON.parse(require('fs').readFileSync('$RULESET_FILE','utf8')).name" \
+    2>/dev/null || echo 'production-protection')
+
+  # required status check の名前は CI の呼び方で変わる。
+  #   参照形（reusable workflow を uses で呼ぶ）      -> 'ci / ci'
+  #   ci.yml が pull_request で直接動く形（テンプレ本体・未移行の派生） -> 'ci'
+  # 実態と違う名前を要求すると、そのチェックは永久に報告されず
+  # production への PR が Pending のままマージできなくなる
+  CI_WORKFLOW="$(dirname "$0")/../.github/workflows/ci.yml"
+  CI_CONTEXT='ci'
+  if grep -Eq '^[[:space:]]*uses:[[:space:]]*[^[:space:]]+/\.github/workflows/ci\.yml@' \
+    "$CI_WORKFLOW" 2>/dev/null; then
+    CI_CONTEXT='ci / ci'
+  fi
 
   # 既存の ruleset チェック
   if gh api "repos/$REPO/rulesets" --jq '.[].name' 2>/dev/null |
@@ -157,13 +173,29 @@ setup_branch_protection() {
     return
   fi
 
-  # ruleset を取り込む
+  # ruleset を取り込む。context だけはこのリポジトリの CI の呼び方に合わせる
   # （set -e 環境下でも失敗時に else 節へ到達できるよう if で直接判定する）
-  if gh api "repos/$REPO/rulesets" \
+  RULESET_BODY=$(node -e "
+    const fs = require('fs')
+    const ruleset = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'))
+    const context = process.argv[2]
+
+    for (const rule of ruleset.rules ?? []) {
+      if (rule.type !== 'required_status_checks') continue
+
+      rule.parameters.required_status_checks = (
+        rule.parameters.required_status_checks ?? []
+      ).map((check) => (check.context === 'ci / ci' ? { context } : check))
+    }
+
+    process.stdout.write(JSON.stringify(ruleset))
+  " "$RULESET_FILE" "$CI_CONTEXT")
+
+  if printf '%s' "$RULESET_BODY" | gh api "repos/$REPO/rulesets" \
     --method POST \
-    --input "$RULESET_FILE" > /dev/null; then
+    --input - > /dev/null; then
     echo "[done] production ブランチに保護ルール（$RULESET_NAME）を設定しました"
-    echo "  - Required status checks: guard / ci / ci"
+    echo "  - Required status checks: guard / $CI_CONTEXT"
     echo "  - PR 必須 + 1名以上のレビュー承認"
     echo "  - force push 禁止"
     echo "  - ブランチ削除禁止"
@@ -172,6 +204,13 @@ setup_branch_protection() {
     echo "  → リポジトリの Admin 権限があるか確認してください"
     echo "  → Free プランのプライベートリポジトリでは Rulesets を使えません"
     echo "    （.claude/docs/git-workflow.md「マージルールの強制」を参照）"
+  fi
+
+  # legacy の branch protection が残っていると required check 名が二重管理になる
+  if gh api "repos/$REPO/branches/production/protection" > /dev/null 2>&1; then
+    echo "[warn] legacy の branch protection が残っています"
+    echo "  → ruleset と二重管理になります。GitHub の Settings > Branches から削除するか、"
+    echo "    gh api repos/$REPO/branches/production/protection --method DELETE"
   fi
 }
 

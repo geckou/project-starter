@@ -24,6 +24,23 @@ export const app: FirebaseApp | null = isConfigured
   ? (getApps()[0] ?? initializeApp(firebaseConfig))
   : null
 
+// エミュレーター接続は SDK ごとのモジュールが持つ。使う側が import しない限り
+// 発火しないため、@geckou/shared/storage 経由のアップロード（内部で getStorage を
+// 呼ぶ）がローカルでも本番のバケットへ行ってしまう。エミュレーター有効時だけ、
+// ここで両方を読み込んで接続を確定させる。
+//
+// 動的 import なのは、本番のバンドルに firebase/firestore と firebase/storage を
+// 持ち込まないため（NEXT_PUBLIC_USE_FIREBASE_EMULATOR はビルド時に埋め込まれるので、
+// 本番ではこのブロックごと落ちる）
+if (
+  app &&
+  typeof window !== 'undefined' &&
+  process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true'
+) {
+  void import('@/lib/firebase-firestore')
+  void import('@/lib/firebase-storage')
+}
+
 /**
  * エミュレーターへの接続を SDK ごとに 1 回だけ行う。
  * connect*Emulator は同じインスタンスに二度呼ぶと throw するため、
