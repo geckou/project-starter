@@ -3,6 +3,7 @@
 import { initFirebase } from '@geckou/shared/firebase'
 import { connectAuthEmulator } from 'firebase/auth'
 import { connectFirestoreEmulator } from 'firebase/firestore'
+import { connectStorageEmulator, getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? '',
@@ -34,6 +35,9 @@ if (
       disableWarnings: true,
     })
     connectFirestoreEmulator(db, 'localhost', 8080)
+    // Storage を繋がないと、ローカルでのアップロードが本番（または develop）の
+    // バケットへ行く。ポートは firebase.json の emulators.storage と揃える
+    if (app) connectStorageEmulator(getStorage(app), 'localhost', 9199)
     w.__firebaseEmulatorConnected = true
   }
 }
