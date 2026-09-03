@@ -227,7 +227,8 @@ tarball に `src` は入らない）。
 yarn workspace <web ワークスペース名> add @geckou/ui-react
 ```
 
-そのうえで 2〜3 を設定する。以後の更新は `yarn up @geckou/ui-react` で受け取れる。
+そのうえで 2〜3 を設定する。以後の更新は `yarn upgrade @geckou/ui-react` で受け取れる
+（ルートは yarn 1 系。`yarn up` は Yarn Berry のコマンドで使えない）。
 
 ## shared の構成
 
@@ -262,7 +263,10 @@ shared/src/
 ```
 
 コード内で外部ライブラリと同じようにインポートできる。
-実際にはダウンロードされるわけではなく、yarn のワークスペース機能で `packages/shared/src/` を直接参照している。
+実際にはダウンロードされるわけではなく、yarn のワークスペース機能でローカルの
+`packages/shared` を参照している。参照されるのは `exports` の `default` が指す
+`packages/shared/dist/`（ビルド成果物）で、`turbo.json` の `^build` が先にビルドする
+（型だけは `types` が `src/` を指すので、ビルド前でも型チェックは通る）。
 
 ```typescript
 // ルートのバレルが出すのは環境非依存のもの（types / utils / theme / i18n）だけ

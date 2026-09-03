@@ -478,7 +478,8 @@ preset の1コミットで全派生へ届く。判断（メジャーは Dashboar
 - gitignore 対象など意図的に存在しないパスは `ALLOW_MISSING` に追加する
 
 `.github/workflows/docs-check.yml` が全 PR で実行する。`ci.yml` と分けているのは、
-`ci.yml` が `**/*.md` を `paths-ignore` しており、ドキュメントだけの PR で走らないため。
+`ci.yml` がコードの差分が無い PR で重いステップを飛ばす作りになっており、
+ドキュメントだけの差分ではこの検査まで飛んでしまうため（`ci.yml` の「Detect code changes」）。
 
 ### ルールを追加したくなったら
 

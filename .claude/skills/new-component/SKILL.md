@@ -11,7 +11,8 @@ description: React コンポーネントを作成する
 
 1. ユーザーにコンポーネント名と用途を確認する
 2. `apps/web/src/components/` にファイルを作成する
-   - ネストが必要な場合はディレクトリを作る（例: `components/ui/Button.tsx`）
+   - ネストが必要な場合はディレクトリを作る（例: `components/dashboard/StatsCard.tsx`）。
+     Button / Modal 等の汎用 UI は `@geckou/ui-react` から取るので新規作成しない
 3. Server Component か Client Component かをユーザーに確認する
    - イベントハンドラ・useState・useEffect がある → Client Component
    - データ取得のみ → Server Component

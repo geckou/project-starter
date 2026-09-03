@@ -145,7 +145,8 @@ export function PostForm() {
 
 ## 配置ルール
 
-- 汎用フォーム（ログイン等）: `components/auth/` や `components/ui/`
+- 汎用フォーム（ログイン等）: `components/auth/`
+  （Button / Input 等の汎用 UI 部品は `@geckou/ui-react` から取る）
 - 機能固有フォーム: `components/<feature>/`（例: `components/posts/PostForm.tsx`）
 
 ## バリデーションパターン

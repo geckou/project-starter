@@ -81,7 +81,9 @@ Renovate preset は設定を配る仕組みであって、`package.json` にフ�
 "resolutions": {
   "tar": ">=7.5.11",
   "@xmldom/xmldom": ">=0.8.12",
-  "@tootallnate/once": ">=3.0.1"
+  "@tootallnate/once": ">=3.0.1",
+  "vite": "~7.3.2",
+  "eslint-plugin-react-hooks": "^5"
 }
 ```
 
