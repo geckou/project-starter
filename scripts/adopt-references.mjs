@@ -864,12 +864,21 @@ function sortKeys(object) {
 }
 
 function configPackageVersion(directory) {
-  const manifest = JSON.parse(
-    fs.readFileSync(
-      path.join(TEMPLATE_ROOT, 'packages', directory, 'package.json'),
-      'utf8'
+  const file = path.join(TEMPLATE_ROOT, 'packages', directory, 'package.json')
+
+  // このスクリプトはテンプレート本体から派生を対象に動かすツールで、配る
+  // version の正はテンプレート側の packages/*-config が持つ。派生には
+  // これらのワークスペースが無いため、ENOENT をそのまま出すと
+  // 「どこで何を実行すべきか」が分からないエラーが並ぶ
+  if (!fs.existsSync(file)) {
+    throw new Error(
+      `${path.relative(TEMPLATE_ROOT, file)} が見つかりません。` +
+        'adopt-references はテンプレート本体（packages/*-config を持つリポジトリ）で ' +
+        '`node scripts/adopt-references.mjs --repo <派生のパス>` として実行してください。'
     )
-  )
+  }
+
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'))
 
   return `^${manifest.version}`
 }

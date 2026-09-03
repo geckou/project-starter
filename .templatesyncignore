@@ -47,3 +47,5 @@ scripts/check-api-diff.mjs
 scripts/test-api-diff.sh
 scripts/check-workspace-ranges.mjs
 scripts/test-workspace-ranges.sh
+scripts/adopt-references.mjs
+scripts/test-adopt-references.sh
