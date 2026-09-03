@@ -50,13 +50,27 @@ export async function apiClient<T>(
       body: body ? JSON.stringify(body) : undefined,
     })
 
-    const data = await response.json()
+    // Express の未定義ルートは HTML を返す。response.json() を先に呼ぶと
+    // そこで throw し、HTTP ステータスの情報が消える
+    const text = await response.text()
+    let data: unknown = undefined
 
-    if (!response.ok) {
-      return { success: false, error: data.error || `HTTP ${response.status}` }
+    try {
+      data = text === '' ? undefined : JSON.parse(text)
+    } catch {
+      data = undefined
     }
 
-    return { success: true, data }
+    if (!response.ok) {
+      const message =
+        data !== null && typeof data === 'object' && 'error' in data
+          ? String((data as { error: unknown }).error)
+          : `HTTP ${response.status}`
+
+      return { success: false, error: message }
+    }
+
+    return { success: true, data: data as T }
   } catch (error) {
     return {
       success: false,

@@ -190,6 +190,24 @@ run 2 'here-string を heredoc と誤認しない' \
 git commit -m 'wip'" feat/existing
 
 echo
+echo '=== ブランチ作成は checkout -b 以外の書き方も見る ==='
+run 2 'git branch <名前> の命名規則違反' 'git branch not_kebab'
+run 2 'git worktree add -b の命名規則違反' \
+  'git worktree add -b bad_name ../wt'
+run 0 'git branch <名前> でも規約に沿っていれば通す' 'git branch feat/new-thing'
+run 0 'git branch -r --list はブランチ作成ではない' \
+  "git branch -r --list 'origin/release/*'"
+run 0 'git branch -D はブランチ作成ではない' 'git branch -D not_kebab'
+run 0 'git branch（一覧）はブランチ作成ではない' 'git branch'
+run 0 'git branch <名前> <分岐元> の分岐元を読む' \
+  'git branch feat/new-thing production' feat/existing
+
+echo
+echo '=== コミットメッセージのファイル指定 ==='
+run 2 '空白を含むパスは 1 引数として扱う（読めないので止まる）' \
+  'git commit -F "my file.txt"' feat/existing
+
+echo
 echo '=== 書き方の違いで取りこぼさない・誤検知しない ==='
 run 2 'checkout -B も命名規則を見る' 'git checkout -B wip'
 run 2 'checkout -q -b（フラグが間に入る）' 'git checkout -q -b wip'

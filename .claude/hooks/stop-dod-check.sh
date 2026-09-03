@@ -22,7 +22,9 @@ active=$(printf '%s' "$input" | jq -r '.stop_hook_active // false')
 [ "$active" = "true" ] && exit 0
 
 # コードファイルの未コミット変更がなければ何もしない（ドキュメントのみの作業では走らせない）
-changed=$(git status --porcelain 2>/dev/null | awk '{print $NF}' | grep -E "\.($extensions)\$")
+# 空白入りのパス（"my file.ts"）でも拡張子を判定できるよう、
+# ステータス欄（先頭3文字）だけを落として残りをそのままパス名として扱う
+changed=$(git status --porcelain 2>/dev/null | cut -c4- | grep -E "\.($extensions)\$")
 [ -z "$changed" ] && exit 0
 
 failed=''

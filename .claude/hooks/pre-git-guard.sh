@@ -378,9 +378,12 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
   fi
 
   if has '(^|[[:space:]])(-F|--file)([[:space:]]|=|$)'; then
+    # クォート付きの値は閉じクォートまでを 1 引数として取る（cd の処理と同じ方針）。
+    # 空白までで切ると `-F "my file.txt"` が `"my` になり、分かりにくいエラーで止まる
     msg_file=$(printf '%s' "$cmd" |
-      grep -oE '(^|[[:space:]])(-F|--file)[[:space:]=]+[^[:space:];&|]+' |
+      grep -oE "(^|[[:space:]])(-F|--file)[[:space:]=]+(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)" |
       head -1 | sed -E 's/.*(-F|--file)[[:space:]=]+//')
+    msg_file=$(unquote "$msg_file")
 
     # フックはコマンド文字列をそのまま見るため、変数や置換を含むパスは展開されない。
     # 検証できないものを黙って通すと素通りの経路になるので、リテラルのパスを求める。
@@ -431,7 +434,7 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
           if ($i ~ /^(--force([^-]|$)|--force-with-lease|-f$)/) force = 1
           # 値を取るオプションは次のトークンを読み飛ばす
           if ($i == "-o" || $i == "--push-option" || $i == "--repo" ||
-              $i == "--receive-pack" || $i == "--exec" || $i == "-4" && 0) i++
+              $i == "--receive-pack" || $i == "--exec") i++
           continue
         }
 
@@ -481,12 +484,27 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
 fi
 
 # --- ブランチ作成 -------------------------------------------------------
-# -B / -C（既存ブランチのリセット付き作成）も、間に挟まる他のフラグも見る
-NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[bB]|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[cC])'
+# -B / -C（既存ブランチのリセット付き作成）も、間に挟まる他のフラグも見る。
+# checkout -b / switch -c 以外にも、`git branch <名前>` と
+# `git worktree add -b <名前>` でブランチは作れる（どちらも素通りしていた）。
+# `git branch` は直後が非フラグのときだけ作成（-d / -m / --list 等は別の操作）
+NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[bB]|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[cC]|worktree[[:space:]]+add([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[bB])'
+
+# `git branch <名前> [<分岐元>]` もブランチを作る。直後が非フラグのときだけ対象に
+# する（-d / -D / -m / -r / --list 等はブランチを作らない別の操作）
+PLAIN_BRANCH_RE='branch[[:space:]]+[^-[:space:];&|][^[:space:];&|]*([[:space:]]+[^-[:space:];&|][^[:space:];&|]*)?'
 
 newbranch=$(printf '%s' "$cmd" |
   grep -oE "(^|[[:space:]])git[[:space:]]+$NEW_BRANCH_RE[[:space:]]+[^[:space:];&|]+" |
   head -1 | awk '{print $NF}')
+
+plain_branch=''
+if [ -z "$newbranch" ]; then
+  plain_branch=$(printf '%s' "$cmd" |
+    grep -oE "(^|[[:space:]])git[[:space:]]+$PLAIN_BRANCH_RE" | head -1)
+  newbranch=$(printf '%s' "$plain_branch" | awk '{print $3}')
+fi
+
 newbranch=$(unquote "$newbranch")
 
 if [ -n "$newbranch" ]; then
@@ -514,7 +532,12 @@ if [ -n "$newbranch" ]; then
 
   # 最新の remote 情報を持たずに切ると、進行中の release/* を見落として
   # 何ヶ月も古い土台の上で作業を始めてしまう
-  gitdir=$(git rev-parse --git-dir 2>/dev/null)
+  # git -C <別 worktree> のときはそちらの FETCH_HEAD を見る（セッション側ではない）
+  gitdir=$(git -C "${guard_dir:-.}" rev-parse --git-dir 2>/dev/null)
+  case $gitdir in
+    /*) ;;
+    *) gitdir=$(cd "${guard_dir:-.}" 2>/dev/null && cd "$gitdir" 2>/dev/null && pwd -P) ;;
+  esac
   fetch_hint="先に次を実行して、進行中のリリースを確認してください:
   git fetch origin --prune && git branch -r --list 'origin/release/*'"
 
@@ -529,7 +552,8 @@ if [ -n "$newbranch" ]; then
   # 分岐元はブランチ名より後ろの「最初の非フラグトークン」。そう決めないと
   # git checkout -b docs/example -q の -q を分岐元と誤認してしまう。
   newbranch_re=$(printf '%s' "$newbranch" | sed 's|[^a-zA-Z0-9_/-]|\\&|g')
-  base=$(printf '%s' "$cmd" |
+  base=$(printf '%s' "$plain_branch" | awk '{print $4}')
+  [ -n "$base" ] || base=$(printf '%s' "$cmd" |
     grep -oE "$NEW_BRANCH_RE[[:space:]]+\"?'?$newbranch_re'?\"?([[:space:]]+[^[:space:];&|]+)*" |
     head -1 |
     awk '{ stage = 0

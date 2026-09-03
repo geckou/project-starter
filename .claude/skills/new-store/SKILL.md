@@ -15,6 +15,8 @@ description: Zustand ストアの追加
 
 ```typescript
 // packages/shared/src/stores/ui-store.ts
+'use client'
+
 import { create } from 'zustand'
 
 type UiState = {

@@ -46,7 +46,12 @@ checked=0
 # 追跡されている Markdown が対象（node_modules は git 管理外なので自然に外れる）。
 # .claude/skills/ は除外する。スキルは「これから作るファイル」を書くものなので、
 # 実在しないパスを含むのが正しい（apps/admin/ や scheduled.ts 等）
-for doc in $(git ls-files '*.md' | grep -v '^\.claude/skills/'); do
+# 空白入りのファイル名で単語分割されないよう NUL 区切りで読む
+while IFS= read -r -d '' doc; do
+  case "$doc" in
+    .claude/skills/*) continue ;;
+  esac
+
   checked=$((checked + 1))
 
   # --- 1. リポジトリ相対パスの言及 ---
@@ -76,7 +81,7 @@ for doc in $(git ls-files '*.md' | grep -v '^\.claude/skills/'); do
 
       printf '%s:%s\tリンク先 %s\n' "$doc" "$line" "$target" >>"$findings"
     done
-done
+done < <(git ls-files -z '*.md')
 
 # 同じ行がパス言及とリンクの両方で拾われることがあるため、重複を除いてから数える
 sort -u "$findings" -o "$findings"
