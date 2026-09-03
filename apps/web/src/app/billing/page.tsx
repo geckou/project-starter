@@ -12,12 +12,12 @@ export const dynamic = 'force-dynamic'
 
 export default async function BillingPage() {
   const sessionCookie = (await cookies()).get('session')?.value
-  if (!sessionCookie) redirect('/login')
+  if (!sessionCookie) redirect('/login?redirect=/billing')
 
   const decoded = await adminAuth
     .verifySessionCookie(sessionCookie, true)
     .catch(() => null)
-  if (!decoded) redirect('/login')
+  if (!decoded) redirect('/login?redirect=/billing')
 
   const userDoc = await adminDb.collection('users').doc(decoded.uid).get()
   const subscription = userDoc.get('subscription') as Subscription | undefined

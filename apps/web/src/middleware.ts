@@ -47,7 +47,12 @@ function evaluateBasicAuth(
 
 // layer:firebase:start
 // 認証が必要なパス
-const PROTECTED_PATHS = ['/dashboard']
+const PROTECTED_PATHS = [
+  '/dashboard',
+  // layer:billing:start
+  '/billing',
+  // layer:billing:end
+]
 // layer:firebase:end
 
 export function middleware(request: NextRequest) {
