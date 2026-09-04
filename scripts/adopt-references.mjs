@@ -29,6 +29,7 @@
 //
 // 冪等（2 回流しても差分が出ない）。node_modules に依存しないので yarn install なしで動く。
 
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -172,13 +173,48 @@ function resolveRepository(repo) {
 
 // テンプレート自身か。ファイルの有無では判定しない（renovate/ も reusable workflow の
 // 実体も Template Sync で派生へ配られるため、派生にも存在する）。
-// このスクリプトを動かしているリポジトリ本体か、origin がテンプレートを指すかで見る
+// このスクリプトを動かしているリポジトリ本体か、origin がテンプレートを指すかで見る。
+//
+// **見るのは origin だけ。** .git/config 全体に対して照合すると、テンプレート更新を
+// 手で取り込むために upstream を足している派生（ありがちな運用）まで拒否してしまう。
 function isTemplateRepository(root) {
   if (root === TEMPLATE_ROOT) return true
 
+  const origin = originUrl(root)
+
+  return origin !== null && /geckou\/project-starter(\.git)?\/?$/.test(origin)
+}
+
+// 失敗しても止めない（判定できないだけ）
+function tryRun(command, args) {
+  try {
+    return execFileSync(command, args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return null
+  }
+}
+
+// origin の URL。git があればそれに任せ、無ければ .git/config を読む
+function originUrl(root) {
+  const fromGit = tryRun('git', ['-C', root, 'remote', 'get-url', 'origin'])
+
+  if (fromGit !== null) return fromGit
+
   const config = readFileOrNull(path.join(root, '.git/config'))
 
-  return config !== null && /geckou\/project-starter(\.git)?\s*$/m.test(config)
+  if (config === null) return null
+
+  // [remote "origin"] セクションから次のセクションまでを切り出して url を読む
+  const section = config.match(
+    /^\s*\[remote\s+"origin"\][^[]*/m
+  )?.[0]
+
+  if (section === undefined) return null
+
+  return section.match(/^\s*url\s*=\s*(.+?)\s*$/m)?.[1] ?? null
 }
 
 function readFileOrNull(file) {

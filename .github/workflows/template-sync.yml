@@ -50,7 +50,12 @@ jobs:
         with:
           source_repo_path: geckou/project-starter
           upstream_branch: production
+          # 取り込み元（テンプレート）の読み取りに使う
           source_gh_token: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
+          # push と PR 作成に使うのはこちら。既定は github.token なので、
+          # ここを渡さないと PR が GITHUB_TOKEN 名義で作られ、CI が 1 つも走らない
+          # （`github_token` 入力は deprecated で、取り込み元の認証に使われるもの）
+          target_gh_token: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
           pr_title: 'chore: テンプレート更新の取り込み'
           pr_labels: template-sync
           pr_commit_msg: 'chore: テンプレート更新の取り込み'
