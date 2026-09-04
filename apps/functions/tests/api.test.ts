@@ -7,6 +7,7 @@ import {
   it,
   vi,
 } from 'vitest'
+import express from 'express'
 import { createServer, type Server } from 'node:http'
 import { type AddressInfo } from 'node:net'
 
@@ -46,21 +47,51 @@ import { app } from '../src/api'
 let server: Server
 let baseUrl: string
 
+// Functions Framework は自前のハンドラより前に JSON をパースし、生のボディを
+// req.rawBody に残す。supertest / 素の Express で叩くだけではこの前段が
+// 再現されず、rawBody の取り違えが本番でしか出ない。同じ配線で包んで確かめる
+let frameworkServer: Server
+let frameworkBaseUrl: string
+
 beforeAll(async () => {
   server = createServer(app)
 
-  await new Promise<void>((resolve) => {
-    server.listen(0, resolve)
-  })
+  const framework = express()
+  framework.use(
+    express.json({
+      verify: (req, _res, buffer) => {
+        ;(req as express.Request & { rawBody?: Buffer }).rawBody = buffer
+      },
+    })
+  )
+  framework.use(app)
+  frameworkServer = createServer(framework)
+
+  await Promise.all(
+    [server, frameworkServer].map(
+      (target) =>
+        new Promise<void>((resolve) => {
+          target.listen(0, resolve)
+        })
+    )
+  )
 
   const { port } = server.address() as AddressInfo
   baseUrl = `http://127.0.0.1:${port}`
+  frameworkBaseUrl = `http://127.0.0.1:${
+    (frameworkServer.address() as AddressInfo).port
+  }`
 })
 
 afterAll(async () => {
-  await new Promise<void>((resolve) => {
-    server.close(() => resolve())
-  })
+  await Promise.all(
+    [server, frameworkServer].map(
+      (target) =>
+        new Promise<void>((resolve) => {
+          target.close(() => resolve())
+        })
+    )
+  )
 })
 
 describe('api', () => {
@@ -218,6 +249,32 @@ describe('api', () => {
       expect(argument.headers['stripe-signature']).toBe('sig_test')
     })
 
+    // 回帰: Functions Framework の前段パースを再現していなかったため、
+    // req.body（パース済みオブジェクト）を渡す配線のまま緑になっていた。
+    // 本番では Stripe が全イベント 400 Invalid signature になる
+    it('Functions Framework が先にパースしても、生のボディが渡る', async () => {
+      mockHandleStripeWebhook.mockResolvedValueOnce({
+        status: 200,
+        body: { received: true },
+      })
+
+      const payload = JSON.stringify({ id: 'evt_test' })
+      const response = await fetch(`${frameworkBaseUrl}/webhooks/stripe`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'stripe-signature': 'sig_test',
+        },
+        body: payload,
+      })
+
+      expect(response.status).toBe(200)
+
+      const argument = mockHandleStripeWebhook.mock.calls[0][0]
+      expect(Buffer.isBuffer(argument.rawBody)).toBe(true)
+      expect(argument.rawBody.toString('utf-8')).toBe(payload)
+    })
+
     it('POST /webhooks/revenuecat に Buffer が渡る', async () => {
       mockHandleRevenueCatWebhook.mockResolvedValueOnce({
         status: 200,
@@ -226,6 +283,29 @@ describe('api', () => {
 
       const payload = JSON.stringify({ event: { type: 'RENEWAL' } })
       const response = await fetch(`${baseUrl}/webhooks/revenuecat`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'Bearer rc-secret',
+        },
+        body: payload,
+      })
+
+      expect(response.status).toBe(200)
+
+      const argument = mockHandleRevenueCatWebhook.mock.calls[0][0]
+      expect(Buffer.isBuffer(argument.rawBody)).toBe(true)
+      expect(argument.rawBody.toString('utf-8')).toBe(payload)
+    })
+
+    it('RevenueCat も Framework の前段パース下で生のボディが渡る', async () => {
+      mockHandleRevenueCatWebhook.mockResolvedValueOnce({
+        status: 200,
+        body: { received: true },
+      })
+
+      const payload = JSON.stringify({ event: { type: 'RENEWAL' } })
+      const response = await fetch(`${frameworkBaseUrl}/webhooks/revenuecat`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',

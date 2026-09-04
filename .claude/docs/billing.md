@@ -410,7 +410,7 @@ yarn test:rules  # Firestore / Storage ルール（要 Firebase エミュレー�
 
 | 症状 | 原因 |
 | --- | --- |
-| Webhook が常に 400 `Invalid signature` | `api.ts` で `express.json()` より前に `express.raw()` を通す順序が崩れている。または `STRIPE_WEBHOOK_SECRET` がローカル用（`stripe listen` が出す値）と本番用で取り違えられている |
+| Webhook が常に 400 `Invalid signature` | 署名検証にパース済みのボディを渡している（Cloud Functions では Framework が先にパースするため `req.rawBody` が要る。`api.ts` の `extractRawBody()`）。ローカルなら `express.json()` より前に `express.raw()` を通す順序が崩れている。または `STRIPE_WEBHOOK_SECRET` がローカル用（`stripe listen` が出す値）と本番用で取り違えられている |
 | 購入は成功するが権利が反映されない | Webhook のイベント選択に `customer.subscription.*` が入っていない。ログに `Stripe subscription without uid metadata` が出ていれば、Checkout 作成時の `subscription_data.metadata` が欠けている |
 | `/billing/checkout` が 400 `Invalid priceId` | `STRIPE_PRICE_IDS` に該当の price ID が入っていない。商品 ID（`prod_...`）を入れていないか確認 |
 | price ID は合っているのに Stripe 側で `No such price` | テストモードで作った price を本番キーで使っている（またはその逆）。price ID はモードごとに別物 |

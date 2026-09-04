@@ -286,8 +286,11 @@ if (isSubscriptionActive(user.subscription)) {
   これが無いとユーザーが自分を `active` に書き換えて有料機能を使えてしまう
 - **Webhook は冪等**。処理済みイベントを `billing_events/{source}_{eventId}` に記録し、
   再送を二重適用しない。反映済みより古いイベントでの上書きも防ぐ
-- **Stripe の署名検証には生のボディが必要**。`api.ts` で `express.json()` より前に
-  `express.raw()` を通している（順序を入れ替えると検証が必ず失敗する）
+- **Stripe の署名検証には生のボディが必要**。Cloud Functions では Functions Framework が
+  自前のハンドラより前に JSON をパースするため、後段の `express.raw()` はスキップされ
+  `req.body` はオブジェクトになる。生のボディは `req.rawBody` にしか無いので、
+  `api.ts` の `extractRawBody()` が `req.rawBody ?? req.body` で取り出す
+  （`express.raw()` は Express 単体で動かすとき用。`express.json()` より前に置く）
 - **購入可能な price はサーバー側の許可リスト**（`STRIPE_PRICE_IDS`）で検証する
 - **ルールから権利状態を参照したい場合のみ** `SYNC_SUBSCRIPTION_CLAIMS=true` を設定する。
   Webhook が Firebase Auth のカスタムクレームにも同期し、`request.auth.token.subscriptionActive`
