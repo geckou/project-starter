@@ -102,9 +102,7 @@ rm -f scripts/release.sh scripts/geckou-release scripts/install-release-command.
   scripts の `turbo dev --filter=@geckou/web...` 等
 - 全ソースコードの import 文（`@geckou/shared`, `@geckou/shared/stores` 等）
 - `apps/*/tailwind.config.{ts,js}` の `@geckou/shared/theme` 参照
-- `scripts/deploy.sh` 内の `dep.startsWith('@geckou/')`
 - `scripts/setup.sh` 内の `yarn workspace @geckou/shared build`
-- `.github/workflows/ci.yml` / `deploy.yml` の `yarn workspace @geckou/mobile exec ...`
 - `apps/functions/tsconfig.json` の paths（`@geckou/shared` エイリアス）
 - `apps/web/next.config.ts` / `apps/mobile/metro.config.js` / `firebase.json` /
   `lint-staged.config.cjs` 内の参照

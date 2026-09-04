@@ -580,21 +580,31 @@ fi
 rm -rf "$dry" "$wet" "$pristine_dry"
 
 # スコープをリネーム済みの派生プロジェクト（/init-project 後）へ足せる
+#
+# 置換元のスコープは決め打ちにできない。テンプレート本体は @geckou だが、
+# /init-project でスコープだけ変えた派生（最も普通の形）では別のスコープに
+# なっており、決め打ちするとその派生の CI でこのブロックだけが落ちる。
 renamed=$(make_variant)
 pristine_renamed=$(make_variant)
 node "$REPO_ROOT/scripts/remove-layer.mjs" --target "$renamed" firebase > /dev/null 2>&1
-# 内部ワークスペースのスコープだけを @myapp/* に変える（外部パッケージはそのまま）
+# 内部ワークスペースの現在のスコープを読む（@geckou とは限らない）
+local_scope=$(node -p "require('$renamed/apps/web/package.json').name.split('/')[0]" 2>/dev/null)
+[ -n "$local_scope" ] || local_scope='@geckou'
+# 置換先は現在のスコープと必ず違うものにする
+renamed_scope='@myapp'
+[ "$local_scope" = "$renamed_scope" ] && renamed_scope='@otherapp'
+# 内部ワークスペースのスコープだけを変える（外部パッケージはそのまま）
 while IFS= read -r target; do
-  sed -i 's#@geckou/web#@myapp/web#g; s#@geckou/shared#@myapp/shared#g' "$target"
-done < <(grep -rl "@geckou/\(web\|shared\)" "$renamed/apps" "$renamed/packages" "$renamed/package.json" 2>/dev/null)
+  sed -i "s#$local_scope/web#$renamed_scope/web#g; s#$local_scope/shared#$renamed_scope/shared#g" "$target"
+done < <(grep -rl "$local_scope/\(web\|shared\)" "$renamed/apps" "$renamed/packages" "$renamed/package.json" 2>/dev/null)
 add_layers "$renamed" "$pristine_renamed" firebase functions > /dev/null 2>&1
 
-if grep -q '"@myapp/shared"' "$renamed/apps/functions/package.json" &&
-  ! grep -q '@geckou/shared' "$renamed/apps/functions/package.json"; then
+if grep -q "\"$renamed_scope/shared\"" "$renamed/apps/functions/package.json" &&
+  ! grep -q "$local_scope/shared" "$renamed/apps/functions/package.json"; then
   pass "取り込んだ内容の内部スコープをローカルに合わせる"
 else
-  fail "内部スコープが @geckou のまま残っている" \
-    "$(grep -n '@geckou\|@myapp' "$renamed/apps/functions/package.json" 2>&1)"
+  fail "内部スコープが $local_scope のまま残っている" \
+    "$(grep -n "$local_scope\|$renamed_scope" "$renamed/apps/functions/package.json" 2>&1)"
 fi
 
 if grep -q '"@geckou/firebase-server"' "$renamed/apps/functions/package.json"; then
@@ -610,13 +620,13 @@ if grep -q '"@geckou/eslint-config"' "$renamed/apps/functions/package.json" &&
   pass "npm へ公開する設定パッケージ（@geckou/eslint-config）は書き換えない"
 else
   fail "公開パッケージまで書き換えた" \
-    "$(grep -n '@geckou\|@myapp' "$renamed/apps/functions/package.json" "$renamed/apps/functions/eslint.config.mjs" 2>&1)"
+    "$(grep -n "@geckou\|$renamed_scope" "$renamed/apps/functions/package.json" "$renamed/apps/functions/eslint.config.mjs" 2>&1)"
 fi
 
-if json_has "$renamed/apps/functions/package.json" "json.name === '@myapp/functions'"; then
+if json_has "$renamed/apps/functions/package.json" "json.name === '$renamed_scope/functions'"; then
   pass "取り込んだワークスペース自身の name もローカルのスコープになる"
 else
-  fail "取り込んだワークスペースの name が @geckou のまま"
+  fail "取り込んだワークスペースの name が $local_scope のまま"
 fi
 rm -rf "$renamed" "$pristine_renamed"
 

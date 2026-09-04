@@ -81,3 +81,40 @@ describe('middleware basic auth', () => {
     })
   })
 })
+
+// layer:firebase:start
+describe('middleware route protection', () => {
+  // 保護対象を PROTECTED_PATHS に載せないと、ページ側の redirect が
+  // 戻り先なしの /login になり、ログイン後に元のページへ戻れない
+  const protectedPaths = [
+    '/dashboard',
+    // layer:billing:start
+    '/billing',
+    // layer:billing:end
+  ]
+
+  it.each(protectedPaths)(
+    'redirects %s to /login with the original path',
+    (path) => {
+      const response = middleware(buildRequest(path))
+
+      expect(response.status).toBe(307)
+      expect(response.headers.get('location')).toBe(
+        `https://example.web.app/login?redirect=${encodeURIComponent(path)}`
+      )
+    }
+  )
+
+  it.each(protectedPaths)('passes %s through when a session exists', (path) => {
+    const response = middleware(buildRequest(path, { session: true }))
+
+    expect(response.status).toBe(200)
+  })
+
+  it('does not protect public paths', () => {
+    const response = middleware(buildRequest('/'))
+
+    expect(response.status).toBe(200)
+  })
+})
+// layer:firebase:end

@@ -1,9 +1,11 @@
 // 参考実装: 実プロジェクトでは要件に合わせて書き換える
 'use client'
 
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth'
+import { signInWithEmailAndPassword } from 'firebase/auth'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
+
+import { auth } from '@/lib/firebase'
 
 // open redirect 防止: サイト内パス（/ 始まり、// は除外）のみ許可
 function sanitizeRedirect(redirect: string | null): string {
@@ -24,8 +26,16 @@ function LoginInner() {
     event.preventDefault()
     setError('')
 
+    // Firebase の環境変数が未設定なら auth は null。getAuth() を呼ぶと
+    // 「既定アプリが無い」で throw し、認証情報の誤りと同じ文言になってしまう
+    if (!auth) {
+      setError(
+        'Firebase の設定が読み込めません。環境変数（NEXT_PUBLIC_FIREBASE_*）を確認してください'
+      )
+      return
+    }
+
     try {
-      const auth = getAuth()
       const credential = await signInWithEmailAndPassword(auth, email, password)
 
       // サーバーにセッション cookie を発行させる

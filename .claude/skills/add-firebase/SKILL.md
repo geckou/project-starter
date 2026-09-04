@@ -26,7 +26,7 @@ yarn format
 
 | 区分 | 中身 |
 | --- | --- |
-| ファイル | `apps/web/src/lib/firebase.ts` / `firebase-admin.ts`、`app/{login,dashboard}/`、`app/api/session/`、`components/auth/`、`packages/shared/src/{firebase,firestore,storage,stores}/` |
+| ファイル | `apps/web/src/lib/firebase-app.ts` / `firebase.ts`（Auth）/ `firebase-firestore.ts` / `firebase-storage.ts` / `firebase-admin.ts`、`app/{login,dashboard}/`、`app/api/session/`、`components/auth/`、`packages/shared/src/{firebase,firestore,storage,stores}/` |
 | ルール | `firestore.rules` / `storage.rules` / `firestore.indexes.json` / `tests/`（ルールテスト）/ `scripts/test-rules.sh` |
 | 依存 | `firebase` / `firebase-admin` / `@geckou/firebase-client` / `zustand` |
 | 設定 | `firebase.json` の `firestore` / `storage` / エミュレーター、`middleware.ts` のセッション Cookie 判定、CI のルールテスト |

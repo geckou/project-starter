@@ -99,6 +99,8 @@ const MANUAL_STEPS = [
   'リポジトリ設定で Dependency graph と Dependabot alerts を有効化する（vulnerabilityAlerts がこれを読む）',
   'Template Sync（.github/workflows/template-sync.yml と TEMPLATE_SYNC_TOKEN）を設定する',
   'Dependabot の設定ファイルが残っていれば削除する（Renovate と PR が二重に立つ）',
+  // ruleset はリポジトリ外の状態なので、このスクリプトからは直せない
+  'production の ruleset を取り込み済みなら、required status check の名前を「ci」から「ci / ci」へ更新する（CI を参照形にするとチェック名が変わるため。→ .claude/docs/git-workflow.md「マージルールの強制」）',
 ]
 
 // 依存を入れ替えたときだけ必要になる残作業
@@ -864,12 +866,21 @@ function sortKeys(object) {
 }
 
 function configPackageVersion(directory) {
-  const manifest = JSON.parse(
-    fs.readFileSync(
-      path.join(TEMPLATE_ROOT, 'packages', directory, 'package.json'),
-      'utf8'
+  const file = path.join(TEMPLATE_ROOT, 'packages', directory, 'package.json')
+
+  // このスクリプトはテンプレート本体から派生を対象に動かすツールで、配る
+  // version の正はテンプレート側の packages/*-config が持つ。派生には
+  // これらのワークスペースが無いため、ENOENT をそのまま出すと
+  // 「どこで何を実行すべきか」が分からないエラーが並ぶ
+  if (!fs.existsSync(file)) {
+    throw new Error(
+      `${path.relative(TEMPLATE_ROOT, file)} が見つかりません。` +
+        'adopt-references はテンプレート本体（packages/*-config を持つリポジトリ）で ' +
+        '`node scripts/adopt-references.mjs --repo <派生のパス>` として実行してください。'
     )
-  )
+  }
+
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'))
 
   return `^${manifest.version}`
 }

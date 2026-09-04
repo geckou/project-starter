@@ -11,13 +11,13 @@ export default async function DashboardPage() {
   // middleware は Cookie の存在チェックのみ（Edge runtime では firebase-admin が使えない）。
   // セッション Cookie の実検証は保護ページ側で行う
   const sessionCookie = (await cookies()).get('session')?.value
-  if (!sessionCookie) redirect('/login')
+  if (!sessionCookie) redirect('/login?redirect=/dashboard')
 
   // 失効チェック付きで検証（第2引数 true でログアウト・無効化済みセッションを弾く）
   const decoded = await adminAuth
     .verifySessionCookie(sessionCookie, true)
     .catch(() => null)
-  if (!decoded) redirect('/login')
+  if (!decoded) redirect('/login?redirect=/dashboard')
 
   // サーバーサイドで Firestore からデータ取得（SSR）。
   // 検証済みの uid にスコープし、本人のデータのみ返す

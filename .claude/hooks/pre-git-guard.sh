@@ -268,6 +268,64 @@ cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_DIR" | grep -v "^$MARK_HOOKSPATH$")
 
 [ -n "$cmd" ] || exit 0
 
+# --- 短縮フラグの束を 1 文字ずつに展開する ------------------------------
+# git は `-am` のようにフラグを束ねて書ける。束のままだと -m / -F / -n の検出が
+# 「単独トークンの -m」しか見ないため全て素通りし、コミット規約も -n 禁止も効かない。
+# 値がくっついた形（-m"wip" / -am"wip"）もここで分離する。
+# 束の中の -n はクォート内の文字列と区別できないと誤検出になるため、
+# 展開時に印として出す（後段の正規表現では見ない）。
+MARK_COMMIT_N=$(printf '\001commit-n')
+
+cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
+  BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
+
+  # -am -> -a -m、-m"wip" -> -m "wip"。値や `--` 付きの長いオプションは触らない
+  function expand(t,   j, letters, rest, k, res) {
+    if (t !~ /^-[A-Za-z]/) return t
+    j = 2
+    while (j <= length(t) && substr(t, j, 1) ~ /[A-Za-z]/) j++
+    letters = substr(t, 2, j - 2)
+    rest = substr(t, j)
+    res = ""
+    for (k = 1; k <= length(letters); k++) {
+      if (substr(letters, k, 1) == "n") saw_n = 1
+      res = res (res == "" ? "" : " ") "-" substr(letters, k, 1)
+    }
+    if (rest != "") res = res " " rest
+    return res
+  }
+
+  {
+    line = $0
+    if (line !~ /git[ \t]+(commit|push)([ \t]|$)/) { print line; next }
+
+    is_commit = (line ~ /git[ \t]+commit([ \t]|$)/)
+    saw_n = 0
+    q = ""; tok = ""; out = ""; n = length(line)
+
+    for (i = 1; i <= n; i++) {
+      c = substr(line, i, 1)
+      if (q != "") { tok = tok c; if (c == q) q = ""; continue }
+      if (c == bs) { tok = tok c substr(line, i + 1, 1); i++; continue }
+      if (c == sq || c == dq) { q = c; tok = tok c; continue }
+      if (c == " " || c == "\t") {
+        if (tok != "") { out = out (out == "" ? "" : " ") expand(tok); tok = "" }
+        continue
+      }
+      tok = tok c
+    }
+    if (tok != "") out = out (out == "" ? "" : " ") expand(tok)
+
+    print out
+    if (is_commit && saw_n) print mark
+  }
+')
+
+commit_n_bundle=$(printf '%s\n' "$cmd" | grep -c "^$MARK_COMMIT_N$")
+cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_COMMIT_N$")
+
+[ -n "$cmd" ] || exit 0
+
 TYPES='feat|fix|refactor|style|docs|test|chore'
 DOC='詳細は CLAUDE.md「Git ブランチ運用」/ .claude/docs/git-workflow.md を参照。'
 
@@ -290,7 +348,7 @@ current=$(git -C "${guard_dir:-.}" rev-parse --abbrev-ref HEAD 2>/dev/null)
 # lint-staged（pre-commit のフォーマット / lint）を迂回されると壊れたコードが入る。
 # commitlint 側は警告のみだが、迂回すればメッセージ規約への気付きも失われる。
 if { has '(^|[[:space:]])git[[:space:]]+(commit|push)' && has '(^|[[:space:]])--no-verify([[:space:]]|$)'; } ||
-  has '(^|[[:space:]])git[[:space:]]+commit[[:space:]]+-n([[:space:]]|$)'; then
+  [ "${commit_n_bundle:-0}" -gt 0 ]; then
   deny '--no-verify / commit -n による検証スキップは禁止です。pre-commit の lint-staged（フォーマット / lint）まで飛ばしてしまうため、失敗したら迂回せず原因を直してください。'
 fi
 
@@ -313,16 +371,19 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
 
   # メッセージの渡し方は -m / --message と -F / --file の 2 通り。
   # どちらも検証する（--amend --no-edit のようなメッセージ再利用は対象外）。
-  if has '(^|[[:space:]])(-m|--message)([[:space:]]|=)'; then
+  if has '(^|[[:space:]])(-m|--message)([[:space:]]|=|$)'; then
     # `--message=feat:\ x` のように、シェルのエスケープ付きで渡される形も通す
     has "(^|[[:space:]\"'=])($TYPES)(\([^)]+\))?:(\\\\)?[[:space:]][^[:space:]]" ||
       deny "$msg_ng"
   fi
 
-  if has '(^|[[:space:]])(-F|--file)([[:space:]]|=)'; then
+  if has '(^|[[:space:]])(-F|--file)([[:space:]]|=|$)'; then
+    # クォート付きの値は閉じクォートまでを 1 引数として取る（cd の処理と同じ方針）。
+    # 空白までで切ると `-F "my file.txt"` が `"my` になり、分かりにくいエラーで止まる
     msg_file=$(printf '%s' "$cmd" |
-      grep -oE '(^|[[:space:]])(-F|--file)[[:space:]=]+[^[:space:];&|]+' |
+      grep -oE "(^|[[:space:]])(-F|--file)[[:space:]=]+(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)" |
       head -1 | sed -E 's/.*(-F|--file)[[:space:]=]+//')
+    msg_file=$(unquote "$msg_file")
 
     # フックはコマンド文字列をそのまま見るため、変数や置換を含むパスは展開されない。
     # 検証できないものを黙って通すと素通りの経路になるので、リテラルのパスを求める。
@@ -373,7 +434,7 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
           if ($i ~ /^(--force([^-]|$)|--force-with-lease|-f$)/) force = 1
           # 値を取るオプションは次のトークンを読み飛ばす
           if ($i == "-o" || $i == "--push-option" || $i == "--repo" ||
-              $i == "--receive-pack" || $i == "--exec" || $i == "-4" && 0) i++
+              $i == "--receive-pack" || $i == "--exec") i++
           continue
         }
 
@@ -423,12 +484,27 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
 fi
 
 # --- ブランチ作成 -------------------------------------------------------
-# -B / -C（既存ブランチのリセット付き作成）も、間に挟まる他のフラグも見る
-NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[bB]|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[cC])'
+# -B / -C（既存ブランチのリセット付き作成）も、間に挟まる他のフラグも見る。
+# checkout -b / switch -c 以外にも、`git branch <名前>` と
+# `git worktree add -b <名前>` でブランチは作れる（どちらも素通りしていた）。
+# `git branch` は直後が非フラグのときだけ作成（-d / -m / --list 等は別の操作）
+NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[bB]|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[cC]|worktree[[:space:]]+add([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[bB])'
+
+# `git branch <名前> [<分岐元>]` もブランチを作る。直後が非フラグのときだけ対象に
+# する（-d / -D / -m / -r / --list 等はブランチを作らない別の操作）
+PLAIN_BRANCH_RE='branch[[:space:]]+[^-[:space:];&|][^[:space:];&|]*([[:space:]]+[^-[:space:];&|][^[:space:];&|]*)?'
 
 newbranch=$(printf '%s' "$cmd" |
   grep -oE "(^|[[:space:]])git[[:space:]]+$NEW_BRANCH_RE[[:space:]]+[^[:space:];&|]+" |
   head -1 | awk '{print $NF}')
+
+plain_branch=''
+if [ -z "$newbranch" ]; then
+  plain_branch=$(printf '%s' "$cmd" |
+    grep -oE "(^|[[:space:]])git[[:space:]]+$PLAIN_BRANCH_RE" | head -1)
+  newbranch=$(printf '%s' "$plain_branch" | awk '{print $3}')
+fi
+
 newbranch=$(unquote "$newbranch")
 
 if [ -n "$newbranch" ]; then
@@ -456,7 +532,12 @@ if [ -n "$newbranch" ]; then
 
   # 最新の remote 情報を持たずに切ると、進行中の release/* を見落として
   # 何ヶ月も古い土台の上で作業を始めてしまう
-  gitdir=$(git rev-parse --git-dir 2>/dev/null)
+  # git -C <別 worktree> のときはそちらの FETCH_HEAD を見る（セッション側ではない）
+  gitdir=$(git -C "${guard_dir:-.}" rev-parse --git-dir 2>/dev/null)
+  case $gitdir in
+    /*) ;;
+    *) gitdir=$(cd "${guard_dir:-.}" 2>/dev/null && cd "$gitdir" 2>/dev/null && pwd -P) ;;
+  esac
   fetch_hint="先に次を実行して、進行中のリリースを確認してください:
   git fetch origin --prune && git branch -r --list 'origin/release/*'"
 
@@ -471,7 +552,8 @@ if [ -n "$newbranch" ]; then
   # 分岐元はブランチ名より後ろの「最初の非フラグトークン」。そう決めないと
   # git checkout -b docs/example -q の -q を分岐元と誤認してしまう。
   newbranch_re=$(printf '%s' "$newbranch" | sed 's|[^a-zA-Z0-9_/-]|\\&|g')
-  base=$(printf '%s' "$cmd" |
+  base=$(printf '%s' "$plain_branch" | awk '{print $4}')
+  [ -n "$base" ] || base=$(printf '%s' "$cmd" |
     grep -oE "$NEW_BRANCH_RE[[:space:]]+\"?'?$newbranch_re'?\"?([[:space:]]+[^[:space:];&|]+)*" |
     head -1 |
     awk '{ stage = 0

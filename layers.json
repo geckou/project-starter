@@ -62,6 +62,9 @@
       "summary": "Firebase の認証・DB・ストレージと、そのルール・エミュレーター・ルールテスト・Admin SDK。外すと apps/web はサインインを持たない静的寄りの構成になる。",
       "files": [
         "apps/web/src/lib/firebase.ts",
+        "apps/web/src/lib/firebase-app.ts",
+        "apps/web/src/lib/firebase-firestore.ts",
+        "apps/web/src/lib/firebase-storage.ts",
         "apps/web/src/lib/firebase-admin.ts",
         "apps/web/src/app/api/session",
         "apps/web/src/app/login",
@@ -150,7 +153,11 @@
       "requires": "firebase",
       "removable": true,
       "summary": "API・Firestore / Auth トリガー・スケジュール実行の置き場所。API は全クライアントがこの1本を共有する（architecture.md）。外すとプロジェクトは API を持たない。",
-      "files": ["apps/functions", "apps/web/src/lib/api-client.ts"],
+      "files": [
+        "apps/functions",
+        "apps/web/src/lib/api-client.ts",
+        "apps/web/tests/api-client.test.ts"
+      ],
       "blocks": [
         ".env.example",
         "scripts/use-env.sh",
@@ -245,6 +252,8 @@
         "packages/shared/tests/types.test.ts",
         "apps/functions/src/api.ts",
         "apps/functions/tests/api.test.ts",
+        "apps/web/tests/middleware.test.ts",
+        "apps/web/src/middleware.ts",
         "apps/mobile/app.config.ts",
         ".env.example",
         "scripts/use-env.sh",

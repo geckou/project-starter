@@ -66,15 +66,23 @@ jobs:
           BEFORE: ${{ github.event.before }}
           MAJOR_TAG: ${{ steps.tag.outputs.name }}
         run: |
-          # squash なら1件、merge コミットなら取り込んだ全件を見る。
-          # 基準が取れないとき（workflow_dispatch・初回 push）は HEAD だけ見る
-          if [ -n "$BEFORE" ] &&
+          # 検査範囲の基準は「今のメジャータグ」にする。push の範囲だけを見ると、
+          # 破壊的変更で止まった直後に無害なコミットを push したとき、その push には
+          # 破壊的コミットが含まれないため昇格が通り、タグが破壊的コミットを
+          # 飛び越えてしまう（「v1 は破壊的変更の手前で止まったまま残る」が崩れる）。
+          # タグ基準なら未昇格分を毎回まとめて判定でき、workflow_dispatch でも同じ。
+          if git rev-parse -q --verify "refs/tags/$MAJOR_TAG" > /dev/null; then
+            RANGE="${MAJOR_TAG}..${GITHUB_SHA}"
+          elif [ -n "$BEFORE" ] &&
             [ "$BEFORE" != "0000000000000000000000000000000000000000" ] &&
             git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            # タグがまだ無いとき（初回の昇格）は push の範囲で見る
             RANGE="${BEFORE}..${GITHUB_SHA}"
           else
             RANGE="${GITHUB_SHA} -1"
           fi
+
+          echo "検査範囲: $RANGE"
 
           # Conventional Commits の書式でだけ破壊的変更と判定する。
           #   件名: `type!: ...`（`!` が付いている）

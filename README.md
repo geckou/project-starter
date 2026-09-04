@@ -372,7 +372,7 @@ PR は DoD（type-check / lint / test）とセルフレビュー（`/review`）�
 | `yarn dev`                       | 全アプリの開発サーバー起動  |
 | `yarn dev:web`                   | Web のみ起動                |
 | `yarn dev:mobile`                | Mobile のみ起動             |
-| `yarn dev:functions`             | Functions の watch ビルド   |
+| `yarn dev:functions`             | Functions をビルドしてエミュレーター起動 |
 | `yarn build`                     | 全アプリのビルド            |
 | `yarn build:functions`           | Functions のみビルド        |
 | `yarn test`                      | 全テスト実行                |

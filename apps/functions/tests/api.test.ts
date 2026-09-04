@@ -75,6 +75,23 @@ describe('api', () => {
       expect(response.status).toBe(200)
       expect(await response.json()).toEqual({ status: 'ok' })
     })
+
+    // 回帰: ALLOWED_ORIGINS の検査をモジュール読み込み時に置くと、
+    // index.ts が ./api を無条件に import しているため、スケジュール関数や
+    // トリガー、デプロイ時の関数ディスカバリまで巻き込んで落ちる。
+    // 落ちる範囲は /api の中に閉じる
+    it('ALLOWED_ORIGINS 未設定でも import は落ちず、リクエストが 500 になる', async () => {
+      vi.stubEnv('ALLOWED_ORIGINS', '')
+      vi.stubEnv('FUNCTIONS_EMULATOR', '')
+
+      const response = await fetch(`${baseUrl}/health`)
+
+      expect(response.status).toBe(500)
+
+      vi.unstubAllEnvs()
+
+      expect((await fetch(`${baseUrl}/health`)).status).toBe(200)
+    })
   })
 
   describe('GET /me', () => {
@@ -104,7 +121,8 @@ describe('api', () => {
 
       expect(response.status).toBe(200)
       expect(await response.json()).toEqual({ uid: 'user-1' })
-      expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token')
+      // 0.2.0 から checkRevoked（既定 false）が第2引数で渡る
+      expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token', false)
     })
   })
 

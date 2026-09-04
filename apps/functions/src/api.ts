@@ -26,16 +26,45 @@ function billingHandler(
 }
 // layer:billing:end
 
+/**
+ * CORS の許可オリジンを決める。
+ *
+ * ALLOWED_ORIGINS（カンマ区切り）が空のときの「全オリジン許可」は開発用の
+ * フォールバックで、本番で黙って効くと任意オリジンからの認証付きリクエストを
+ * 通してしまう。エミュレーターの外では未設定を落とす。
+ */
+export function resolveCorsOrigin(): string[] | true {
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin !== '')
+
+  if (allowedOrigins.length > 0) return allowedOrigins
+
+  if (process.env.FUNCTIONS_EMULATOR !== 'true') {
+    throw new Error('ALLOWED_ORIGINS is required outside the emulator')
+  }
+
+  return true
+}
+
 // テストから直接リクエストを投げられるよう app 自体も export する
 export const app = express()
 
-// 本番では ALLOWED_ORIGINS（カンマ区切り）で許可オリジンを絞る。
-// 未設定・空の場合は全オリジン許可（開発用）
-const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter((origin) => origin !== '')
-app.use(cors({ origin: allowedOrigins.length > 0 ? allowedOrigins : true }))
+// resolveCorsOrigin はリクエスト時に呼ぶ。モジュールの読み込み時に throw すると、
+// index.ts が ./api を無条件に import しているためスケジュール関数・トリガーや
+// デプロイ時の関数ディスカバリまで巻き込む。落とす範囲を /api に閉じる
+app.use(
+  cors({
+    origin: (_requestOrigin, callback) => {
+      try {
+        callback(null, resolveCorsOrigin())
+      } catch (error) {
+        callback(error as Error)
+      }
+    },
+  })
+)
 
 // layer:billing:start
 // Webhook の処理は @geckou/billing（geckou/kit）にあり、ここは

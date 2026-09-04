@@ -130,6 +130,22 @@ run 2 'release/* への force push' 'git push --force origin release/1.0.0' feat
 run 0 'release/* への push は ask（deny ではない）' \
   'git push origin release/1.0.0' feat/existing
 run 2 '--no-verify による検証スキップ' "git commit --no-verify -m 'feat: x'" feat/existing
+run 2 '束ねた短縮フラグ（-am）でも規約を検証する' \
+  "git commit -am 'wip'" feat/existing
+run 2 '束ねた短縮フラグ（-qm）でも規約を検証する' \
+  "git commit -qm 'wip'" feat/existing
+run 2 '束ねた短縮フラグに紛れた -n（-an）を止める' \
+  "git commit -an -m 'feat: x'" feat/existing
+run 2 '束ねた短縮フラグに紛れた -n（-nm）を止める' \
+  "git commit -nm 'feat: x'" feat/existing
+run 2 '-m に値が直付けされた形（-m"wip"）でも規約を検証する' \
+  'git commit -m"wip"' feat/existing
+run 0 '束ねた短縮フラグでも規約に沿っていれば通す' \
+  "git commit -am 'feat: なにかを追加'" feat/existing
+run 0 'コミットメッセージ中の -n を禁止フラグと誤認しない' \
+  "git commit -m 'fix: -n の扱いを直す'" feat/existing
+run 0 'git push -n（dry-run）は commit の -n 禁止に巻き込まない' \
+  'git push -n origin feat/existing' feat/existing
 run 2 'cd で戻ってきた後の production コミット' \
   "cd $OTHER && cd $SESSION && git commit -m 'feat: x'"
 run 2 'git -C でセッションのリポジトリを指定' \
@@ -172,6 +188,24 @@ run 2 '-c core.hooksPath で husky を無効化' \
 run 2 'here-string を heredoc と誤認しない' \
   "grep <<<'pattern' file
 git commit -m 'wip'" feat/existing
+
+echo
+echo '=== ブランチ作成は checkout -b 以外の書き方も見る ==='
+run 2 'git branch <名前> の命名規則違反' 'git branch not_kebab'
+run 2 'git worktree add -b の命名規則違反' \
+  'git worktree add -b bad_name ../wt'
+run 0 'git branch <名前> でも規約に沿っていれば通す' 'git branch feat/new-thing'
+run 0 'git branch -r --list はブランチ作成ではない' \
+  "git branch -r --list 'origin/release/*'"
+run 0 'git branch -D はブランチ作成ではない' 'git branch -D not_kebab'
+run 0 'git branch（一覧）はブランチ作成ではない' 'git branch'
+run 0 'git branch <名前> <分岐元> の分岐元を読む' \
+  'git branch feat/new-thing production' feat/existing
+
+echo
+echo '=== コミットメッセージのファイル指定 ==='
+run 2 '空白を含むパスは 1 引数として扱う（読めないので止まる）' \
+  'git commit -F "my file.txt"' feat/existing
 
 echo
 echo '=== 書き方の違いで取りこぼさない・誤検知しない ==='

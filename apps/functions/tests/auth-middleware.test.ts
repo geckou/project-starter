@@ -77,7 +77,8 @@ describe('requireAuth', () => {
 
     await requireAuth(req, res as unknown as Response, next)
 
-    expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token')
+    // 0.2.0 から checkRevoked（既定 false）が第2引数で渡る
+    expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token', false)
     expect((req as AuthenticatedRequest).uid).toBe('user-1')
     expect(next).toHaveBeenCalled()
   })

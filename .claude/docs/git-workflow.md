@@ -220,8 +220,32 @@ gh api repos/{owner}/{repo}/rulesets \
   --input .github/rulesets/production.json
 ```
 
-内容: production の削除・force push 禁止、PR 必須（レビュー1件）、Required status checks（`ci` / `guard`）。
+内容: production の削除・force push 禁止、PR 必須（レビュー1件）、Required status checks（`guard` / `ci / ci`）。
 `hotfix/*` の緊急セルフマージを許す場合は、取り込み後に UI で bypass 設定を調整する。
+
+`yarn setup`（`scripts/setup.sh`）もこの定義を取り込む。**保護の定義はこのファイルが正**で、
+legacy の branch protection API とは二重管理にしない（required check 名が片方だけ古いと、
+production への PR が存在しないチェックを待ち続けてマージできなくなる）。
+
+⚠️ **required status check の名前は CI の呼び方で変わる。**
+
+| CI の形 | 報告されるチェック名 |
+|---|---|
+| 参照形（`uses: geckou/project-starter/.github/workflows/ci.yml@v1`） | `ci / ci` |
+| `ci.yml` が `pull_request` で直接動く（テンプレート本体・未移行の派生） | `ci` |
+
+`setup.sh` は `ci.yml` の中身を見てこの名前を決めてから POST する。上の JSON に書いてあるのは
+参照形の値なので、**手で `gh api` を叩くときは自分の構成に合わせて書き換えること。**
+
+⚠️ **ruleset はリポジトリ外の状態**で、JSON を直しても既に取り込み済みのリポジトリには届かない。
+CI を参照形へ移行したら（`scripts/adopt-references.mjs`）、GitHub 側の required check 名も
+`ci / ci` へ更新する必要がある。
+
+```bash
+# 取り込み済みの ruleset を確認して、required_status_checks の context を直す
+gh api repos/{owner}/{repo}/rulesets
+gh api repos/{owner}/{repo}/rulesets/{id} --method PUT --input -
+```
 
 ### Free プランのプライベートリポジトリの場合
 

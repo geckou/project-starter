@@ -58,12 +58,27 @@ Server Component で Firestore からデータを取得する（SSR）:
 
 ```typescript
 // apps/web/src/app/dashboard/page.tsx
-import { adminDb } from '@/lib/firebase-admin'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+
+import { adminAuth, adminDb } from '@/lib/firebase-admin'
 
 export default async function DashboardPage() {
-  const snapshot = await adminDb.collection('users').limit(10).get()
-  const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-  return <ul>{users.map(user => <li key={user.id}>{user.id}</li>)}</ul>
+  // middleware は Cookie の存在チェックのみ（Edge runtime では firebase-admin が
+  // 使えない）。セッション Cookie の実検証は保護ページ側で行う
+  const sessionCookie = (await cookies()).get('session')?.value
+  if (!sessionCookie) redirect('/login?redirect=/dashboard')
+
+  const decoded = await adminAuth
+    .verifySessionCookie(sessionCookie, true)
+    .catch(() => null)
+  if (!decoded) redirect('/login?redirect=/dashboard')
+
+  // 検証済みの uid にスコープして読む。コレクション全件を読む形にしない
+  const userDoc = await adminDb.collection('users').doc(decoded.uid).get()
+  const user = userDoc.data()
+
+  return <p>{user?.displayName}</p>
 }
 ```
 
@@ -127,6 +142,13 @@ const { user, loading } = useAuthStore()
 ```typescript
 import { uploadFile, deleteFile, getFileUrl } from '@geckou/shared/storage'
 ```
+
+Firebase の初期化は SDK ごとに分けてある（`apps/web/src/lib/firebase-app.ts` が app、
+`firebase.ts` が Auth、`firebase-firestore.ts` が Firestore、`firebase-storage.ts` が Storage）。
+Auth しか要らないページに Firestore SDK が乗らないようにするため。
+**エミュレーターへの接続は各 SDK のモジュールが持つ**が、`NEXT_PUBLIC_USE_FIREBASE_EMULATOR=true`
+のときは `firebase-app.ts` が Firestore / Storage を動的 import して接続を確定させるので、
+利用側で意識する必要はない（本番のバンドルには入らない）。
 
 ### アップロードの制限（`storage.rules`）
 
@@ -274,9 +296,10 @@ if (isSubscriptionActive(user.subscription)) {
 ```
 components/
 ├── icons/        # アイコンコンポーネント
-├── ui/           # 汎用 UI（Button, Modal, Input 等）
 ├── auth/         # 認証関連（LoginForm, AuthGuard 等）
 └── <feature>/    # 機能別（dashboard/, settings/ 等）
 ```
 
-小規模なうちは `components/` 直下でよい。増えてきたら機能別に分ける。
+**汎用 UI（Button, Modal, Input 等）は `@geckou/ui-react` から取る**（`packages/README.md`）。
+`components/` に置くのはプロジェクト固有のものだけ。小規模なうちは `components/` 直下でよい。
+増えてきたら機能別に分ける。
