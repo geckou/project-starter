@@ -218,17 +218,53 @@ cmd=$(printf '%s\n' "$segments" | {
     seg=$(printf '%s' "$seg" |
       sed -E 's#(^|[[:space:]])[^[:space:]]*/git([[:space:]]|$)#\1git\2#g')
 
-    # 丸ごとクォートで囲まれたフラグ（"-m" / "--no-verify" / "-c"）のクォートを
-    # 剥がす。以降の判定は全てトークンの一致か `git <サブコマンド>` の形を見るため、
-    # ここで揃えないとクォート付きの書き方だけが検査を素通りする。
-    # g フラグは消費した区切りを読み直さないので、変化しなくなるまで繰り返す
-    while :; do
-      next=$(printf '%s' "$seg" | sed -E \
-        -e 's/(^|[[:space:]])"(-[^"[:space:]]*)"([[:space:]]|$)/\1\2\3/g' \
-        -e "s/(^|[[:space:]])'(-[^'[:space:]]*)'([[:space:]]|\$)/\1\2\3/g")
-      [ "$next" = "$seg" ] && break
-      seg=$next
-    done
+    # クォートやバックスラッシュで書かれたフラグ（"-m" / '-c' / \-m /
+    # --no\-verify）を素の形へ揃える。シェルはどれも同じフラグとして渡すが、
+    # 揃えないとトークンの一致も `git <サブコマンド>` の形も外れ、
+    # その書き方だけが検査を素通りする
+    seg=$(printf '%s' "$seg" | awk '
+      BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
+
+      # クォートとバックスラッシュを取り除いた形。フラグに見えなければ空を返す
+      # （値まで含んだ形 "-m wip" や --message=feat:\ x はフラグではない）
+      function flagform(t,   c, r, i, ch) {
+        c = substr(t, 1, 1)
+        if ((c == sq || c == dq) && length(t) > 2 && substr(t, length(t), 1) == c)
+          t = substr(t, 2, length(t) - 2)
+        r = ""
+        for (i = 1; i <= length(t); i++) {
+          ch = substr(t, i, 1)
+          if (ch == bs && i < length(t)) { i++; ch = substr(t, i, 1) }
+          r = r ch
+        }
+        return (r ~ /^-[^ \t]*$/) ? r : ""
+      }
+
+      function norm(t,   f) { f = flagform(t); return (f != "") ? f : t }
+
+      {
+        q = ""; tok = ""; out = ""; n = length($0)
+        for (i = 1; i <= n; i++) {
+          c = substr($0, i, 1)
+          if (q == sq) { tok = tok c; if (c == sq) q = ""; continue }
+          if (q == dq) {
+            if (c == bs) { tok = tok c substr($0, i + 1, 1); i++; continue }
+            tok = tok c
+            if (c == dq) q = ""
+            continue
+          }
+          if (c == bs) { tok = tok c substr($0, i + 1, 1); i++; continue }
+          if (c == sq || c == dq) { q = c; tok = tok c; continue }
+          if (c == " " || c == "\t") {
+            if (tok != "") { out = out (out == "" ? "" : " ") norm(tok); tok = "" }
+            continue
+          }
+          tok = tok c
+        }
+        if (tok != "") out = out (out == "" ? "" : " ") norm(tok)
+        print out
+      }
+    ')
 
     # git -C / --git-dir はセグメント単位で実行ディレクトリを上書きする
     git_dir_opt=$(printf '%s' "$seg" | awk '
@@ -649,11 +685,25 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
     case "$msg_val" in
       *'$'* | *'`'*)
         # 変数・コマンド置換はフックからは展開できない。
-        # commit -m "$(cat <<'EOF' ...)" のように本文がコマンド文字列に現れる形も
-        # あるため、値を取り出せないときはコマンド全体から type を探す
-        printf '%s' "$cmd" |
-          grep -Eq "(^|[[:space:]\"'=])($TYPES)(\([^)]+\))?:(\\\\)?[[:space:]][^[:space:]]" ||
-          deny "$msg_ng"
+        # commit -m "$(cat <<'EOF' ...)" は本文がコマンド文字列に現れるので、
+        # heredoc の最初の非空行（= 件名。git の既定の cleanup が先頭の空行を
+        # 落とすため）だけを検証する。どの行でもよいことにすると、件名が規約違反
+        # でも本文に type らしい行を置くだけで通ってしまう
+        subject=$(printf '%s\n' "$msg_val" | awk '
+          NR == 1 && /<<-?[[:space:]]*["'"'"']?[A-Za-z_][A-Za-z_0-9]*/ { body = 1; next }
+          body && $0 !~ /^[[:space:]]*$/ { print; exit }
+        ')
+
+        if [ -n "$subject" ]; then
+          printf '%s\n' "$subject" |
+            grep -Eq "^($TYPES)(\([^)]+\))?: [^[:space:]]" || deny "$msg_ng"
+        else
+          # heredoc ではない置換（-m "$(build-msg)"）は値を取り出せない。
+          # コマンド全体から type を探すことしかできない
+          printf '%s' "$cmd" |
+            grep -Eq "(^|[[:space:]\"'=])($TYPES)(\([^)]+\))?:(\\\\)?[[:space:]][^[:space:]]" ||
+            deny "$msg_ng"
+        fi
         ;;
       *)
         # `--message=feat:\ x` のように、シェルのエスケープ付きで渡される形も通す

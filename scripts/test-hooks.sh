@@ -403,6 +403,33 @@ run 2 'クォート付きの -c core.hooksPath も迂回として止める' \
 run 2 'クォート付きのグローバルオプションでも commit の検査を飛ばさない' \
   'git "--no-pager" commit -m "wip"'
 
+# シェルは \-m と -m を同じフラグとして渡す。クォートだけを剥がしていると
+# バックスラッシュで書いた形が素通りする
+run 2 'バックスラッシュ付きの -m でも規約を検証する' 'git commit \-m "wip"' feat/existing
+run 0 'バックスラッシュ付きの -m でも規約どおりなら通す' \
+  'git commit \-m "feat: x"' feat/existing
+run 2 'バックスラッシュ付きの --no-verify も迂回として止める' \
+  'git commit --no\-verify -m "feat: x"' feat/existing
+run 2 'バックスラッシュ付きの -c core.hooksPath も止める' \
+  'git \-c core.hooksPath=/dev/null commit -m "feat: x"' feat/existing
+
+# heredoc は件名（最初の非空行）だけを見る。どの行でもよいことにすると、
+# 件名が規約違反でも本文に type らしい行を置くだけで通ってしまう
+run 2 'heredoc の件名が規約違反なら、本文に type があっても止める' \
+  "git commit -m \"\$(cat <<'EOF'
+wip
+
+feat: あとから規約どおりの行を置く
+EOF
+)\"" feat/existing
+run 0 'heredoc は件名さえ規約どおりなら本文は自由' \
+  "git commit -m \"\$(cat <<'EOF'
+feat: なにかを追加
+
+本文に wip と書く
+EOF
+)\"" feat/existing
+
 # 行末のバックスラッシュは行の継続。文字として残すと、次の行のメッセージが
 # 値ではなく別のトークンとして読まれる
 run 0 'バックスラッシュ継続の次の行にメッセージ' \
