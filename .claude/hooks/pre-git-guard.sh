@@ -431,11 +431,19 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
       return 1
     }
 
+    # 前後のクォートを剥がす。閉じクォートが無い場合は開きだけを剥がす。
+    # 複数行のメッセージ（`-m "feat: x\n\nCo-Authored-By: ..."`）は、ここへ届く前に
+    # 上の絞り込みループが行単位で読むため 1 行目で切れており、閉じクォートが無い。
+    # 検証するのは先頭行なので値としては足りているが、開きクォートを残したまま
+    # 先頭一致で見ると規約どおりのメッセージまで弾いてしまう
     function unq(v,   c) {
       c = substr(v, 1, 1)
-      if ((c == sq || c == dq) && length(v) > 1 && substr(v, length(v), 1) == c)
+
+      if (c != sq && c != dq) return v
+      if (length(v) > 1 && substr(v, length(v), 1) == c)
         return substr(v, 2, length(v) - 2)
-      return v
+
+      return substr(v, 2)
     }
 
     { all = all $0 "\n" }
@@ -443,8 +451,7 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
     END {
       if (all !~ /git[ \t]+commit([ \t\n]|$)/) exit
 
-      # クォート・バックスラッシュを保ったままトークンへ分割する。
-      # 引用符の中の改行はトークンに含める（heredoc を挟む形をそのまま拾うため）
+      # クォート・バックスラッシュを保ったままトークンへ分割する
       n = 0; q = ""; tok = ""; len = length(all)
       for (i = 1; i <= len; i++) {
         c = substr(all, i, 1)
@@ -698,12 +705,21 @@ if [ -n "$newbranch" ]; then
   [ -n "$base" ] || base=$(printf '%s' "$cmd" |
     grep -oE "$NEW_BRANCH_RE[[:space:]]+\"?'?$newbranch_re'?\"?([[:space:]]+[^[:space:];&|]+)*" |
     head -1 |
-    awk '{ stage = 0
+    awk '{ stage = 0; is_wt = 0; seen_add = 0; path_before = 0
            for (i = 1; i <= NF; i++) {
              # -b / -B / -c / -C（と長い形）の次の非フラグがブランチ名、その次が分岐元
-             if (stage == 0) { if ($i ~ /^(-[bBcC]|--create|--orphan)$/) stage = 1; continue }
+             if (stage == 0) {
+               if ($i == "worktree") { is_wt = 1; continue }
+               if (is_wt && $i == "add") { seen_add = 1; continue }
+               if ($i ~ /^(-[bBcC]|--create|--orphan)$/) { stage = 1; continue }
+               # worktree add のパスが -b より前に来た語順
+               if (seen_add && substr($i, 1, 1) != "-") path_before = 1
+               continue
+             }
              if (substr($i, 1, 1) == "-") continue
              if (stage == 1) { stage = 2; continue }
+             # worktree add は <path> [<commit-ish>] の順。パスを分岐元と誤認しない
+             if (is_wt && !path_before && stage == 2) { stage = 3; continue }
              print $i; exit
            } }')
   # 同一コマンド内で production へ切り替えてから分岐する（ドキュメントの手順）ケースを

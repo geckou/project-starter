@@ -208,6 +208,22 @@ run 2 '2 つ目の -m に規約どおりのメッセージを置いても通さ�
   "git commit -m 'wip' -m 'feat: x'" feat/existing
 run 0 '1 つ目の -m が規約どおりなら通す（2 つ目は本文）' \
   "git commit -m 'feat: x' -m 'wip'" feat/existing
+
+# 絞り込みループが行単位で読むため、複数行のメッセージは 1 行目で切れて
+# 閉じクォートが無い状態で検証へ渡る。検証するのは先頭行なので値としては
+# 足りているが、開きクォートを残したまま先頭一致で見ると規約どおりでも弾かれる
+run 0 '複数行のメッセージ（ダブルクォート）' \
+  'git commit -m "feat: なにかを追加
+
+Co-Authored-By: someone <noreply@example.com>"' feat/existing
+run 0 '複数行のメッセージ（シングルクォート）' \
+  "git commit -m 'fix: なにかを直す
+
+本文'" feat/existing
+run 2 '複数行でも 1 行目が規約違反なら止める' \
+  'git commit -m "wip
+
+Co-Authored-By: someone <noreply@example.com>"' feat/existing
 run 2 'here-string を heredoc と誤認しない' \
   "grep <<<'pattern' file
 git commit -m 'wip'" feat/existing
@@ -229,6 +245,12 @@ run 2 'checkout --orphan の命名規則違反' 'git checkout --orphan wip'
 run 2 'worktree add <パス> -b（-b の前に非フラグ）の命名規則違反' \
   'git worktree add ../wt -b wip'
 run 0 'switch --create でも規約に沿っていれば通す' 'git switch --create feat/new-thing'
+# worktree add は <path> [<commit-ish>] の順。パスを分岐元と誤認しない
+run 0 'worktree add -b <名前> <パス>（git のドキュメントの語順）' \
+  'git worktree add -b feat/new-thing ../wt'
+run 0 'worktree add <パス> -b <名前>' 'git worktree add ../wt -b feat/new-thing'
+run 2 'worktree add の分岐元は パスの次のトークンで見る' \
+  'git worktree add -b feat/new-thing ../wt release/1.0.0' feat/existing
 
 echo
 echo '=== コミットメッセージのファイル指定 ==='
