@@ -276,6 +276,20 @@ run 2 'eval で包んだ production への push' \
   'eval "git push origin production"'
 run 2 'バッククォートの中の push' 'echo `git push origin production`'
 run 2 'フラグを束ねた sh -cx' "sh -cx 'git push origin production'"
+run 2 'パス付きのシェル（/bin/sh -c）' \
+  '/bin/sh -c "git push origin production"'
+# ANSI-C クォート（ドル記号 + 引用符）の \x20 を戻さないと 1 トークンのままになる
+run 2 'ANSI-C クォートで空白をエスケープした形' \
+  "sh -c \$'git\\x20push origin production'"
+# 引用の中のエスケープされた引用符を閉じと誤読すると、その後ろの <<EOF を
+# heredoc の開始と扱い、本文として除去した行が検査から落ちる
+run 2 'エスケープされた引用符を含む行の <<EOF を heredoc と誤認しない' \
+  'echo "see \" <<EOF"
+git push origin production
+EOF'
+# 実際の git worktree add 以外の worktree トークンから走査しない
+run 0 'git log --grep の引数の worktree add を作成と誤認しない' \
+  'git log --grep worktree add ../foo-bar' feat/existing
 run 2 'bash -lc' "bash -lc 'git push origin production'"
 run 0 'コミットメッセージ中の sh -c / eval への言及は展開しない' \
   "git commit -m 'docs: eval \"git push origin production\" は禁止'" feat/existing
@@ -805,6 +819,10 @@ run_branch 2 'worktree add <パス> -b（パスが先）' \
 run_branch 2 'worktree add -b <名前> <パス>' \
   'git worktree add -b feat/new-thing ../wt'
 run_branch 2 'git branch <名前>' 'git branch feat/new-thing'
+run_branch 2 'worktree add <パス>（-b 無し）は basename がブランチ名になる' \
+  'git worktree add ../foo-bar'
+run_branch 0 'worktree add <パス> <既存ブランチ> は作成ではない' \
+  'git worktree add ../wt feat/existing'
 run_branch 0 'ブランチ作成ではない（切り替えだけ）' 'git checkout production'
 run_branch 0 'git branch -D はブランチ作成ではない' 'git branch -D feat/existing'
 run_branch 0 '同じコマンドで merge 済みなら何も言わない' \

@@ -24,11 +24,16 @@ cmd=$(printf '%s' "$cmd" | awk '
   # 行の中から heredoc の開始を探し、マーカー名を返す（無ければ空）。
   # クォートの中・コメントの中の << は開始ではない。ここを見分けないと、
   # `echo "see <<EOF"` の 1 行で以降のコマンドが丸ごと検査から落ちる
-  function heredoc_marker(line,   i, ch, state, rest, m, re) {
+  function heredoc_marker(line,   i, ch, state, rest, m, re, bs) {
     re = "^<<-?[[:space:]]*[" DQ SQ "]?[A-Za-z_][A-Za-z_0-9]*[" DQ SQ "]?"
+    bs = sprintf("%c", 92)
     state = ""
     for (i = 1; i <= length(line); i++) {
       ch = substr(line, i, 1)
+      # シングルクォートの中を除き、バックスラッシュは次の 1 文字を打ち消す。
+      # 見落とすと `echo "see \" <<EOF"` の \" を閉じクォートと誤読し、
+      # 引用の中の <<EOF を heredoc の開始として扱ってしまう
+      if (ch == bs && state != SQ) { i++; continue }
       if (state != "") { if (ch == state) state = ""; continue }
       if (ch == SQ || ch == DQ) { state = ch; continue }
       if (ch == "#" && (i == 1 || substr(line, i - 1, 1) ~ /[ \t]/)) return ""
@@ -93,19 +98,31 @@ cmd=$(printf '%s' "$cmd" | awk '
 # 外側が引用されている場合（コミットメッセージ中の言及）は展開しない
 unwrap_pass() {
   awk '
-    BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34) }
+    BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
+
+    # ANSI-C クォート（ドル記号 + 引用符）の中の空白のエスケープを元に戻す。
+    # 戻さないと git\x20push のような書き方が 1 トークンのままで検査に当たらない
+    function decode(text) {
+      gsub(/\\x20|\\040|\\t|\\n/, " ", text)
+      return text
+    }
     {
       line = $0; out = ""; state = ""; n = length(line); i = 1
       while (i <= n) {
         ch = substr(line, i, 1)
+        # バックスラッシュは次の 1 文字を打ち消す（シングルクォートの中を除く）
+        if (ch == bs && state != sq) {
+          out = out ch substr(line, i + 1, 1); i += 2; continue
+        }
         if (state != "") { out = out ch; if (ch == state) state = ""; i++; continue }
         if (ch == sq || ch == dq) {
-          # -lc / -cx のようにフラグを束ねた形と、$'...' 形式も同じ扱いにする
-          if (out ~ /(^|[[:space:];&|(])(sh|bash|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+\$?$/ ||
+          # -lc / -cx のようにフラグを束ねた形、ANSI-C クォート形式、
+          # /bin/sh のようなパス付きの呼び出しも同じ扱いにする
+          if (out ~ /(^|[[:space:];&|(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+\$?$/ ||
               out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
             j = i + 1; inner = ""
             while (j <= n && substr(line, j, 1) != ch) { inner = inner substr(line, j, 1); j++ }
-            if (j <= n) { out = out "( " inner " )"; i = j + 1; continue }
+            if (j <= n) { out = out "( " decode(inner) " )"; i = j + 1; continue }
           }
           out = out ch; state = ch; i++; continue
         }
@@ -1044,10 +1061,19 @@ fi
 # <パス> の後ろに既存のコミット / ブランチを書いた形は作成ではないので対象外
 if [ -z "$newbranch" ]; then
   newbranch=$(printf '%s' "$cmd_flags" | awk '
-    { seen_worktree = 0; seen_add = 0; creates = 1; nonflag = 0; path = ""
+    { seen_git = 0; seen_worktree = 0; seen_add = 0
+      creates = 1; nonflag = 0; path = ""
       for (i = 1; i <= NF; i++) {
-        if (!seen_worktree) { if ($i == "worktree") seen_worktree = 1; continue }
-        if (!seen_add) { if ($i == "add") seen_add = 1; continue }
+        # 実際の `git worktree add` だけを見る。行のどこかの worktree から
+        # 走査すると、`git log --grep worktree add ../x` のような引数でも
+        # ブランチ作成と誤認する
+        if (!seen_git) { if ($i == "git") seen_git = 1; continue }
+        if (!seen_worktree) {
+          if ($i == "worktree") { seen_worktree = 1; continue }
+          if (substr($i, 1, 1) == "-") continue
+          break
+        }
+        if (!seen_add) { if ($i == "add") seen_add = 1; else break; continue }
         if ($i ~ /^(-[bB]|--detach|--orphan)$/) { creates = 0; break }
         if ($i == "--reason") { i++; continue }
         if (substr($i, 1, 1) == "-") continue
