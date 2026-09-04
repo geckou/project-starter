@@ -205,6 +205,19 @@ run 0 'HUSKY=（空）は無効化ではないので止めない' \
   "HUSKY= git commit -m 'feat: x'" feat/existing
 run 2 '--no-verif（長いオプションの前方一致）' \
   "git commit --no-verif -m 'feat: x'" feat/existing
+# フラグをクォートで囲むと、短縮フラグの展開もメッセージの取り出しも一致せず、
+# 規約の検証も迂回の検出も丸ごと飛んでいた
+run 2 'クォート付きの -m でも規約を検証する' 'git commit "-m" "wip"' feat/existing
+run 0 'クォート付きの -m でも規約どおりなら通す' \
+  'git commit "-m" "feat: x"' feat/existing
+run 2 "クォート付きの -m（シングルクォート）" \
+  "git commit '-m' 'wip'" feat/existing
+run 2 'クォート付きの束ねたフラグ（"-am"）も展開する' \
+  'git commit "-am" "wip"' feat/existing
+run 2 'クォート付きの --no-verify も迂回として止める' \
+  'git commit "--no-verify" -m "feat: x"' feat/existing
+run 0 'メッセージ中の "-m" をフラグと誤認しない' \
+  "git commit -m 'docs: \"-m\" の使い方を書く'" feat/existing
 run 2 '--mes（--message の前方一致）でも規約を検証する' \
   "git commit --mes 'wip'" feat/existing
 run 2 '2 つ目の -m に規約どおりのメッセージを置いても通さない' \
@@ -212,9 +225,8 @@ run 2 '2 つ目の -m に規約どおりのメッセージを置いても通さ�
 run 0 '1 つ目の -m が規約どおりなら通す（2 つ目は本文）' \
   "git commit -m 'feat: x' -m 'wip'" feat/existing
 
-# 絞り込みループが行単位で読むため、複数行のメッセージは 1 行目で切れて
-# 閉じクォートが無い状態で検証へ渡る。検証するのは先頭行なので値としては
-# 足りているが、開きクォートを残したまま先頭一致で見ると規約どおりでも弾かれる
+# 複数行のメッセージはクォートの中に改行を持つ。絞り込みループがセグメントを
+# 行単位で読み直すと 2 行目以降が丸ごと検査から落ちるため、終端の印で区切る
 run 0 '複数行のメッセージ（ダブルクォート）' \
   'git commit -m "feat: なにかを追加
 
@@ -316,6 +328,116 @@ run 2 'commit -m の heredoc は検査する' \
 なにか
 EOF
 )\"" feat/existing
+# 一律拒否になっていないこと。セグメントを行単位で読み直すと本文がどこにも
+# 残らず、規約どおりのメッセージでも必ず弾かれていた
+run 0 'commit -m の heredoc は規約どおりなら通す' \
+  "git commit -m \"\$(cat <<'EOF'
+feat: なにかを追加
+EOF
+)\"" feat/existing
+run 0 'heredoc の 2 行目以降を別のコマンドと誤認しない' \
+  "git commit -m \"\$(cat <<'EOF'
+feat: なにかを追加
+
+git -C /tmp status
+EOF
+)\"" feat/existing
+# 本文の `git -C <別リポジトリ>` を実行ディレクトリの指定と取ると、
+# コミットそのものが検査対象から外れる
+run 2 'heredoc の本文の git -C で検査対象から外れない' \
+  "git commit -m \"\$(cat <<'EOF'
+wip
+
+git -C /tmp status
+EOF
+)\"" feat/existing
+
+# 迂回・push 先・ブランチ名の検出はコマンドのトークンだけを見る。メッセージの
+# 値まで見ると、禁止事項を説明するコミットメッセージが書けなくなる
+run 0 'メッセージ中の --no-verify を迂回と誤認しない' \
+  "git commit -m 'docs: --no-verify を禁じた理由を書く'" feat/existing
+run 0 '複数行のメッセージの本文でも誤認しない（--no-verify）' \
+  'git commit -m "docs: フックの説明を書く
+
+--no-verify は禁止と書いた"' feat/existing
+run 0 '複数行のメッセージの本文でも誤認しない（push 先）' \
+  'git commit -m "docs: 手順を書く
+
+git push origin production は禁止"' feat/existing
+run 0 '複数行のメッセージの本文でも誤認しない（ブランチ名）' \
+  'git commit -m "docs: 手順を書く
+
+git checkout -b wip は弾かれる"' feat/existing
+run 0 '複数行のメッセージの本文でも誤認しない（HUSKY=0）' \
+  'git commit -m "docs: 迂回の話を書く
+
+HUSKY=0 は禁止"' feat/existing
+# switch / checkout の -m は --merge。メッセージのフラグと同一視して次のトークンを
+# 落とすと、-c <ブランチ名> が検出から消える
+run 2 'switch -m -c（-m は --merge）でもブランチ名を見る' \
+  'git switch -m -c wip'
+run 2 'checkout --merge -b でもブランチ名を見る' \
+  'git checkout --merge -b wip'
+
+# メッセージの値を落とす処理が壊れると、後続のコマンドが丸ごと検査から消える。
+# 落とし方を間違えやすい形を押さえる
+run 2 'メッセージ中の \" で後続のコマンドを隠せない' \
+  'git commit -m "fix: エラー \"undefined\"" && git push origin production' feat/existing
+run 0 'メッセージ中の \" 単体は通す' \
+  'git commit -m "fix: エラー \"undefined\""' feat/existing
+run 2 '値の無い -m は次のセグメントの git を食べない' \
+  "git commit -m 'feat: x' -m ; git push origin production" feat/existing
+run 2 'refspec の commit をサブコマンドと誤認しない' \
+  "git push origin commit -m ; git commit -m 'wip'"
+# `--` より後ろはパススペック。フラグとして 1 文字ずつに展開すると
+# -File.txt が -F（--file）や -n（検証スキップ）の指定に化ける
+run 0 '-- より後ろのパススペックをフラグと読まない' \
+  "git commit -m 'feat: x' -- '-File.txt'" feat/existing
+run 0 '2 つ目の -m の値をフラグと読まない' \
+  "git commit -m 'feat: x' -m '-n'" feat/existing
+
+# クォート付きのフラグは、サブコマンドより前のグローバルオプションでも見落とす。
+# 剥がさないと `git <サブコマンド>` の形に一致せず、検査そのものが飛ぶ
+run 2 'クォート付きの -c core.hooksPath も迂回として止める' \
+  'git "-c" core.hooksPath=/dev/null commit -m "feat: x"' feat/existing
+run 2 'クォート付きのグローバルオプションでも commit の検査を飛ばさない' \
+  'git "--no-pager" commit -m "wip"'
+
+# シェルは \-m と -m を同じフラグとして渡す。クォートだけを剥がしていると
+# バックスラッシュで書いた形が素通りする
+run 2 'バックスラッシュ付きの -m でも規約を検証する' 'git commit \-m "wip"' feat/existing
+run 0 'バックスラッシュ付きの -m でも規約どおりなら通す' \
+  'git commit \-m "feat: x"' feat/existing
+run 2 'バックスラッシュ付きの --no-verify も迂回として止める' \
+  'git commit --no\-verify -m "feat: x"' feat/existing
+run 2 'バックスラッシュ付きの -c core.hooksPath も止める' \
+  'git \-c core.hooksPath=/dev/null commit -m "feat: x"' feat/existing
+
+# heredoc は件名（最初の非空行）だけを見る。どの行でもよいことにすると、
+# 件名が規約違反でも本文に type らしい行を置くだけで通ってしまう
+run 2 'heredoc の件名が規約違反なら、本文に type があっても止める' \
+  "git commit -m \"\$(cat <<'EOF'
+wip
+
+feat: あとから規約どおりの行を置く
+EOF
+)\"" feat/existing
+run 0 'heredoc は件名さえ規約どおりなら本文は自由' \
+  "git commit -m \"\$(cat <<'EOF'
+feat: なにかを追加
+
+本文に wip と書く
+EOF
+)\"" feat/existing
+
+# 行末のバックスラッシュは行の継続。文字として残すと、次の行のメッセージが
+# 値ではなく別のトークンとして読まれる
+run 0 'バックスラッシュ継続の次の行にメッセージ' \
+  'git commit -m \
+  "feat: x"' feat/existing
+run 2 'バックスラッシュ継続でも規約違反は止める' \
+  'git commit -m \
+  "wip"' feat/existing
 run 0 'git を含まないコマンド' 'echo hello'
 run 0 'コミットメッセージ中の ; では分割しない' \
   "git commit -m 'feat: a; b を追加'" feat/existing
