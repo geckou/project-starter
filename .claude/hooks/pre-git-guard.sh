@@ -270,7 +270,7 @@ cmd=$(printf '%s\n' "$segments" | {
       { for (i = 1; i <= NF; i++) { if ($i == "git") break; print $i } }
     ')
     if printf '%s\n' "$env_prefix" | tr -d "\"'" |
-      grep -Eqi '^(HUSKY=0?$|GIT_CONFIG_(COUNT|KEY_[0-9]+|VALUE_[0-9]+|GLOBAL|SYSTEM|NOSYSTEM)=)'; then
+      grep -Eqi '^(HUSKY=0$|GIT_CONFIG_(COUNT|KEY_[0-9]+|VALUE_[0-9]+|GLOBAL|SYSTEM|NOSYSTEM)=)'; then
       printf '%s\n' "$MARK_ENV_BYPASS"
     fi
 
@@ -642,6 +642,15 @@ NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[bB]|--orphan
 # `git branch <名前> [<分岐元>]` もブランチを作る。直後が非フラグのときだけ対象に
 # する（-d / -D / -m / -r / --list 等はブランチを作らない別の操作）
 PLAIN_BRANCH_RE='branch[[:space:]]+[^-[:space:];&|][^[:space:];&|]*([[:space:]]+[^-[:space:];&|][^[:space:];&|]*)?'
+
+# --orphan は「親を持たないブランチ」を作る。分岐元の検査は下で行うが、そこへ渡す
+# 分岐元が無いので現在ブランチへフォールバックし、production 上で実行すると
+# 「production から切った」ように見えて実際には何も継承していない状態が通ってしまう。
+# 検査のしようがないので、書き方として禁じる
+if has '(^|[[:space:]])git[[:space:]]+(checkout|switch)([[:space:]]+-[^[:space:]]+)*[[:space:]]+--orphan([[:space:]]|$)'; then
+  deny "--orphan は分岐元を持たないブランチを作るため使用できません（全てのブランチは production から切る）。
+  git checkout production && git pull && git checkout -b <名前>"
+fi
 
 newbranch=$(printf '%s' "$cmd" |
   grep -oE "(^|[[:space:]])git[[:space:]]+$NEW_BRANCH_RE[[:space:]]+[^[:space:];&|]+" |

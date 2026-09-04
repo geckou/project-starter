@@ -200,6 +200,9 @@ run 2 'GIT_CONFIG_* で core.hooksPath を注入' \
   feat/existing
 run 0 'コミットメッセージ中の HUSKY=0 を迂回と誤認しない' \
   "git commit -m 'docs: HUSKY=0 について書く'" feat/existing
+# HUSKY= （空）は husky を無効化しない。継承した HUSKY=0 を打ち消す用途がある
+run 0 'HUSKY=（空）は無効化ではないので止めない' \
+  "HUSKY= git commit -m 'feat: x'" feat/existing
 run 2 '--no-verif（長いオプションの前方一致）' \
   "git commit --no-verif -m 'feat: x'" feat/existing
 run 2 '--mes（--message の前方一致）でも規約を検証する' \
@@ -251,6 +254,17 @@ run 0 'worktree add -b <名前> <パス>（git のドキュメントの語順）
 run 0 'worktree add <パス> -b <名前>' 'git worktree add ../wt -b feat/new-thing'
 run 2 'worktree add の分岐元は パスの次のトークンで見る' \
   'git worktree add -b feat/new-thing ../wt release/1.0.0' feat/existing
+
+# --orphan は親を持たないブランチを作るので、分岐元の検査が意味を持たない。
+# 現在ブランチへのフォールバックに救われて production 上では通っていた
+echo
+echo '=== --orphan は書き方として禁じる ==='
+run 2 'switch --orphan（命名規則を満たしていても止める）' \
+  'git switch --orphan feat/new-thing'
+run 2 'checkout --orphan（命名規則を満たしていても止める）' \
+  'git checkout --orphan feat/new-thing'
+run 0 'コミットメッセージ中の --orphan を誤検出しない' \
+  "git commit -m 'docs: --orphan を禁じた理由を書く'" feat/existing
 
 echo
 echo '=== コミットメッセージのファイル指定 ==='
@@ -559,6 +573,57 @@ run_qstop 0 '見出しが同じなら本文を直してもブロックしない'
 
 git -C "$SESSION" checkout -q -- .claude/docs/questions.md
 rm -f "$SESSION/other-questions.md"
+
+# ---- post-git-branch-reminder.sh ----
+#
+# pre-git-guard.sh と正規表現を共有しているので、片方だけ直すと挙動がずれる。
+# 検出する形を変えたら両方にケースを足す（フック本体のコメントにも書いてある）。
+# このフックは「進行中の release/* があるときだけ」リマインドするため、
+# サンドボックスのリポジトリに origin/release/* の参照を作ってから呼ぶ。
+
+BRANCH_HOOK=$REPO/.claude/hooks/post-git-branch-reminder.sh
+
+git -C "$SESSION" update-ref refs/remotes/origin/release/1.0.0 \
+  "$(git -C "$SESSION" rev-parse production)"
+
+# run_branch <期待する終了コード> <説明> <コマンド>
+run_branch() {
+  want=$1
+  desc=$2
+  command=$3
+
+  LAST_OUT=$(cd "$SESSION" && jq -n --arg c "$command" '{tool_input:{command:$c}}' |
+    sh "$BRANCH_HOOK" 2>&1)
+  status=$?
+
+  if [ "$status" = "$want" ]; then
+    pass=$((pass + 1))
+    printf 'ok   [%s] %s\n' "$status" "$desc"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL [want %s got %s] %s\n     cmd: %s\n     out: %s\n' \
+      "$want" "$status" "$desc" "$command" "$LAST_OUT"
+  fi
+}
+
+echo
+echo '=== post-git-branch-reminder: ブランチ作成の検出 ==='
+run_branch 2 'checkout -b' 'git checkout -b feat/new-thing'
+run_branch 2 'switch --create（長い形）' 'git switch --create feat/new-thing'
+run_branch 2 'checkout --orphan' 'git checkout --orphan feat/new-thing'
+run_branch 2 'worktree add <パス> -b（パスが先）' \
+  'git worktree add ../wt -b feat/new-thing'
+run_branch 2 'worktree add -b <名前> <パス>' \
+  'git worktree add -b feat/new-thing ../wt'
+run_branch 2 'git branch <名前>' 'git branch feat/new-thing'
+run_branch 0 'ブランチ作成ではない（切り替えだけ）' 'git checkout production'
+run_branch 0 'git branch -D はブランチ作成ではない' 'git branch -D feat/existing'
+run_branch 0 '同じコマンドで merge 済みなら何も言わない' \
+  'git checkout -b feat/new-thing && git merge origin/release/1.0.0'
+
+git -C "$SESSION" update-ref -d refs/remotes/origin/release/1.0.0
+run_branch 0 '進行中の release/* が無ければ何も言わない' \
+  'git checkout -b feat/new-thing'
 
 # ---- stop-roadmap-reminder.sh ----
 
