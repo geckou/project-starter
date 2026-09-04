@@ -2115,10 +2115,10 @@
   resolved "https://registry.yarnpkg.com/@firebase/webchannel-wrapper/-/webchannel-wrapper-1.0.3.tgz#a73bab8eb491d7b8b7be2f0e6c310647835afe83"
   integrity sha512-2xCRM9q9FlzGZCdgDMJwc0gyUkWFtkosy7Xxr6sFgQwn+wMNIWd7xIvYNauU1r64B5L5rsGKy/n9TKJ0aAFeqQ==
 
-"@geckou/billing@^0.2.0":
-  version "0.2.0"
-  resolved "https://registry.yarnpkg.com/@geckou/billing/-/billing-0.2.0.tgz#23c7ddb03beb11fc432e863627c43386ad422256"
-  integrity sha512-9lQgKeWI1JUlDd/JdOt2EGpAKk2Oudpg0jgCbPfqYrWxJLMiuB4dQJX8KYxUTbzVLdB8i5+VH9wSNGjLJQwuDg==
+"@geckou/billing@^0.3.0":
+  version "0.3.0"
+  resolved "https://registry.yarnpkg.com/@geckou/billing/-/billing-0.3.0.tgz#73031168a89e38e1f07ebd7b5c9dc1033d3d738a"
+  integrity sha512-VhPWuXbUY9d3jq8R9eJhgiusmfZBdiN7oEzMAuvhCf3W14OGyL3Uhb9PwybrP90qEbFSI2fc4XwjH5Q/eHSuNA==
 
 "@geckou/firebase-client@^0.2.0":
   version "0.2.0"
@@ -2130,17 +2130,17 @@
   resolved "https://registry.yarnpkg.com/@geckou/firebase-server/-/firebase-server-0.2.0.tgz#57bede76ae9b67cc7499de3a3b2c0ba39c97e35d"
   integrity sha512-mLUnwwvmhSW7/EM3nUKGWgn2won1V0lILb5Es4tOud3UQPm6uH2Aromn+suCimehIyBD1YpOxR3CdS+TxtAllA==
 
-"@geckou/ui-core@^0.2.0":
-  version "0.2.0"
-  resolved "https://registry.yarnpkg.com/@geckou/ui-core/-/ui-core-0.2.0.tgz#c172cae41b37c999d19cb1554770f2604b490a9f"
-  integrity sha512-nUBGEBtUw9rMQUQTA2OufXONdDqlw1J4zzlPAzr8LPTmk7O5jcWGjLcTw9KE3YSTp7mwuvHGOG9359nSzmoYSw==
-
-"@geckou/ui-react@^0.3.0":
+"@geckou/ui-core@^0.3.0":
   version "0.3.0"
-  resolved "https://registry.yarnpkg.com/@geckou/ui-react/-/ui-react-0.3.0.tgz#607c32500ee5c1506fde4751ecca660d1ee1267b"
-  integrity sha512-KlTErfSGfE3XW5+ZH3QWi4ZH0MqnCXqD80yWI7VGhRk+vvsZQ6SW8wyA02sP/X4imlPFhatNtUya4wZq9TujOA==
+  resolved "https://registry.yarnpkg.com/@geckou/ui-core/-/ui-core-0.3.0.tgz#59703d8a99c81ccb2cf2ceff55f016b80cd1ca12"
+  integrity sha512-9n4Eb7KcgZTs4sYRfIlsU19yapQwP2TB8OXhiy0OsYJuIgMiVIXV62KYNTEL+yGGlrGA5BoKUCWbGaTI1mO0/A==
+
+"@geckou/ui-react@^0.4.0":
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/@geckou/ui-react/-/ui-react-0.4.0.tgz#981d90237689feb0c85bb470651d0a35b472af49"
+  integrity sha512-uueuZRVnp8pt0NbVJEPH6KMFCMaZCR3nJaloyMjgZRrBphv6Cq0jwLzE3ewiVEME0kWkAhTxfUbvwvbttfNTDQ==
   dependencies:
-    "@geckou/ui-core" "^0.2.0"
+    "@geckou/ui-core" "^0.3.0"
 
 "@google-cloud/firestore@^7.11.0":
   version "7.11.6"
