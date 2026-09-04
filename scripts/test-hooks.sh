@@ -378,6 +378,39 @@ run 2 'switch -m -c（-m は --merge）でもブランチ名を見る' \
   'git switch -m -c wip'
 run 2 'checkout --merge -b でもブランチ名を見る' \
   'git checkout --merge -b wip'
+
+# メッセージの値を落とす処理が壊れると、後続のコマンドが丸ごと検査から消える。
+# 落とし方を間違えやすい形を押さえる
+run 2 'メッセージ中の \" で後続のコマンドを隠せない' \
+  'git commit -m "fix: エラー \"undefined\"" && git push origin production' feat/existing
+run 0 'メッセージ中の \" 単体は通す' \
+  'git commit -m "fix: エラー \"undefined\""' feat/existing
+run 2 '値の無い -m は次のセグメントの git を食べない' \
+  "git commit -m 'feat: x' -m ; git push origin production" feat/existing
+run 2 'refspec の commit をサブコマンドと誤認しない' \
+  "git push origin commit -m ; git commit -m 'wip'"
+# `--` より後ろはパススペック。フラグとして 1 文字ずつに展開すると
+# -File.txt が -F（--file）や -n（検証スキップ）の指定に化ける
+run 0 '-- より後ろのパススペックをフラグと読まない' \
+  "git commit -m 'feat: x' -- '-File.txt'" feat/existing
+run 0 '2 つ目の -m の値をフラグと読まない' \
+  "git commit -m 'feat: x' -m '-n'" feat/existing
+
+# クォート付きのフラグは、サブコマンドより前のグローバルオプションでも見落とす。
+# 剥がさないと `git <サブコマンド>` の形に一致せず、検査そのものが飛ぶ
+run 2 'クォート付きの -c core.hooksPath も迂回として止める' \
+  'git "-c" core.hooksPath=/dev/null commit -m "feat: x"' feat/existing
+run 2 'クォート付きのグローバルオプションでも commit の検査を飛ばさない' \
+  'git "--no-pager" commit -m "wip"'
+
+# 行末のバックスラッシュは行の継続。文字として残すと、次の行のメッセージが
+# 値ではなく別のトークンとして読まれる
+run 0 'バックスラッシュ継続の次の行にメッセージ' \
+  'git commit -m \
+  "feat: x"' feat/existing
+run 2 'バックスラッシュ継続でも規約違反は止める' \
+  'git commit -m \
+  "wip"' feat/existing
 run 0 'git を含まないコマンド' 'echo hello'
 run 0 'コミットメッセージ中の ; では分割しない' \
   "git commit -m 'feat: a; b を追加'" feat/existing

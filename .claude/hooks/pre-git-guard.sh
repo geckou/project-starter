@@ -105,6 +105,9 @@ segments=$(printf '%s' "$cmd" | awk '
   }
   # セグメントは改行を含みうるので、1 件ごとに終端の行を添えて渡す
   function emit(s) { print s; print seg_end }
+  # 行末のバックスラッシュは行の継続。文字として残すと `git commit -m \` の
+  # 次の行のメッセージが、値ではなく別のトークンとして読まれる
+  function cont(i) { return (substr(all, i + 1, 1) == "\n") }
   { all = all $0 "\n" }
   END {
     q = ""; seg = ""; n = length(all)
@@ -112,12 +115,14 @@ segments=$(printf '%s' "$cmd" | awk '
       c = substr(all, i, 1)
       if (q == sq) { seg = seg c; if (c == sq) q = ""; continue }
       if (q == dq) {
-        if (c == bs) { seg = seg c substr(all, i + 1, 1); i++; continue }
+        if (c == bs) { if (cont(i)) { i++; continue }
+                       seg = seg c substr(all, i + 1, 1); i++; continue }
         seg = seg c
         if (c == dq) q = ""
         continue
       }
-      if (c == bs) { seg = seg c substr(all, i + 1, 1); i++; continue }
+      if (c == bs) { if (cont(i)) { i++; continue }
+                     seg = seg c substr(all, i + 1, 1); i++; continue }
       if (c == sq || c == dq) { q = c; seg = seg c; continue }
       if (c == "(" || c == ")") {
         emit(seg); seg = ""
@@ -212,6 +217,18 @@ cmd=$(printf '%s\n' "$segments" | {
     # パス付きの呼び出しだけが検査を素通りする
     seg=$(printf '%s' "$seg" |
       sed -E 's#(^|[[:space:]])[^[:space:]]*/git([[:space:]]|$)#\1git\2#g')
+
+    # 丸ごとクォートで囲まれたフラグ（"-m" / "--no-verify" / "-c"）のクォートを
+    # 剥がす。以降の判定は全てトークンの一致か `git <サブコマンド>` の形を見るため、
+    # ここで揃えないとクォート付きの書き方だけが検査を素通りする。
+    # g フラグは消費した区切りを読み直さないので、変化しなくなるまで繰り返す
+    while :; do
+      next=$(printf '%s' "$seg" | sed -E \
+        -e 's/(^|[[:space:]])"(-[^"[:space:]]*)"([[:space:]]|$)/\1\2\3/g' \
+        -e "s/(^|[[:space:]])'(-[^'[:space:]]*)'([[:space:]]|\$)/\1\2\3/g")
+      [ "$next" = "$seg" ] && break
+      seg=$next
+    done
 
     # git -C / --git-dir はセグメント単位で実行ディレクトリを上書きする
     git_dir_opt=$(printf '%s' "$seg" | awk '
@@ -336,21 +353,28 @@ MARK_COMMIT_N=$(printf '\001commit-n')
 cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
   BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
 
-  # 丸ごとクォートで囲まれたフラグ（"-m" / "--no-verify"）のクォートを剥がす。
-  # 剥がさないと以降のトークン比較も正規表現も一致せず、コミット規約の検証も
-  # 迂回の検出も丸ごと飛ぶ。値まで含んだ形（"-m wip"）はフラグではないので触らない
-  function unqflag(t,   c, inner) {
-    c = substr(t, 1, 1)
-    if (c != sq && c != dq) return t
-    if (length(t) < 3 || substr(t, length(t), 1) != c) return t
-    inner = substr(t, 2, length(t) - 2)
-    if (inner !~ /^-[^ \t]*$/) return t
-    return inner
+  # -m / -F / -t は次のトークンを値として取る（束ねた -am も末尾の文字で見る）
+  function takes_value(p) {
+    if (p ~ /^-[A-Za-z]*[mFt]$/) return 1
+    if (substr(p, 1, 2) != "--" || length(p) < 3) return 0
+    p = substr(p, 3)
+    return (substr("message", 1, length(p)) == p ||
+      substr("file", 1, length(p)) == p ||
+      substr("template", 1, length(p)) == p)
+  }
+
+  # `--` より後ろはパススペック、-m / -F / -t の次はその値。どちらもフラグでは
+  # ないので展開しない（`-- -node` を `-n` の指定と読んでしまうため）
+  function normalize(t,   res) {
+    if (past_dd || takes_value(prev)) { prev = t; return t }
+    if (t == "--") { past_dd = 1; prev = t; return t }
+    res = expand(t)
+    prev = t
+    return res
   }
 
   # -am -> -a -m、-m"wip" -> -m "wip"。値や `--` 付きの長いオプションは触らない
   function expand(t,   j, letters, rest, k, res) {
-    t = unqflag(t)
     if (t !~ /^-[A-Za-z]/) return t
     j = 2
     while (j <= length(t) && substr(t, j, 1) ~ /[A-Za-z]/) j++
@@ -371,20 +395,28 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
 
     is_commit = (line ~ /git[ \t]+commit([ \t]|$)/)
     saw_n = 0
-    q = ""; tok = ""; out = ""; n = length(line)
+    q = ""; tok = ""; out = ""; prev = ""; past_dd = 0; n = length(line)
 
     for (i = 1; i <= n; i++) {
       c = substr(line, i, 1)
-      if (q != "") { tok = tok c; if (c == q) q = ""; continue }
+      if (q == sq) { tok = tok c; if (c == sq) q = ""; continue }
+      if (q == dq) {
+        # ダブルクォートの中では \" は閉じクォートではない。ここを見落とすと
+        # 以降のトークン分割が 1 つずれ、行の残りが丸ごと 1 トークンになる
+        if (c == bs) { tok = tok c substr(line, i + 1, 1); i++; continue }
+        tok = tok c
+        if (c == dq) q = ""
+        continue
+      }
       if (c == bs) { tok = tok c substr(line, i + 1, 1); i++; continue }
       if (c == sq || c == dq) { q = c; tok = tok c; continue }
       if (c == " " || c == "\t") {
-        if (tok != "") { out = out (out == "" ? "" : " ") expand(tok); tok = "" }
+        if (tok != "") { out = out (out == "" ? "" : " ") normalize(tok); tok = "" }
         continue
       }
       tok = tok c
     }
-    if (tok != "") out = out (out == "" ? "" : " ") expand(tok)
+    if (tok != "") out = out (out == "" ? "" : " ") normalize(tok)
 
     print out
     if (is_commit && saw_n) print mark
@@ -420,7 +452,15 @@ cmd_flags=$(printf '%s\n' "$cmd" | awk '
     n = 0; q = ""; tok = ""; len = length(all)
     for (i = 1; i <= len; i++) {
       c = substr(all, i, 1)
-      if (q != "") { tok = tok c; if (c == q) q = ""; continue }
+      if (q == sq) { tok = tok c; if (c == sq) q = ""; continue }
+      if (q == dq) {
+        # \" は閉じクォートではない。見落とすと本物の閉じクォートが開きとして
+        # 読まれ、残りのコマンド全体が -m の値として消える
+        if (c == bs) { tok = tok c substr(all, i + 1, 1); i++; continue }
+        tok = tok c
+        if (c == dq) q = ""
+        continue
+      }
       if (c == bs) { tok = tok c substr(all, i + 1, 1); i++; continue }
       if (c == sq || c == dq) { q = c; tok = tok c; continue }
       if (c == " " || c == "\t" || c == "\n") {
@@ -434,15 +474,25 @@ cmd_flags=$(printf '%s\n' "$cmd" | awk '
     if (tok != "") { T[++n] = tok; eol[n] = 0 }
 
     # -m は commit のときだけメッセージを取る。switch / checkout の -m は
-    # --merge なので、値として次のトークン（-c <ブランチ名>）を落としてはいけない
-    out = ""; drop = 0; is_commit = 0
+    # --merge なので、値として次のトークン（-c <ブランチ名>）を落としてはいけない。
+    # サブコマンドは「git の後ろの最初の非フラグトークン」で判定する。ただの
+    # `commit` という語（`git push origin commit` の refspec 等）に引きずられると、
+    # 後続の本物の git commit を丸ごと隠せてしまう
+    out = ""; drop = 0; is_commit = 0; in_git = 0; skip_val = 0
     for (i = 1; i <= n; i++) {
       t = T[i]
       if (drop) {
         drop = 0
       } else {
-        if (t == "git") is_commit = 0
-        else if (t == "commit") is_commit = 1
+        if (t == "git") { in_git = 1; skip_val = 0; is_commit = 0 }
+        else if (in_git) {
+          if (skip_val) skip_val = 0
+          else if (substr(t, 1, 1) == "-") {
+            if (t == "-C" || t == "-c" || t == "--git-dir" || t == "--work-tree" ||
+                t == "--namespace" || t == "--exec-path" || t == "--super-prefix" ||
+                t == "--config-env") skip_val = 1
+          } else { is_commit = (t == "commit"); in_git = 0 }
+        }
         e = index(t, "=")
         if (is_commit && e > 1 && substr(t, 1, 1) == "-" &&
             is_message(substr(t, 1, e - 1)))
@@ -451,7 +501,11 @@ cmd_flags=$(printf '%s\n' "$cmd" | awk '
           drop = 1
         out = out (out == "" ? "" : " ") t
       }
-      if (eol[i]) { print out; out = "" }
+      # 行をまたいで値を食べない（`git commit -m ; git push …` の git が消える）
+      if (eol[i]) {
+        print out
+        out = ""; drop = 0; is_commit = 0; in_git = 0; skip_val = 0
+      }
     }
     if (out != "") print out
   }
@@ -550,7 +604,14 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
       n = 0; q = ""; tok = ""; len = length(all)
       for (i = 1; i <= len; i++) {
         c = substr(all, i, 1)
-        if (q != "") { tok = tok c; if (c == q) q = ""; continue }
+        if (q == sq) { tok = tok c; if (c == sq) q = ""; continue }
+        if (q == dq) {
+          # \" は閉じクォートではない
+          if (c == bs) { tok = tok c substr(all, i + 1, 1); i++; continue }
+          tok = tok c
+          if (c == dq) q = ""
+          continue
+        }
         if (c == bs) { tok = tok c substr(all, i + 1, 1); i++; continue }
         if (c == sq || c == dq) { q = c; tok = tok c; continue }
         if (c == " " || c == "\t" || c == "\n") {
