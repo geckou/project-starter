@@ -52,6 +52,23 @@ core の時点で存在し、Blaze プランもこの時点で必須になる。
 - ログインページ: `apps/web/src/app/login/page.tsx`
 - ミドルウェア: `apps/web/src/middleware.ts`
 
+### サインアウトは全デバイスのセッションを失効させる
+
+`/api/session` の DELETE は cookie を消すだけでなく `revokeRefreshTokens(uid)` を呼ぶ。
+これはそのユーザーの**全リフレッシュトークン**を失効させるので、**Web でログアウトすると
+mobile のログインも切れる。**
+
+Firebase Auth には「この session cookie だけを失効させる」API が無く、cookie の削除だけでは
+漏れた cookie が最長 5 日そのまま使えてしまう。奪われた cookie を能動的に無効化できることを
+優先して、全デバイス失効を選んでいる。**mobile を持つ派生プロジェクトでこの挙動が
+不都合なら、`revokeRefreshTokens` の呼び出しを外す**（cookie 削除のみになる）。
+
+あわせて非対称がある。session cookie 側は失効前提の設計（保護ページは
+`verifySessionCookie(cookie, true)` で見る）だが、`apps/functions` の `requireAuth`
+（`createRequireAuth`）は `checkRevoked` を渡しておらず既定の `false` のままなので、
+**API 側は失効後も最大 1 時間 ID トークンが通る。** ここを揃えたい場合は
+`checkRevoked: true` にする（Auth への追加リクエストが 1 回増える）。
+
 ## データ取得パターン
 
 Server Component で Firestore からデータを取得する（SSR）:
