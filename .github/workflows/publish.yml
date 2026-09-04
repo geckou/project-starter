@@ -66,8 +66,8 @@ jobs:
           # production との包含関係を見るため、履歴を持ってチェックアウトする
           fetch-depth: 0
 
-      # レビューを通っていないコミットからの公開を止める。依存インストール（= その ref の
-      # コードの実行）より前に置く。push でも workflow_dispatch でも
+      # レビューを通っていないコミットからの公開を止める。この ref のファイルを読む
+      # 後続の node / npm より前に置く。push でも workflow_dispatch でも
       # GITHUB_SHA は起動した ref の先頭を指す
       - name: Verify the commit is on production
         run: |
