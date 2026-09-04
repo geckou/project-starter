@@ -50,7 +50,16 @@ jobs:
         with:
           source_repo_path: geckou/project-starter
           upstream_branch: production
+          # トークンの入力は 3 つあり、役割が分かれている（v2 の action.yml）。
+          #   source_gh_token  取り込み元（テンプレート）の読み取り。既定 github.token
+          #   target_gh_token  取り込み先への push と PR 作成。既定 github.token
+          #   github_token     deprecated。source_gh_token と同じ「取り込み元」用で、
+          #                    target_gh_token のフォールバック先ではない
+          #
+          # PR 作成に効くのは target_gh_token だけ。ここを渡さないと PR が
+          # GITHUB_TOKEN 名義で作られ、CI が 1 つも走らない
           source_gh_token: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
+          target_gh_token: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
           pr_title: 'chore: テンプレート更新の取り込み'
           pr_labels: template-sync
           pr_commit_msg: 'chore: テンプレート更新の取り込み'

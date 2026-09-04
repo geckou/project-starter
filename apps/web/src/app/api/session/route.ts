@@ -100,7 +100,14 @@ export async function DELETE(request: Request) {
 
   // リフレッシュトークンを失効させる。cookie を消すだけだと、漏れた cookie が
   // 最長 5 日そのまま使える（保護ページは verifySessionCookie(cookie, true) で
-  // 失効を見ているため、revoke すれば即座に無効になる）
+  // 失効を見ているため、revoke すれば即座に無効になる）。
+  //
+  // **これはそのユーザーの全リフレッシュトークンを失効させる。** mobile が同じ
+  // Firebase Auth ユーザーを使う構成では、Web のログアウトで mobile も切れる。
+  // Firebase に「この session cookie だけを失効させる」API が無いための判断で、
+  // 奪われた cookie を無効化できることを優先している。
+  // 不都合なら revokeRefreshTokens を外す（→ .claude/docs/architecture.md
+  // 「サインアウトは全デバイスのセッションを失効させる」）
   if (sessionCookie) {
     try {
       const decoded = await adminAuth.verifySessionCookie(sessionCookie)

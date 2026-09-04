@@ -1,7 +1,11 @@
 name: Publish package
 
-# **このファイルの正はここ。** geckou/kit・geckou/ui にも同じものがあるが、
-# 直すときはまずこれを直してから配ること。
+# **このファイルの正はここ。** geckou/kit・geckou/ui にもほぼ同じものがあるが、
+# 直すときはまずこれを直してから配ること。意図的な差分は次の 2 つだけなので、
+# 配るときはそこだけ読み替える。
+#
+#   - 依存インストールとビルドのステップ（あちらは公開物をビルドする必要がある）
+#   - publish ジョブの registry-url（あちらは Trusted Publishing の都合で扱いが違う）
 #
 # 第0層の設定パッケージ（@geckou/eslint-config / prettier-config / commitlint-config）を
 # npm へ公開する。設定パッケージはビルドを持たない素の JS なので、依存インストールも
@@ -49,6 +53,10 @@ on:
       package:
         description: 公開するパッケージのディレクトリ名（eslint-config 等）
         required: true
+      force:
+        description: 破壊的変更の検査を飛ばす（互換の追加だと分かっているときだけ）
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -83,7 +91,8 @@ jobs:
           # npm view を叩いて package.json を読むだけだが、publish ジョブと同じ Node で
           # 読むほうが読み違いが起きにくい
           node-version: '>=22.14.0'
-          # registry-url は指定しない（理由は publish ジョブ側のコメント）
+          # registry-url は指定しない。このジョブは npm view を叩くだけで公開はせず、
+          # 認証情報（.npmrc）を用意する必要が無い
 
       - name: Resolve target packages
         id: resolve
@@ -238,13 +247,17 @@ jobs:
       # 公開済みの型定義と比べて、破壊的変更が patch に載っていないかを見る
       # （geckou/project-starter#155）。判定できない場合は素通しする安全網。
       #
-      # **自動公開のときだけ実行する。** タグ起動なら release.sh が打つ前に同じ検査を
+      # **タグ起動のときだけ飛ばす。** タグ起動なら release.sh が打つ前に同じ検査を
       # 済ませており、そこには「互換の追加だと分かっている」場合の --force がある。
       # ここで無条件に見ると --force が効かなくなり、検査に引っかかった版を
       # どの経路からも公開できなくなる（自動公開が止まったときの逃げ道が、
-      # yarn release <パッケージ> --force でタグを打つこと）
+      # yarn release <パッケージ> --force でタグを打つこと）。
+      #
+      # 飛ばすのは「タグの push」だけ。workflow_dispatch は release.sh を通らないので
+      # 検査を済ませておらず、しかもタグの ref を選んで起動できる（= ref_type だけで
+      # 判定すると素通りする）。手動実行で飛ばしたいときは force 入力を明示する
       - name: Check for breaking changes in a patch release
-        if: github.ref_type != 'tag' && github.event_name != 'workflow_dispatch'
+        if: (github.event_name != 'push' || github.ref_type != 'tag') && github.event.inputs.force != 'true'
         env:
           PACKAGE: ${{ matrix.package }}
         run: node scripts/check-api-diff.mjs "$PACKAGE"

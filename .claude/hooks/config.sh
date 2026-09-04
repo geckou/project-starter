@@ -34,3 +34,7 @@ packages/shared	packages/shared が変更されました。全 workspace に影�
 # ドキュメントを Notion 等で持つ派生プロジェクトでも、キューだけはリポジトリ内に置く前提。
 # ファイルが存在しなければ関連フックは何もしない
 HOOK_QUESTIONS_FILE=${HOOK_QUESTIONS_FILE:-'.claude/docs/questions.md'}
+
+# ロードマップ（機能ステータス表）の場所。stop-roadmap-reminder.sh が更新の有無を見る。
+# 確認事項キューと同じく、ドキュメントを外部サービスで持つ派生でもここだけはリポジトリ内に置く前提
+HOOK_ROADMAP_FILE=${HOOK_ROADMAP_FILE:-'.claude/docs/roadmap.md'}

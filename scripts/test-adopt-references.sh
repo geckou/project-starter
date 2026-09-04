@@ -637,6 +637,20 @@ fi
 
 rm -rf "$template_clone"
 
+# テンプレート更新を手で取り込むために upstream を足している派生は正当な対象。
+# .git/config 全体で照合すると、この運用の派生まで拒んでしまう
+with_upstream=$(make_derived)
+git -C "$with_upstream" remote add origin https://github.com/geckou/another-derived.git
+git -C "$with_upstream" remote add upstream https://github.com/geckou/project-starter.git
+
+if adopt "$with_upstream" > /dev/null 2>&1; then
+  pass "upstream にテンプレートを持つ派生は拒まれない"
+else
+  fail "upstream を持つ派生を誤って拒んだ" "$(adopt "$with_upstream" 2>&1)"
+fi
+
+rm -rf "$with_upstream"
+
 # 逆に、Template Sync で renovate/ や reusable workflow の実体を受け取っている
 # 派生プロジェクトは正当な対象。ファイルの有無で拒むと移行できなくなる
 derived=$(make_derived)

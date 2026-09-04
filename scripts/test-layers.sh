@@ -167,6 +167,48 @@ else
 fi
 rm -rf "$broken"
 
+# ワークスペースの公開区分。private も publishConfig も無いと、add-layer の
+# スコープ書き換えから黙って漏れる（型チェックにもテストにも引っかからない）
+set_workspace_manifest() {
+  node -e "
+    const fs = require('node:fs');
+    const [file, patch] = process.argv.slice(1);
+    const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+    delete manifest.private;
+    delete manifest.publishConfig;
+    Object.assign(manifest, JSON.parse(patch));
+    fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+  " "$1" "$2"
+}
+
+broken=$(make_variant)
+set_workspace_manifest "$broken/packages/shared/package.json" '{}'
+if (cd "$broken" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  fail "private も publishConfig も無いワークスペースを検出できていない"
+else
+  pass "private も publishConfig も無いワークスペースを検出する"
+fi
+rm -rf "$broken"
+
+broken=$(make_variant)
+set_workspace_manifest "$broken/packages/shared/package.json" '{"private":true}'
+if (cd "$broken" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  pass "private: true のワークスペースは通す"
+else
+  fail "private: true を誤って弾いた" "$(cd "$broken" && node scripts/check-layers.mjs 2>&1)"
+fi
+rm -rf "$broken"
+
+broken=$(make_variant)
+set_workspace_manifest "$broken/packages/shared/package.json" \
+  '{"publishConfig":{"access":"public"}}'
+if (cd "$broken" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  pass "publishConfig を持つワークスペースは通す"
+else
+  fail "publishConfig を誤って弾いた" "$(cd "$broken" && node scripts/check-layers.mjs 2>&1)"
+fi
+rm -rf "$broken"
+
 echo ""
 
 # --- 2. billing だけを外す ---

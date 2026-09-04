@@ -36,6 +36,13 @@ yarn.lock
 # 層マニフェスト（どの層を採用しているかは派生プロジェクトごとに違う）
 layers.json
 
+# テンプレート本体だけが持つワークフロー（派生プロジェクトでは
+# `if: github.repository == 'geckou/project-starter'` で起動しない）。
+# /init-project が削除を案内するので、同期で戻さない
+.github/workflows/layer-matrix.yml
+.github/workflows/smoke-test.yml
+.github/workflows/release-tag.yml
+
 # パッケージ公開の導線（テンプレート本体だけが持つ。派生プロジェクトは公開しない）。
 # ci.yml がこれらの回帰テストを実行するため、一部だけ配ると派生の CI が落ちる
 .github/workflows/publish.yml

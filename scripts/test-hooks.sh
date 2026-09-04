@@ -171,6 +171,8 @@ run 0 'production 上でも別ブランチの push は通す' \
 run 2 'git push --all（refspec を書かずに全ブランチを更新する）' \
   'git push --all origin' feat/existing
 run 2 'git push --mirror' 'git push --mirror origin' feat/existing
+run 2 'クォート付きの push 先' 'git push origin "production"' feat/existing
+run 2 'クォート付きの refspec' "git push origin 'HEAD:production'"
 run 0 '作業ブランチからの push' 'git push -u origin feat/existing' feat/existing
 
 echo
@@ -185,6 +187,46 @@ run 2 '絶対パスの git（規約外メッセージ）' \
   "/usr/bin/git commit -m 'なにか'" feat/existing
 run 2 '-c core.hooksPath で husky を無効化' \
   "git -c core.hooksPath=/dev/null commit -m 'feat: x'" feat/existing
+run 2 '-c core.hookspath（設定キーは大文字小文字を区別しない）' \
+  "git -c core.hookspath=/dev/null commit -m 'feat: x'" feat/existing
+run 0 'コミットメッセージ中の -c core.hooksPath を迂回と誤認しない' \
+  "git commit -m 'docs: -c core.hooksPath について書く'" feat/existing
+run 2 'HUSKY=0 の前置きで husky を無効化' \
+  "HUSKY=0 git commit -m 'feat: x'" feat/existing
+run 2 'env HUSKY=0 の形' \
+  "env HUSKY=0 git commit -m 'feat: x'" feat/existing
+run 2 'GIT_CONFIG_* で core.hooksPath を注入' \
+  "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m 'feat: x'" \
+  feat/existing
+run 0 'コミットメッセージ中の HUSKY=0 を迂回と誤認しない' \
+  "git commit -m 'docs: HUSKY=0 について書く'" feat/existing
+# HUSKY= （空）は husky を無効化しない。継承した HUSKY=0 を打ち消す用途がある
+run 0 'HUSKY=（空）は無効化ではないので止めない' \
+  "HUSKY= git commit -m 'feat: x'" feat/existing
+run 2 '--no-verif（長いオプションの前方一致）' \
+  "git commit --no-verif -m 'feat: x'" feat/existing
+run 2 '--mes（--message の前方一致）でも規約を検証する' \
+  "git commit --mes 'wip'" feat/existing
+run 2 '2 つ目の -m に規約どおりのメッセージを置いても通さない' \
+  "git commit -m 'wip' -m 'feat: x'" feat/existing
+run 0 '1 つ目の -m が規約どおりなら通す（2 つ目は本文）' \
+  "git commit -m 'feat: x' -m 'wip'" feat/existing
+
+# 絞り込みループが行単位で読むため、複数行のメッセージは 1 行目で切れて
+# 閉じクォートが無い状態で検証へ渡る。検証するのは先頭行なので値としては
+# 足りているが、開きクォートを残したまま先頭一致で見ると規約どおりでも弾かれる
+run 0 '複数行のメッセージ（ダブルクォート）' \
+  'git commit -m "feat: なにかを追加
+
+Co-Authored-By: someone <noreply@example.com>"' feat/existing
+run 0 '複数行のメッセージ（シングルクォート）' \
+  "git commit -m 'fix: なにかを直す
+
+本文'" feat/existing
+run 2 '複数行でも 1 行目が規約違反なら止める' \
+  'git commit -m "wip
+
+Co-Authored-By: someone <noreply@example.com>"' feat/existing
 run 2 'here-string を heredoc と誤認しない' \
   "grep <<<'pattern' file
 git commit -m 'wip'" feat/existing
@@ -201,6 +243,28 @@ run 0 'git branch -D はブランチ作成ではない' 'git branch -D not_kebab
 run 0 'git branch（一覧）はブランチ作成ではない' 'git branch'
 run 0 'git branch <名前> <分岐元> の分岐元を読む' \
   'git branch feat/new-thing production' feat/existing
+run 2 'switch --create（長い形）の命名規則違反' 'git switch --create wip'
+run 2 'checkout --orphan の命名規則違反' 'git checkout --orphan wip'
+run 2 'worktree add <パス> -b（-b の前に非フラグ）の命名規則違反' \
+  'git worktree add ../wt -b wip'
+run 0 'switch --create でも規約に沿っていれば通す' 'git switch --create feat/new-thing'
+# worktree add は <path> [<commit-ish>] の順。パスを分岐元と誤認しない
+run 0 'worktree add -b <名前> <パス>（git のドキュメントの語順）' \
+  'git worktree add -b feat/new-thing ../wt'
+run 0 'worktree add <パス> -b <名前>' 'git worktree add ../wt -b feat/new-thing'
+run 2 'worktree add の分岐元は パスの次のトークンで見る' \
+  'git worktree add -b feat/new-thing ../wt release/1.0.0' feat/existing
+
+# --orphan は親を持たないブランチを作るので、分岐元の検査が意味を持たない。
+# 現在ブランチへのフォールバックに救われて production 上では通っていた
+echo
+echo '=== --orphan は書き方として禁じる ==='
+run 2 'switch --orphan（命名規則を満たしていても止める）' \
+  'git switch --orphan feat/new-thing'
+run 2 'checkout --orphan（命名規則を満たしていても止める）' \
+  'git checkout --orphan feat/new-thing'
+run 0 'コミットメッセージ中の --orphan を誤検出しない' \
+  "git commit -m 'docs: --orphan を禁じた理由を書く'" feat/existing
 
 echo
 echo '=== コミットメッセージのファイル指定 ==='
@@ -509,6 +573,121 @@ run_qstop 0 '見出しが同じなら本文を直してもブロックしない'
 
 git -C "$SESSION" checkout -q -- .claude/docs/questions.md
 rm -f "$SESSION/other-questions.md"
+
+# ---- post-git-branch-reminder.sh ----
+#
+# pre-git-guard.sh と正規表現を共有しているので、片方だけ直すと挙動がずれる。
+# 検出する形を変えたら両方にケースを足す（フック本体のコメントにも書いてある）。
+# このフックは「進行中の release/* があるときだけ」リマインドするため、
+# サンドボックスのリポジトリに origin/release/* の参照を作ってから呼ぶ。
+
+BRANCH_HOOK=$REPO/.claude/hooks/post-git-branch-reminder.sh
+
+git -C "$SESSION" update-ref refs/remotes/origin/release/1.0.0 \
+  "$(git -C "$SESSION" rev-parse production)"
+
+# run_branch <期待する終了コード> <説明> <コマンド>
+run_branch() {
+  want=$1
+  desc=$2
+  command=$3
+
+  LAST_OUT=$(cd "$SESSION" && jq -n --arg c "$command" '{tool_input:{command:$c}}' |
+    sh "$BRANCH_HOOK" 2>&1)
+  status=$?
+
+  if [ "$status" = "$want" ]; then
+    pass=$((pass + 1))
+    printf 'ok   [%s] %s\n' "$status" "$desc"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL [want %s got %s] %s\n     cmd: %s\n     out: %s\n' \
+      "$want" "$status" "$desc" "$command" "$LAST_OUT"
+  fi
+}
+
+echo
+echo '=== post-git-branch-reminder: ブランチ作成の検出 ==='
+run_branch 2 'checkout -b' 'git checkout -b feat/new-thing'
+run_branch 2 'switch --create（長い形）' 'git switch --create feat/new-thing'
+run_branch 2 'checkout --orphan' 'git checkout --orphan feat/new-thing'
+run_branch 2 'worktree add <パス> -b（パスが先）' \
+  'git worktree add ../wt -b feat/new-thing'
+run_branch 2 'worktree add -b <名前> <パス>' \
+  'git worktree add -b feat/new-thing ../wt'
+run_branch 2 'git branch <名前>' 'git branch feat/new-thing'
+run_branch 0 'ブランチ作成ではない（切り替えだけ）' 'git checkout production'
+run_branch 0 'git branch -D はブランチ作成ではない' 'git branch -D feat/existing'
+run_branch 0 '同じコマンドで merge 済みなら何も言わない' \
+  'git checkout -b feat/new-thing && git merge origin/release/1.0.0'
+
+git -C "$SESSION" update-ref -d refs/remotes/origin/release/1.0.0
+run_branch 0 '進行中の release/* が無ければ何も言わない' \
+  'git checkout -b feat/new-thing'
+
+# ---- stop-roadmap-reminder.sh ----
+
+ROADMAP_HOOK=$REPO/.claude/hooks/stop-roadmap-reminder.sh
+cp "$ROADMAP_HOOK" "$NOCONFIG/"
+
+# run_roadmap <期待する終了コード> <説明> <入力 JSON> [フック本体のパス]
+run_roadmap() {
+  want=$1
+  desc=$2
+  input=$3
+  hook=${4:-$ROADMAP_HOOK}
+
+  LAST_OUT=$(cd "$SESSION" && printf '%s' "$input" | sh "$hook" 2>&1)
+  status=$?
+
+  if [ "$status" = "$want" ]; then
+    pass=$((pass + 1))
+    printf 'ok   [%s] %s\n' "$status" "$desc"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL [want %s got %s] %s\n     out: %s\n' "$want" "$status" "$desc" "$LAST_OUT"
+  fi
+}
+
+echo
+echo '=== stop-roadmap-reminder: 更新の有無を見る ==='
+run_roadmap 0 '未コミットの変更が無ければ何も言わない' '{}'
+
+mkdir -p "$SESSION/.claude/docs"
+echo 'work' > "$SESSION/work.txt"
+run_roadmap 2 '作業があるのに roadmap.md が未更新ならリマインドする' '{}'
+run_roadmap 0 'フック起因の継続中は再度ブロックしない' '{"stop_hook_active":true}'
+
+# git diff は未追跡ファイルに 0 を返すため、新規作成した roadmap.md を
+# 「更新されていない」と判定していた（/kickoff 直後がこの状態）
+echo '# ロードマップ' > "$SESSION/.claude/docs/roadmap.md"
+run_roadmap 0 '新規作成（未追跡）の roadmap.md でもリマインドしない' '{}'
+
+git -C "$SESSION" add .claude/docs/roadmap.md
+run_roadmap 0 'ステージ済みでもリマインドしない' '{}'
+
+git -C "$SESSION" -c user.email=test@example.com -c user.name=test \
+  commit -q -m 'docs: ロードマップ'
+run_roadmap 2 'コミット済みで手が入っていなければリマインドする' '{}'
+
+echo '## 機能ステータス表' >> "$SESSION/.claude/docs/roadmap.md"
+run_roadmap 0 '追跡済みファイルの変更もリマインドしない' '{}'
+git -C "$SESSION" checkout -q -- .claude/docs/roadmap.md
+
+echo
+echo '=== stop-roadmap-reminder: 設定で場所を差し替えられる ==='
+echo '# 別の場所' > "$SESSION/other-roadmap.md"
+HOOK_ROADMAP_FILE=other-roadmap.md
+export HOOK_ROADMAP_FILE
+run_roadmap 0 '差し替え先が更新されていればリマインドしない' '{}'
+unset HOOK_ROADMAP_FILE
+rm -f "$SESSION/other-roadmap.md"
+
+echo
+echo '=== stop-roadmap-reminder: config.sh が無くても既定値で動く ==='
+run_roadmap 2 '既定のパスで判定する' '{}' "$NOCONFIG/stop-roadmap-reminder.sh"
+
+rm -f "$SESSION/work.txt"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]

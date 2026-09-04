@@ -12,7 +12,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
 # pre-git-guard.sh は「作成したブランチ名を取り出す」ために NEW_BRANCH_RE と
 # PLAIN_BRANCH_RE の 2 本に分けているが、ここは検出できれば足りるので 1 本にまとめている。
 # 検出する形を変えるときは両方を直すこと（片方だけだと挙動がずれる）
-NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[bB]|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[cC]|worktree[[:space:]]+add([[:space:]]+-[^[:space:]]+)*[[:space:]]+-[bB]|branch[[:space:]]+[^-[:space:]])'
+NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[bB]|--orphan)|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[cC]|--create|--orphan)|worktree[[:space:]]+add([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[bB]|branch[[:space:]]+[^-[:space:]])'
 
 printf '%s' "$cmd" | grep -Eq "(^|[[:space:]])git[[:space:]]+$NEW_BRANCH_RE" || exit 0
 
