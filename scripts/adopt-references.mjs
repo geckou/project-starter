@@ -208,9 +208,7 @@ function originUrl(root) {
   if (config === null) return null
 
   // [remote "origin"] セクションから次のセクションまでを切り出して url を読む
-  const section = config.match(
-    /^\s*\[remote\s+"origin"\][^[]*/m
-  )?.[0]
+  const section = config.match(/^\s*\[remote\s+"origin"\][^[]*/m)?.[0]
 
   if (section === undefined) return null
 
