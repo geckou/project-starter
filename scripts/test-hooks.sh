@@ -171,6 +171,8 @@ run 0 'production 上でも別ブランチの push は通す' \
 run 2 'git push --all（refspec を書かずに全ブランチを更新する）' \
   'git push --all origin' feat/existing
 run 2 'git push --mirror' 'git push --mirror origin' feat/existing
+run 2 'クォート付きの push 先' 'git push origin "production"' feat/existing
+run 2 'クォート付きの refspec' "git push origin 'HEAD:production'"
 run 0 '作業ブランチからの push' 'git push -u origin feat/existing' feat/existing
 
 echo
@@ -185,6 +187,27 @@ run 2 '絶対パスの git（規約外メッセージ）' \
   "/usr/bin/git commit -m 'なにか'" feat/existing
 run 2 '-c core.hooksPath で husky を無効化' \
   "git -c core.hooksPath=/dev/null commit -m 'feat: x'" feat/existing
+run 2 '-c core.hookspath（設定キーは大文字小文字を区別しない）' \
+  "git -c core.hookspath=/dev/null commit -m 'feat: x'" feat/existing
+run 0 'コミットメッセージ中の -c core.hooksPath を迂回と誤認しない' \
+  "git commit -m 'docs: -c core.hooksPath について書く'" feat/existing
+run 2 'HUSKY=0 の前置きで husky を無効化' \
+  "HUSKY=0 git commit -m 'feat: x'" feat/existing
+run 2 'env HUSKY=0 の形' \
+  "env HUSKY=0 git commit -m 'feat: x'" feat/existing
+run 2 'GIT_CONFIG_* で core.hooksPath を注入' \
+  "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m 'feat: x'" \
+  feat/existing
+run 0 'コミットメッセージ中の HUSKY=0 を迂回と誤認しない' \
+  "git commit -m 'docs: HUSKY=0 について書く'" feat/existing
+run 2 '--no-verif（長いオプションの前方一致）' \
+  "git commit --no-verif -m 'feat: x'" feat/existing
+run 2 '--mes（--message の前方一致）でも規約を検証する' \
+  "git commit --mes 'wip'" feat/existing
+run 2 '2 つ目の -m に規約どおりのメッセージを置いても通さない' \
+  "git commit -m 'wip' -m 'feat: x'" feat/existing
+run 0 '1 つ目の -m が規約どおりなら通す（2 つ目は本文）' \
+  "git commit -m 'feat: x' -m 'wip'" feat/existing
 run 2 'here-string を heredoc と誤認しない' \
   "grep <<<'pattern' file
 git commit -m 'wip'" feat/existing
@@ -201,6 +224,11 @@ run 0 'git branch -D はブランチ作成ではない' 'git branch -D not_kebab
 run 0 'git branch（一覧）はブランチ作成ではない' 'git branch'
 run 0 'git branch <名前> <分岐元> の分岐元を読む' \
   'git branch feat/new-thing production' feat/existing
+run 2 'switch --create（長い形）の命名規則違反' 'git switch --create wip'
+run 2 'checkout --orphan の命名規則違反' 'git checkout --orphan wip'
+run 2 'worktree add <パス> -b（-b の前に非フラグ）の命名規則違反' \
+  'git worktree add ../wt -b wip'
+run 0 'switch --create でも規約に沿っていれば通す' 'git switch --create feat/new-thing'
 
 echo
 echo '=== コミットメッセージのファイル指定 ==='
@@ -509,6 +537,70 @@ run_qstop 0 '見出しが同じなら本文を直してもブロックしない'
 
 git -C "$SESSION" checkout -q -- .claude/docs/questions.md
 rm -f "$SESSION/other-questions.md"
+
+# ---- stop-roadmap-reminder.sh ----
+
+ROADMAP_HOOK=$REPO/.claude/hooks/stop-roadmap-reminder.sh
+cp "$ROADMAP_HOOK" "$NOCONFIG/"
+
+# run_roadmap <期待する終了コード> <説明> <入力 JSON> [フック本体のパス]
+run_roadmap() {
+  want=$1
+  desc=$2
+  input=$3
+  hook=${4:-$ROADMAP_HOOK}
+
+  LAST_OUT=$(cd "$SESSION" && printf '%s' "$input" | sh "$hook" 2>&1)
+  status=$?
+
+  if [ "$status" = "$want" ]; then
+    pass=$((pass + 1))
+    printf 'ok   [%s] %s\n' "$status" "$desc"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL [want %s got %s] %s\n     out: %s\n' "$want" "$status" "$desc" "$LAST_OUT"
+  fi
+}
+
+echo
+echo '=== stop-roadmap-reminder: 更新の有無を見る ==='
+run_roadmap 0 '未コミットの変更が無ければ何も言わない' '{}'
+
+mkdir -p "$SESSION/.claude/docs"
+echo 'work' > "$SESSION/work.txt"
+run_roadmap 2 '作業があるのに roadmap.md が未更新ならリマインドする' '{}'
+run_roadmap 0 'フック起因の継続中は再度ブロックしない' '{"stop_hook_active":true}'
+
+# git diff は未追跡ファイルに 0 を返すため、新規作成した roadmap.md を
+# 「更新されていない」と判定していた（/kickoff 直後がこの状態）
+echo '# ロードマップ' > "$SESSION/.claude/docs/roadmap.md"
+run_roadmap 0 '新規作成（未追跡）の roadmap.md でもリマインドしない' '{}'
+
+git -C "$SESSION" add .claude/docs/roadmap.md
+run_roadmap 0 'ステージ済みでもリマインドしない' '{}'
+
+git -C "$SESSION" -c user.email=test@example.com -c user.name=test \
+  commit -q -m 'docs: ロードマップ'
+run_roadmap 2 'コミット済みで手が入っていなければリマインドする' '{}'
+
+echo '## 機能ステータス表' >> "$SESSION/.claude/docs/roadmap.md"
+run_roadmap 0 '追跡済みファイルの変更もリマインドしない' '{}'
+git -C "$SESSION" checkout -q -- .claude/docs/roadmap.md
+
+echo
+echo '=== stop-roadmap-reminder: 設定で場所を差し替えられる ==='
+echo '# 別の場所' > "$SESSION/other-roadmap.md"
+HOOK_ROADMAP_FILE=other-roadmap.md
+export HOOK_ROADMAP_FILE
+run_roadmap 0 '差し替え先が更新されていればリマインドしない' '{}'
+unset HOOK_ROADMAP_FILE
+rm -f "$SESSION/other-roadmap.md"
+
+echo
+echo '=== stop-roadmap-reminder: config.sh が無くても既定値で動く ==='
+run_roadmap 2 '既定のパスで判定する' '{}' "$NOCONFIG/stop-roadmap-reminder.sh"
+
+rm -f "$SESSION/work.txt"
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]
