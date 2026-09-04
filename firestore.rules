@@ -35,7 +35,7 @@ service cloud.firestore {
     // match /dev_users/{userId} { ... }
 
     // 例: 有料プラン限定のコレクション。
-    // apps/functions/.env で SYNC_SUBSCRIPTION_CLAIMS=true にすると Webhook が
+    // ルートの .env.<環境名> で SYNC_SUBSCRIPTION_CLAIMS=true にすると Webhook が
     // カスタムクレームへ同期するので、Firestore の get() なしで判定できる
     // （未設定だとクレームが存在せず全員拒否になる。
     //   またクレームは ID トークン更新まで最大1時間古い点にも注意）

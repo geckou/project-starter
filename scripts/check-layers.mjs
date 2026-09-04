@@ -267,6 +267,37 @@ for (const layer of manifest.layers) {
   }
 }
 
+// --- ワークスペースの公開区分 ---------------------------------------------
+// add-layer.mjs / adopt-references.mjs は「`private: true` でないワークスペースは
+// npm へ公開するもの」と見なし、スコープ書き換えの対象から外す。新しく足した
+// ワークスペースで private を書き忘れると、黙って書き換え漏れになる（型チェックにも
+// テストにも引っかからない）。どちらのつもりなのかを必ず宣言させる。
+for (const group of ['apps', 'packages']) {
+  const dir = path.join(root, group)
+
+  if (!fs.existsSync(dir)) continue
+
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+
+    const file = path.join(dir, entry.name, 'package.json')
+
+    if (!fs.existsSync(file)) continue
+
+    const workspace = JSON.parse(fs.readFileSync(file, 'utf8'))
+
+    if (workspace.private === true || workspace.publishConfig !== undefined) {
+      continue
+    }
+
+    fail(
+      `${group}/${entry.name}/package.json に private も publishConfig もありません。` +
+        'ワークスペース内部のものなら `"private": true`、npm へ公開するなら ' +
+        'publishConfig を書いてください（スコープ書き換えの対象がこれで決まります）'
+    )
+  }
+}
+
 if (errors.length > 0) {
   console.error('[error] 層マニフェストとリポジトリの実態が一致していません:')
 
