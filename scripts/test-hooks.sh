@@ -176,6 +176,12 @@ run 2 'クォート付きの refspec' "git push origin 'HEAD:production'"
 # git は heads/production も refs/heads/production に解決する（DWIM）
 run 2 'refspec の短縮形 heads/production' 'git push origin heads/production'
 run 2 'HEAD:heads/production' 'git push origin HEAD:heads/production'
+# 先頭の + は force push そのもの。heads/ を剥がす前に外さないと一致しない
+run 2 '+heads/production' 'git push origin +heads/production'
+run 2 '+refs/heads/production' 'git push origin +refs/heads/production'
+# + は force push そのものなので、release/* 宛ては ask ではなく deny になる
+run 2 '+release/* への push は force push として止める' \
+  'git push origin +heads/release/1.0.0' feat/existing
 run 0 '作業ブランチからの push' 'git push -u origin feat/existing' feat/existing
 
 echo
@@ -210,6 +216,16 @@ run 2 'git config core.hooksPath で husky を永続的に外す' \
   "git config core.hooksPath /dev/null; git commit -m 'feat: x'" feat/existing
 run 2 'git config --local core.hooksPath' \
   "git config --local core.hooksPath /dev/null; git commit -m 'feat: x'" feat/existing
+# 値を伴わない読み出しは設定を変えないので止めない
+run 0 'git config core.hooksPath の読み出し' \
+  "git config core.hooksPath" feat/existing
+run 0 'git config --get core.hooksPath' \
+  "git config --get core.hooksPath" feat/existing
+run 0 'コミットメッセージ中の git config core.hooksPath を迂回と誤認しない' \
+  "git commit -m 'docs: git config core.hooksPath の迂回を禁止する'" feat/existing
+# 1 回限りの前置きは後続の git に効かない（CI で普通に使う形）
+run 0 'HUSKY=0 yarn install は後続の git に影響しない' \
+  'HUSKY=0 yarn install && git status' feat/existing
 run 0 'コミットメッセージ中の HUSKY=0 を迂回と誤認しない' \
   "git commit -m 'docs: HUSKY=0 について書く'" feat/existing
 # HUSKY= （空）は husky を無効化しない。継承した HUSKY=0 を打ち消す用途がある
@@ -259,6 +275,8 @@ run 2 "bash -c（シングルクォート）" \
 run 2 'eval で包んだ production への push' \
   'eval "git push origin production"'
 run 2 'バッククォートの中の push' 'echo `git push origin production`'
+run 2 'フラグを束ねた sh -cx' "sh -cx 'git push origin production'"
+run 2 'bash -lc' "bash -lc 'git push origin production'"
 run 0 'コミットメッセージ中の sh -c / eval への言及は展開しない' \
   "git commit -m 'docs: eval \"git push origin production\" は禁止'" feat/existing
 
@@ -298,6 +316,10 @@ run 0 'git branch --track でも規約どおりなら通す' \
   'git branch --track feat/new-thing production' feat/existing
 # -b の無い worktree add は basename(パス) の名前でブランチを作る
 run 2 'worktree add <パス>（-b 無し）の命名規則違反' 'git worktree add ../foo-bar'
+run 2 'チェーンの後ろにある worktree add も見る' \
+  'git status && git worktree add ../foo-bar'
+# git 2.19 以降 git branch -l は --create-reflog ではなく --list
+run 0 'git branch -l はブランチ作成ではない' "git branch -l 'release/*'"
 run 0 'worktree add <パス> <既存ブランチ> は作成ではない' \
   'git worktree add ../wt feat/existing'
 run 2 'switch --create（長い形）の命名規則違反' 'git switch --create wip'

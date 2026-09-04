@@ -24,6 +24,7 @@ function billingHandler(
     }
   }
 }
+
 /**
  * 署名検証に使う「パース前の生のボディ」を取り出す。
  *

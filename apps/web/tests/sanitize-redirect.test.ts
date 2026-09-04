@@ -26,6 +26,11 @@ describe('sanitizeRedirect', () => {
       'http://evil.com',
       'evil.com',
       '/path\\..\\evil.com',
+      // WHATWG URL パーサは解析の前に TAB / LF / CR を取り除くため、
+      // バックスラッシュ無しでも //evil.com と同じ結果に解決される
+      '/\t/evil.com',
+      '/\n/evil.com',
+      '/\r/evil.com',
     ]) {
       expect(sanitizeRedirect(redirect)).toBe('/')
     }
@@ -34,7 +39,13 @@ describe('sanitizeRedirect', () => {
   it('弾いた値は同一オリジンに解決されないことまで確かめる', () => {
     const origin = 'https://example.com'
 
-    for (const redirect of ['/\\evil.com', '//evil.com', 'https://evil.com']) {
+    for (const redirect of [
+      '/\\evil.com',
+      '//evil.com',
+      'https://evil.com',
+      '/\t/evil.com',
+      '/\n/evil.com',
+    ]) {
       expect(new URL(redirect, origin).origin).not.toBe(origin)
       expect(new URL(sanitizeRedirect(redirect), origin).origin).toBe(origin)
     }

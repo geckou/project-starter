@@ -100,8 +100,9 @@ unwrap_pass() {
         ch = substr(line, i, 1)
         if (state != "") { out = out ch; if (ch == state) state = ""; i++; continue }
         if (ch == sq || ch == dq) {
-          if (out ~ /(^|[[:space:];&|(])(sh|bash|zsh|dash|ksh)[[:space:]]+-c[[:space:]]+$/ ||
-              out ~ /(^|[[:space:];&|(])eval[[:space:]]+$/) {
+          # -lc / -cx のようにフラグを束ねた形と、$'...' 形式も同じ扱いにする
+          if (out ~ /(^|[[:space:];&|(])(sh|bash|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+\$?$/ ||
+              out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
             j = i + 1; inner = ""
             while (j <= n && substr(line, j, 1) != ch) { inner = inner substr(line, j, 1); j++ }
             if (j <= n) { out = out "( " inner " )"; i = j + 1; continue }
@@ -309,10 +310,14 @@ cmd=$(printf '%s\n' "$segments" | {
     if ! printf '%s' "$seg" | grep -Eq '(^|[[:space:]/])git([[:space:]]|$)'; then
       # 環境変数の設定は git とは別のセグメントに書ける（`export HUSKY=0; git commit`）。
       # git を含むセグメントだけを見ていると、この形の無効化が素通りする。
+      # ただし後続へ効くのは export と代入だけのセグメントで、`HUSKY=0 yarn install`
+      # のような 1 回限りの前置きは git に影響しない（CI で普通に使う形）。
       # 誤検出を避けるため、git を含まないセグメントの 1 行目だけを見る
-      # （コミットメッセージ本文の行に当てない）
-      if printf '%s' "$seg" | head -1 | tr -d "\"'" |
-        grep -Eqi "^(export[[:space:]]+)?$ENV_BYPASS_RE"; then
+      env_only=$(printf '%s' "$seg" | head -1 | tr -d "\"'")
+      if printf '%s' "$env_only" | grep -Eqi "^export([[:space:]]+[^[:space:]]+)*[[:space:]]+$ENV_BYPASS_RE" ||
+        { printf '%s' "$env_only" |
+          grep -Eq '^([A-Za-z_][A-Za-z_0-9]*=[^[:space:]]*[[:space:]]*)+$' &&
+          printf '%s' "$env_only" | grep -Eqi "$ENV_BYPASS_RE"; }; then
         printf '%s\n' "$MARK_ENV_BYPASS"
       fi
       continue
@@ -458,9 +463,48 @@ cmd=$(printf '%s\n' "$segments" | {
     fi
 
     # git config core.hooksPath は husky を「永続的に」外す。-c の 1 回きりの
-    # 上書きより強いので、同じ迂回として扱う
-    if printf '%s' "$seg" | tr -d "\"'" | grep -Eqi \
-      '(^|[[:space:]])git[[:space:]]+config([[:space:]]+--(local|global|worktree|system|file[[:space:]]+[^[:space:]]+))*[[:space:]]+core\.hookspath([[:space:]]|=|$)'; then
+    # 上書きより強いので、同じ迂回として扱う。
+    # セグメント全体の部分一致にすると、この設定について書いたコミットメッセージや
+    # ドキュメントでも当たるため、トークンとして解析する。
+    # 値を伴わない読み出し（git config core.hooksPath / --get）は変更しないので許す
+    config_hookspath=$(printf '%s' "$seg" | awk '
+      {
+        for (i = 1; i <= NF; i++) {
+          if ($i != "git") continue
+          for (j = i + 1; j <= NF; j++) {
+            t = $j
+            if (substr(t, 1, 1) == "-") {
+              if (t == "-c" || t == "--config-env" || t == "-C" ||
+                  t == "--git-dir" || t == "--work-tree" || t == "--namespace" ||
+                  t == "--exec-path" || t == "--super-prefix") j++
+              continue
+            }
+            if (t != "config") exit
+            # config の後ろ: フラグを読み飛ばし、キーと値の 2 つを見る
+            key = ""; value = ""
+            for (k = j + 1; k <= NF; k++) {
+              t = $k
+              if (substr(t, 1, 1) == "-") {
+                if (t == "--file" || t == "-f" || t == "--blob") k++
+                # 読み出し系のフラグが付いていれば変更ではない
+                if (t == "--get" || t == "--get-all" || t == "--get-regexp" ||
+                    t == "--list" || t == "-l" || t == "--unset" ||
+                    t == "--unset-all") { key = ""; break }
+                continue
+              }
+              if (key == "") { key = t; continue }
+              value = t
+              break
+            }
+            if (value != "") print key
+            exit
+          }
+          exit
+        }
+      }
+    ')
+    if printf '%s\n' "$config_hookspath" | tr -d "\"'" |
+      grep -qi '^core\.hookspath$'; then
       printf '%s\n' "$MARK_HOOKSPATH"
     fi
 
@@ -690,7 +734,7 @@ if { has '(^|[[:space:]])git[[:space:]]+(commit|push)' && has '(^|[[:space:]])--
 fi
 
 if [ "${hooks_path_bypass:-0}" -gt 0 ]; then
-  deny '-c core.hooksPath による husky の無効化は禁止です（--no-verify と同じ迂回）。失敗したら迂回せず原因を直してください。'
+  deny 'core.hooksPath による husky の無効化は禁止です（-c での上書き、git config での永続設定のどちらも --no-verify と同じ迂回）。失敗したら迂回せず原因を直してください。'
 fi
 
 if [ "${env_bypass:-0}" -gt 0 ]; then
@@ -910,9 +954,11 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
         dst = strip(dst)
         if (index(dst, ":") > 0) dst = substr(dst, index(dst, ":") + 1)
         dst = strip(dst)
+        # 先頭の + は force push そのもの。heads/ を剥がす前に外さないと
+        # +heads/production が production と一致せず素通りする
+        if (sub(/^\+/, "", dst)) force = 1
         # git は heads/production も refs/heads/production に解決する（DWIM）
         sub(/^(refs\/)?heads\//, "", dst)
-        sub(/^\+/, "", dst)
         if (dst == "HEAD" || dst == "") dst = "@CURRENT"
         print force " " dst
       }
@@ -964,7 +1010,8 @@ NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[bB]|--orphan
 # する（-d / -D / -m / -r / --list 等はブランチを作らない別の操作）。
 # ただし作成の意味を変えないフラグ（--track / -f / -q 等）は間に挟まりうるので、
 # それらは読み飛ばす。挟まった形だけ命名・分岐元の検査が素通りしていた
-BRANCH_CREATE_FLAG='(-f|--force|-q|--quiet|-l|-t|--track(=[^[:space:];&|]+)?|--no-track|--create-reflog|--recurse-submodules)'
+# -l は git 2.19 以降 --list（作成しない）なので入れない
+BRANCH_CREATE_FLAG='(-f|--force|-q|--quiet|-t|--track(=[^[:space:];&|]+)?|--no-track|--create-reflog|--recurse-submodules)'
 PLAIN_BRANCH_RE="branch([[:space:]]+$BRANCH_CREATE_FLAG)*[[:space:]]+[^-[:space:];&|][^[:space:];&|]*([[:space:]]+[^-[:space:];&|][^[:space:];&|]*)?"
 
 # --orphan は「親を持たないブランチ」を作る。分岐元の検査は下で行うが、そこへ渡す
@@ -1013,8 +1060,10 @@ if [ -z "$newbranch" ]; then
         sub(/\/+$/, "", path)
         sub(/^.*\//, "", path)
         print path
+        exit
       }
-      exit
+      # 見つからなければ次の行（＝次のセグメント）を見る。
+      # ここで exit すると `git status && git worktree add ../x` が素通りする
     }')
 fi
 
