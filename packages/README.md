@@ -50,8 +50,9 @@ module.exports = { ...geckou, tailwindStylesheet: './apps/web/src/styles/globals
 
 ### 公開する
 
-タグ（`<ディレクトリ名>@<バージョン>`）を打つと `.github/workflows/publish.yml` が
-npm へ公開する。`production` への直接 push は禁止なので、version を上げるのは通常の PR。
+**version を上げる PR を `production` へマージすれば、それだけで
+`.github/workflows/publish.yml` が npm へ公開する。** `production` への直接 push は
+禁止なので、version を上げるのは通常の PR。手で叩くコマンドは無い。
 
 > **リリース用の仕組みの正はこのリポジトリ。** `scripts/release.sh` /
 > `check-api-diff.mjs` / `geckou-release` / `install-release-command.sh` /
@@ -61,9 +62,8 @@ npm へ公開する。`production` への直接 push は禁止なので、versio
 > `install-release-command.sh` は 3 リポジトリで中身が同じであることを前提にしている
 > （どこから実行しても同じ `geckou-release` が入る）。
 
-**version を上げる PR を `production` へマージすれば、それだけで npm へ公開される。**
-`publish.yml` が `production` への push で走り、`packages/*/package.json` の version が
-npm に載っていないパッケージを全部公開する。手で叩くコマンドは無い。
+`publish.yml` は `production` への push で走り、`packages/*/package.json` の version が
+npm に載っていないパッケージを全部公開する。
 
 **version を上げる PR には、それを参照するワークスペースのレンジの更新も含める。**
 `^0.2.0` のまま 0.3.0 に上げると、そのバージョンはレンジ外になり、yarn はローカルの
@@ -78,6 +78,7 @@ npm に載っていないパッケージを全部公開する。手で叩くコ�
 
 - リリースの区切りを git のタグとして残したいとき
 - 自動公開が破壊的変更の検査に引っかかったので、`--force` で通したいとき
+  （Actions からの手動実行なら `force` 入力でも同じことができる）
 
 ```bash
 # version を上げる PR をマージしたあと（複数まとめて指定できる）
@@ -121,8 +122,13 @@ geckou-release core vue --force       # ui のもの
 
 **公開の前に、公開済みの型定義と比べて破壊的変更が patch に載っていないかを検査する。**
 差分があると止まるので、minor 以上に上げ直すか、互換性のある追加だと分かっていれば `--force` を付ける。
-自動公開の経路では `publish.yml` が同じ検査を行う（`--force` は無いので、通したい場合は
-そちらを直すか、下の `yarn release <パッケージ> --force` でタグを打つ）。
+自動公開の経路では `publish.yml` が同じ検査を行う（通したい場合は `yarn release <パッケージ>
+--force` でタグを打つか、手動実行の `force` 入力を有効にする）。
+
+比較対象は「これから出す version と**同じ `major.minor` の、公開済みで最大の patch**」。
+`latest` とだけ比べる作りにすると、0.3.0 が公開済みの状態で 0.2.x 系のバックポートを
+出したときに「minor が違うので検査不要」と判定され、比べるべき 0.2.4 と比べないまま
+素通りしてしまう。同じ系列に公開済みの版が無ければ（＝ 新しい major / minor なら）検査しない。
 
 ```console
 $ yarn release firebase-client
