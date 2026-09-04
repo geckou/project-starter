@@ -96,3 +96,7 @@ web の react@19 系と干渉しない。
 `.firebaserc` の `targets` で `target` と Hosting サイト ID を紐付ける。
 `scripts/deploy.sh` は framework Hosting ターゲットを 1 つずつ `firebase deploy` する
 （複数同梱は Next アダプタがハングするため）。`target` を設定すれば自動で個別デプロイされる。
+
+`scripts/deploy.sh` の `WORKSPACE_PACKAGE_JSONS` に `apps/<app-name>/package.json` を
+追加する。デプロイ前にワークスペース依存（`@geckou/shared` 等）を一時削除する対象の一覧で、
+ここに載っていないと Cloud Build が npm registry から探しに行って失敗する。

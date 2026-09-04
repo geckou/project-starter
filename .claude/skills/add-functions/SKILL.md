@@ -44,7 +44,9 @@ yarn format
 
 ### 2-2. 環境変数
 
-- `ALLOWED_ORIGINS` — CORS で許可するオリジン。**本番では必ず設定する**（未設定は全許可＝開発用）
+- `ALLOWED_ORIGINS` — CORS で許可するオリジン。エミュレーター外では必須で、
+  未設定だと `/api` が 500 を返す（全許可へはフォールバックしない）。
+  全許可になるのは `FUNCTIONS_EMULATOR=true` のときだけ
 - `NEXT_PUBLIC_API_BASE_URL` — Web から API を呼ぶベース URL。環境ごとに変わる
 - 新しい環境変数を Functions に足したら `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` にも追記する
   （ここに無いキーは `apps/functions/.env` へ配布されない）

@@ -86,9 +86,11 @@ app.get('/posts', requireAuth, async (req, res) => {
       .get()
 
     const posts = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
-    res.json({ success: true, data: posts })
+    // 成否は HTTP ステータスで表す。apiClient はボディをそのまま
+    // ApiResponse.data に入れるため、ここで包むと data.data になる
+    res.json(posts)
   } catch {
-    res.status(500).json({ success: false, error: 'Internal server error' })
+    res.status(500).json({ error: 'Internal server error' })
   }
 })
 
@@ -99,7 +101,7 @@ app.post('/posts', requireAuth, async (req, res) => {
   // 許可フィールドのみ抽出してバリデーションする
   const { title, content } = req.body
   if (typeof title !== 'string' || title.length === 0 || typeof content !== 'string') {
-    res.status(400).json({ success: false, error: 'Invalid request body' })
+    res.status(400).json({ error: 'Invalid request body' })
     return
   }
 
@@ -112,9 +114,9 @@ app.post('/posts', requireAuth, async (req, res) => {
       createdAt: new Date(),
       updatedAt: new Date(),
     })
-    res.json({ success: true, data: { id: docRef.id } })
+    res.json({ id: docRef.id })
   } catch {
-    res.status(500).json({ success: false, error: 'Internal server error' })
+    res.status(500).json({ error: 'Internal server error' })
   }
 })
 ```
