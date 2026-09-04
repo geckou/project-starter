@@ -18,7 +18,7 @@
     "node": "22"
   },
   "dependencies": {
-    "@geckou/billing": "^0.2.0",
+    "@geckou/billing": "^0.3.0",
     "@geckou/firebase-server": "^0.2.0",
     "@geckou/shared": "*",
     "cors": "^2.8.5",
