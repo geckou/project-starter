@@ -61,12 +61,9 @@ npm へ公開する。`production` への直接 push は禁止なので、versio
 > `install-release-command.sh` は 3 リポジトリで中身が同じであることを前提にしている
 > （どこから実行しても同じ `geckou-release` が入る）。
 
-```bash
-# 1. packages/<パッケージ>/package.json の version を上げる PR を出してマージする
-# 2. production でタグを打つ（複数まとめて指定できる）
-git checkout production && git pull --ff-only
-yarn release eslint-config prettier-config commitlint-config
-```
+**version を上げる PR を `production` へマージすれば、それだけで npm へ公開される。**
+`publish.yml` が `production` への push で走り、`packages/*/package.json` の version が
+npm に載っていないパッケージを全部公開する。手で叩くコマンドは無い。
 
 **version を上げる PR には、それを参照するワークスペースのレンジの更新も含める。**
 `^0.2.0` のまま 0.3.0 に上げると、そのバージョンはレンジ外になり、yarn はローカルの
@@ -74,12 +71,28 @@ yarn release eslint-config prettier-config commitlint-config
 `yarn.lock` に tarball の行が増えるのが唯一の手がかりになる。
 `node scripts/check-workspace-ranges.mjs` が検出する（CI と `release.sh` の両方で実行）。
 
+#### タグを打って公開する（通常は不要）
+
+上の自動公開とは別に、タグ（`<ディレクトリ名>@<バージョン>`）を push しての公開も
+引き続きできる。使うのは次の 2 つの場合だけで、**通常のリリースでこの手順は要らない**。
+
+- リリースの区切りを git のタグとして残したいとき
+- 自動公開が破壊的変更の検査に引っかかったので、`--force` で通したいとき
+
+```bash
+# version を上げる PR をマージしたあと（複数まとめて指定できる）
+git checkout production && git pull --ff-only
+yarn release eslint-config prettier-config commitlint-config
+```
+
 `yarn release` はタグを打つだけで、version は上げない。**HEAD が `origin/production` と
 一致していなければ止まる** — 手元が古いままタグを打つと、GitHub は「タグが指すコミットの
 ワークフローファイル」で実行するため、古い `publish.yml` が動いて意図しない中身が
 公開されうるため。
 
-公開済みのバージョンに対してタグを打っても publish はスキップされる（冪等）。
+**どちらの経路でも公開されるのは「npm に未公開の version」だけ。** 公開済みのものは
+対象から外れて publish ジョブごと skip されるので、自動公開の後からタグを打っても
+二重に公開されることはない。
 
 #### どこからでも実行する
 
@@ -106,8 +119,10 @@ geckou-release core vue --force       # ui のもの
 
 リポジトリを移動したら、そのリポジトリでもう一度実行する。
 
-**タグを打つ前に、公開済みの型定義と比べて破壊的変更が patch に載っていないかを検査する。**
+**公開の前に、公開済みの型定義と比べて破壊的変更が patch に載っていないかを検査する。**
 差分があると止まるので、minor 以上に上げ直すか、互換性のある追加だと分かっていれば `--force` を付ける。
+自動公開の経路では `publish.yml` が同じ検査を行う（`--force` は無いので、通したい場合は
+そちらを直すか、下の `yarn release <パッケージ> --force` でタグを打つ）。
 
 ```console
 $ yarn release firebase-client
@@ -155,10 +170,10 @@ Environment の「Deployment branches and tags」で担保している。**許�
 
 | ref type | パターン | 用途 |
 | --- | --- | --- |
-| Tag | `*@*` | 通常のリリース（`yarn release`） |
-| Branch | `production` | `workflow_dispatch` での公開（初回リリース等） |
+| Tag | `*@*` | タグを打っての公開（`yarn release`） |
+| Branch | `production` | `production` への push による自動公開と `workflow_dispatch` |
 
-**タグだけに限定すると `workflow_dispatch` が Environment 側で弾かれる。**
+**どちらか片方に限定すると、もう一方が Environment 側で弾かれる。**
 どちらも起動元コミットの `production` 包含チェックを通るので、許可を 2 つにしても
 レビューを通っていないコードを公開できる経路は増えない。
 

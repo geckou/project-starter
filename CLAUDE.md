@@ -449,11 +449,14 @@ ESLint / Prettier / commitlint の設定は、ツール側が**共有設定を n
   0.3.0 に上げると、yarn がローカルではなく npm の旧版を落としてきて、直したはずの
   設定が使われないまま lint も type-check も通る。`node scripts/check-workspace-ranges.mjs`
   が検出する（CI と `release.sh` の両方で実行）
-- 公開は `yarn release <パッケージのディレクトリ名>...`（複数可。`bash scripts/install-release-command.sh` を
-  一度実行すると `geckou-release <名前>...` をどこからでも使える）。version を上げる PR をマージしてから、
-  `production` でタグを打つ。**`production` に入っていないコミットからは公開できない**
+- **公開は自動。** version を上げる PR を `production` へマージすると、`publish.yml` が
+  npm に未公開のバージョンを持つパッケージを全部公開する。手で叩くコマンドは無い。
+  タグを打っての公開（`yarn release <パッケージのディレクトリ名>...`）も残してあるが、
+  使うのはリリースの区切りをタグとして残したいときと、破壊的変更の検査を `--force` で
+  通したいときだけ。**`production` に入っていないコミットからは公開できない**
   （ワークフローが検査する。詳細は `packages/README.md`）
-- **公開済みの型定義と比べて、破壊的変更が patch に載っていないかを `release.sh` が検査する。**
+- **公開済みの型定義と比べて、破壊的変更が patch に載っていないかを検査する**（自動公開は
+  `publish.yml` が、タグ経由は `release.sh` が行う）。
   差分があると止まるので、minor 以上に上げ直すか、互換の追加だと分かっていれば `--force` を付ける
   （検査できない場合は素通しする安全網。実装は `scripts/check-api-diff.mjs`）
 
@@ -542,7 +545,7 @@ node scripts/add-layer.mjs <層>      # 層を足す（テンプレートから�
 node scripts/adopt-references.mjs --repo <派生のパス>  # 既存の派生を参照方式へ移行する
 bash scripts/test-adopt-references.sh                 # 上記スクリプトの回帰テスト
 
-yarn release <パッケージのディレクトリ名>...           # packages/*-config を npm へ公開する（複数可）
+yarn release <パッケージのディレクトリ名>...           # タグを打って公開する（通常は自動公開で足りる。複数可）
 bash scripts/install-release-command.sh               # geckou-release をどこからでも使えるようにする
 bash scripts/test-release-command.sh                  # 上記コマンドの回帰テスト
 
