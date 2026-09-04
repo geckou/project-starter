@@ -55,9 +55,9 @@ export function PostForm() {
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
-    const { name, value } = e.target
+    const { name, value } = event.target
     setFormData((prev) => ({ ...prev, [name]: value }))
     // 入力時にそのフィールドのエラーをクリア
     if (errors[name as keyof FormData]) {
@@ -65,8 +65,8 @@ export function PostForm() {
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
     setSubmitError(null)
 
     const validationErrors = validate(formData)

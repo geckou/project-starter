@@ -173,6 +173,15 @@ run 2 'git push --all（refspec を書かずに全ブランチを更新する）
 run 2 'git push --mirror' 'git push --mirror origin' feat/existing
 run 2 'クォート付きの push 先' 'git push origin "production"' feat/existing
 run 2 'クォート付きの refspec' "git push origin 'HEAD:production'"
+# git は heads/production も refs/heads/production に解決する（DWIM）
+run 2 'refspec の短縮形 heads/production' 'git push origin heads/production'
+run 2 'HEAD:heads/production' 'git push origin HEAD:heads/production'
+# 先頭の + は force push そのもの。heads/ を剥がす前に外さないと一致しない
+run 2 '+heads/production' 'git push origin +heads/production'
+run 2 '+refs/heads/production' 'git push origin +refs/heads/production'
+# + は force push そのものなので、release/* 宛ては ask ではなく deny になる
+run 2 '+release/* への push は force push として止める' \
+  'git push origin +heads/release/1.0.0' feat/existing
 run 0 '作業ブランチからの push' 'git push -u origin feat/existing' feat/existing
 
 echo
@@ -198,6 +207,25 @@ run 2 'env HUSKY=0 の形' \
 run 2 'GIT_CONFIG_* で core.hooksPath を注入' \
   "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m 'feat: x'" \
   feat/existing
+run 2 'GIT_CONFIG_PARAMETERS で core.hooksPath を注入' \
+  "GIT_CONFIG_PARAMETERS=\"'core.hooksPath=/dev/null'\" git commit -m 'feat: x'" \
+  feat/existing
+run 2 '別セグメントでの export HUSKY=0' \
+  "export HUSKY=0; git commit -m 'feat: x'" feat/existing
+run 2 'git config core.hooksPath で husky を永続的に外す' \
+  "git config core.hooksPath /dev/null; git commit -m 'feat: x'" feat/existing
+run 2 'git config --local core.hooksPath' \
+  "git config --local core.hooksPath /dev/null; git commit -m 'feat: x'" feat/existing
+# 値を伴わない読み出しは設定を変えないので止めない
+run 0 'git config core.hooksPath の読み出し' \
+  "git config core.hooksPath" feat/existing
+run 0 'git config --get core.hooksPath' \
+  "git config --get core.hooksPath" feat/existing
+run 0 'コミットメッセージ中の git config core.hooksPath を迂回と誤認しない' \
+  "git commit -m 'docs: git config core.hooksPath の迂回を禁止する'" feat/existing
+# 1 回限りの前置きは後続の git に効かない（CI で普通に使う形）
+run 0 'HUSKY=0 yarn install は後続の git に影響しない' \
+  'HUSKY=0 yarn install && git status' feat/existing
 run 0 'コミットメッセージ中の HUSKY=0 を迂回と誤認しない' \
   "git commit -m 'docs: HUSKY=0 について書く'" feat/existing
 # HUSKY= （空）は husky を無効化しない。継承した HUSKY=0 を打ち消す用途がある
@@ -239,6 +267,42 @@ run 2 '複数行でも 1 行目が規約違反なら止める' \
   'git commit -m "wip
 
 Co-Authored-By: someone <noreply@example.com>"' feat/existing
+# sh -c / eval / バッククォートの中身は実際に実行される
+run 2 'sh -c で包んだ production への push' \
+  'sh -c "git push origin production"'
+run 2 "bash -c（シングルクォート）" \
+  "bash -c 'git push origin production'"
+run 2 'eval で包んだ production への push' \
+  'eval "git push origin production"'
+run 2 'バッククォートの中の push' 'echo `git push origin production`'
+run 2 'フラグを束ねた sh -cx' "sh -cx 'git push origin production'"
+run 2 'パス付きのシェル（/bin/sh -c）' \
+  '/bin/sh -c "git push origin production"'
+# ANSI-C クォート（ドル記号 + 引用符）の \x20 を戻さないと 1 トークンのままになる
+run 2 'ANSI-C クォートで空白をエスケープした形' \
+  "sh -c \$'git\\x20push origin production'"
+# 引用の中のエスケープされた引用符を閉じと誤読すると、その後ろの <<EOF を
+# heredoc の開始と扱い、本文として除去した行が検査から落ちる
+run 2 'エスケープされた引用符を含む行の <<EOF を heredoc と誤認しない' \
+  'echo "see \" <<EOF"
+git push origin production
+EOF'
+# 実際の git worktree add 以外の worktree トークンから走査しない
+run 0 'git log --grep の引数の worktree add を作成と誤認しない' \
+  'git log --grep worktree add ../foo-bar' feat/existing
+run 2 'bash -lc' "bash -lc 'git push origin production'"
+run 0 'コミットメッセージ中の sh -c / eval への言及は展開しない' \
+  "git commit -m 'docs: eval \"git push origin production\" は禁止'" feat/existing
+
+# 終端の無い heredoc はシェルでも構文エラー。heredoc と誤認すると、その行より
+# 後ろのコマンドが丸ごと検査から落ちる
+run 2 'クォート内の <<EOF を heredoc と誤認しない' \
+  "echo 'see <<EOF docs'
+git push origin production"
+run 2 'コメント内の <<EOF を heredoc と誤認しない' \
+  "# note <<EOF
+git push origin production"
+
 run 2 'here-string を heredoc と誤認しない' \
   "grep <<<'pattern' file
 git commit -m 'wip'" feat/existing
@@ -255,6 +319,23 @@ run 0 'git branch -D はブランチ作成ではない' 'git branch -D not_kebab
 run 0 'git branch（一覧）はブランチ作成ではない' 'git branch'
 run 0 'git branch <名前> <分岐元> の分岐元を読む' \
   'git branch feat/new-thing production' feat/existing
+# git branch は作成の意味を変えないフラグ（--track / -f / -q 等）を挟める。
+# 挟まった形だけ命名・分岐元の検査が素通りしていた
+run 2 'git branch --track の分岐元が release/*' \
+  'git branch --track feat/foo origin/release/1.0.0'
+run 2 'git branch -q の命名規則違反' 'git branch -q Foo'
+run 2 'git branch --no-track の分岐元が release/*' \
+  'git branch --no-track feat/foo release/1.0.0'
+run 0 'git branch --track でも規約どおりなら通す' \
+  'git branch --track feat/new-thing production' feat/existing
+# -b の無い worktree add は basename(パス) の名前でブランチを作る
+run 2 'worktree add <パス>（-b 無し）の命名規則違反' 'git worktree add ../foo-bar'
+run 2 'チェーンの後ろにある worktree add も見る' \
+  'git status && git worktree add ../foo-bar'
+# git 2.19 以降 git branch -l は --create-reflog ではなく --list
+run 0 'git branch -l はブランチ作成ではない' "git branch -l 'release/*'"
+run 0 'worktree add <パス> <既存ブランチ> は作成ではない' \
+  'git worktree add ../wt feat/existing'
 run 2 'switch --create（長い形）の命名規則違反' 'git switch --create wip'
 run 2 'checkout --orphan の命名規則違反' 'git checkout --orphan wip'
 run 2 'worktree add <パス> -b（-b の前に非フラグ）の命名規則違反' \
@@ -738,6 +819,10 @@ run_branch 2 'worktree add <パス> -b（パスが先）' \
 run_branch 2 'worktree add -b <名前> <パス>' \
   'git worktree add -b feat/new-thing ../wt'
 run_branch 2 'git branch <名前>' 'git branch feat/new-thing'
+run_branch 2 'worktree add <パス>（-b 無し）は basename がブランチ名になる' \
+  'git worktree add ../foo-bar'
+run_branch 0 'worktree add <パス> <既存ブランチ> は作成ではない' \
+  'git worktree add ../wt feat/existing'
 run_branch 0 'ブランチ作成ではない（切り替えだけ）' 'git checkout production'
 run_branch 0 'git branch -D はブランチ作成ではない' 'git branch -D feat/existing'
 run_branch 0 '同じコマンドで merge 済みなら何も言わない' \

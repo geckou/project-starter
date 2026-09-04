@@ -229,7 +229,7 @@ node scripts/adopt-references.mjs --repo <派生プロジェクトのパス>
 
 `apps/web` には設定済み。新しいアプリで使う場合は以下を設定する。
 
-1. `package.json` に `"@geckou/ui-react": "^0.3.0"` を追加
+1. `package.json` に `"@geckou/ui-react": "^0.4.0"` を追加
 2. `tailwind.config.ts` の `content` に `'../../node_modules/@geckou/ui-react/dist/**/*.js'` を追加
 3. グローバル CSS に `@import '@geckou/ui-react/styles/tokens.css';` を追加（デザイントークン）
 

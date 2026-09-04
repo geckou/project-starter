@@ -19,28 +19,128 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
 #   - commit -m "$(cat <<'EOF' ...)" -> 本文はコミットメッセージそのものなので検査する
 #   - sh / bash <<'EOF' ...          -> 本文は実際に実行されるので検査する
 cmd=$(printf '%s' "$cmd" | awk '
-  in_body {
-    line = $0
-    # <<- 形式は終了マーカー行の先頭タブを許容する
-    if (tab_ok) { sub(/^\t+/, "", line) }
-    if (line == marker) { in_body = 0 }
-    next
+  BEGIN { SQ = sprintf("%c", 39); DQ = sprintf("%c", 34) }
+
+  # 行の中から heredoc の開始を探し、マーカー名を返す（無ければ空）。
+  # クォートの中・コメントの中の << は開始ではない。ここを見分けないと、
+  # `echo "see <<EOF"` の 1 行で以降のコマンドが丸ごと検査から落ちる
+  function heredoc_marker(line,   i, ch, state, rest, m, re, bs) {
+    re = "^<<-?[[:space:]]*[" DQ SQ "]?[A-Za-z_][A-Za-z_0-9]*[" DQ SQ "]?"
+    bs = sprintf("%c", 92)
+    state = ""
+    for (i = 1; i <= length(line); i++) {
+      ch = substr(line, i, 1)
+      # シングルクォートの中を除き、バックスラッシュは次の 1 文字を打ち消す。
+      # 見落とすと `echo "see \" <<EOF"` の \" を閉じクォートと誤読し、
+      # 引用の中の <<EOF を heredoc の開始として扱ってしまう
+      if (ch == bs && state != SQ) { i++; continue }
+      if (state != "") { if (ch == state) state = ""; continue }
+      if (ch == SQ || ch == DQ) { state = ch; continue }
+      if (ch == "#" && (i == 1 || substr(line, i - 1, 1) ~ /[ \t]/)) return ""
+      if (ch != "<" || substr(line, i + 1, 1) != "<") continue
+      # <<<"x"（here-string）は heredoc ではない
+      if (substr(line, i + 2, 1) == "<") { i += 2; continue }
+      rest = substr(line, i)
+      if (match(rest, re)) {
+        m = substr(rest, RSTART, RLENGTH)
+        tab_ok = (substr(m, 1, 3) == "<<-")
+        sub(/^<<-?[[:space:]]*/, "", m)
+        gsub(DQ, "", m); gsub(SQ, "", m)
+        return m
+      }
+      i++
+    }
+    return ""
   }
-  {
-    print
-    # <<<"x"（here-string）は heredoc ではない。誤認すると以降の行が検査から落ちる
-    if (match($0, /<<-?[[:space:]]*"?'"'"'?[A-Za-z_][A-Za-z_0-9]*'"'"'?"?/) &&
-        (RSTART == 1 || substr($0, RSTART - 1, 1) != "<") &&
-        $0 !~ /git[[:space:]]+commit/ &&
-        $0 !~ /(^|[[:space:]|;&(])(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) {
-      marker = substr($0, RSTART, RLENGTH)
-      tab_ok = (substr(marker, 1, 3) == "<<-")
-      sub(/^<<-?[[:space:]]*/, "", marker)
-      gsub(/["'"'"']/, "", marker)
-      in_body = 1
+
+  # 終了マーカー行が実在するときだけ heredoc として扱う。終端の無い heredoc は
+  # シェルでも構文エラーなので、実在しなければそれは heredoc ではない
+  function has_terminator(from, mark, tabok,   j, l) {
+    for (j = from; j <= total; j++) {
+      l = lines[j]
+      if (tabok) sub(/^\t+/, "", l)
+      if (l == mark) return 1
+    }
+    return 0
+  }
+
+  { lines[NR] = $0; total = NR }
+
+  END {
+    in_body = 0
+    for (i = 1; i <= total; i++) {
+      if (in_body) {
+        line = lines[i]
+        # <<- 形式は終了マーカー行の先頭タブを許容する
+        if (tab_ok) sub(/^\t+/, "", line)
+        if (line == marker) in_body = 0
+        continue
+      }
+
+      print lines[i]
+
+      # 例外は 2 つ:
+      #   - commit -m "$(cat <<EOF ...)" -> 本文はコミットメッセージなので検査する
+      #   - sh / bash <<EOF ...          -> 本文は実際に実行されるので検査する
+      if (lines[i] ~ /git[[:space:]]+commit/) continue
+      if (lines[i] ~ /(^|[[:space:]|;&(])(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) continue
+
+      candidate = heredoc_marker(lines[i])
+      if (candidate != "" && has_terminator(i + 1, candidate, tab_ok)) {
+        marker = candidate
+        in_body = 1
+      }
     }
   }
 ')
+# sh -c "…" / bash -c '…' / eval "…" の中身は実際に実行される。1 トークンのまま
+# だと検査に当たらないので、引用を剥がしてサブシェル ( … ) として展開する。
+# 外側が引用されている場合（コミットメッセージ中の言及）は展開しない
+unwrap_pass() {
+  awk '
+    BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
+
+    # ANSI-C クォート（ドル記号 + 引用符）の中の空白のエスケープを元に戻す。
+    # 戻さないと git\x20push のような書き方が 1 トークンのままで検査に当たらない
+    function decode(text) {
+      gsub(/\\x20|\\040|\\t|\\n/, " ", text)
+      return text
+    }
+    {
+      line = $0; out = ""; state = ""; n = length(line); i = 1
+      while (i <= n) {
+        ch = substr(line, i, 1)
+        # バックスラッシュは次の 1 文字を打ち消す（シングルクォートの中を除く）
+        if (ch == bs && state != sq) {
+          out = out ch substr(line, i + 1, 1); i += 2; continue
+        }
+        if (state != "") { out = out ch; if (ch == state) state = ""; i++; continue }
+        if (ch == sq || ch == dq) {
+          # -lc / -cx のようにフラグを束ねた形、ANSI-C クォート形式、
+          # /bin/sh のようなパス付きの呼び出しも同じ扱いにする
+          if (out ~ /(^|[[:space:];&|(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+\$?$/ ||
+              out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
+            j = i + 1; inner = ""
+            while (j <= n && substr(line, j, 1) != ch) { inner = inner substr(line, j, 1); j++ }
+            if (j <= n) { out = out "( " decode(inner) " )"; i = j + 1; continue }
+          }
+          out = out ch; state = ch; i++; continue
+        }
+        out = out ch; i++
+      }
+      print out
+    }
+  '
+}
+
+# 入れ子（sh -c "eval '…'"）に備えて変化が無くなるまで繰り返す
+unwrap_count=0
+while [ "$unwrap_count" -lt 3 ]; do
+  unwrapped=$(printf '%s' "$cmd" | unwrap_pass)
+  [ "$unwrapped" = "$cmd" ] && break
+  cmd=$unwrapped
+  unwrap_count=$((unwrap_count + 1))
+done
 
 printf '%s' "$cmd" | grep -q 'git' || exit 0
 
@@ -97,9 +197,15 @@ MARK_DIR=$(printf '\001dir')
 MARK_HOOKSPATH=$(printf '\001hookspath')
 MARK_ENV_BYPASS=$(printf '\001envbypass')
 
+# husky を環境変数から無効化する経路。HUSKY=0 は husky v9 が公式に用意した
+# 無効化手段、GIT_CONFIG_* は -c を使わずに core.hooksPath を注入する経路
+# （GIT_CONFIG_PARAMETERS は git 内部用だが、外から与えても効く）
+ENV_BYPASS_RE='(HUSKY=0([[:space:]]|;|$)|GIT_CONFIG_(COUNT|KEY_[0-9]+|VALUE_[0-9]+|PARAMETERS|GLOBAL|SYSTEM|NOSYSTEM)=)'
+
 segments=$(printf '%s' "$cmd" | awk '
   BEGIN {
     sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92)
+    bt = sprintf("%c", 96)
     sub_open = sprintf("%c(", 1); sub_close = sprintf("%c)", 1)
     seg_end = sprintf("%c.", 1)
   }
@@ -127,6 +233,14 @@ segments=$(printf '%s' "$cmd" | awk '
       if (c == "(" || c == ")") {
         emit(seg); seg = ""
         emit((c == "(") ? sub_open : sub_close)
+        continue
+      }
+      # バッククォートも $( ) と同じくコマンド置換。区切らないと
+      # `git push origin production` が前のコマンドの一部として埋もれる
+      if (c == bt) {
+        emit(seg); seg = ""
+        emit(bt_open ? sub_close : sub_open)
+        bt_open = 1 - bt_open
         continue
       }
       # 2>&1 や &> はリダイレクトであってコマンドの区切りではない。
@@ -210,7 +324,21 @@ cmd=$(printf '%s\n' "$segments" | {
         ;;
     esac
 
-    printf '%s' "$seg" | grep -Eq '(^|[[:space:]/])git([[:space:]]|$)' || continue
+    if ! printf '%s' "$seg" | grep -Eq '(^|[[:space:]/])git([[:space:]]|$)'; then
+      # 環境変数の設定は git とは別のセグメントに書ける（`export HUSKY=0; git commit`）。
+      # git を含むセグメントだけを見ていると、この形の無効化が素通りする。
+      # ただし後続へ効くのは export と代入だけのセグメントで、`HUSKY=0 yarn install`
+      # のような 1 回限りの前置きは git に影響しない（CI で普通に使う形）。
+      # 誤検出を避けるため、git を含まないセグメントの 1 行目だけを見る
+      env_only=$(printf '%s' "$seg" | head -1 | tr -d "\"'")
+      if printf '%s' "$env_only" | grep -Eqi "^export([[:space:]]+[^[:space:]]+)*[[:space:]]+$ENV_BYPASS_RE" ||
+        { printf '%s' "$env_only" |
+          grep -Eq '^([A-Za-z_][A-Za-z_0-9]*=[^[:space:]]*[[:space:]]*)+$' &&
+          printf '%s' "$env_only" | grep -Eqi "$ENV_BYPASS_RE"; }; then
+        printf '%s\n' "$MARK_ENV_BYPASS"
+      fi
+      continue
+    fi
 
     # /usr/bin/git のような絶対パス呼び出しを `git` へ正規化する。
     # 以降の判定は全て `git <サブコマンド>` の形を見るため、ここで揃えないと
@@ -347,8 +475,54 @@ cmd=$(printf '%s\n' "$segments" | {
       { for (i = 1; i <= NF; i++) { if ($i == "git") exit; print $i } }
     ')
     if printf '%s\n' "$env_prefix" | tr -d "\"'" |
-      grep -Eqi '^(HUSKY=0$|GIT_CONFIG_(COUNT|KEY_[0-9]+|VALUE_[0-9]+|GLOBAL|SYSTEM|NOSYSTEM)=)'; then
+      grep -Eqi "$ENV_BYPASS_RE"; then
       printf '%s\n' "$MARK_ENV_BYPASS"
+    fi
+
+    # git config core.hooksPath は husky を「永続的に」外す。-c の 1 回きりの
+    # 上書きより強いので、同じ迂回として扱う。
+    # セグメント全体の部分一致にすると、この設定について書いたコミットメッセージや
+    # ドキュメントでも当たるため、トークンとして解析する。
+    # 値を伴わない読み出し（git config core.hooksPath / --get）は変更しないので許す
+    config_hookspath=$(printf '%s' "$seg" | awk '
+      {
+        for (i = 1; i <= NF; i++) {
+          if ($i != "git") continue
+          for (j = i + 1; j <= NF; j++) {
+            t = $j
+            if (substr(t, 1, 1) == "-") {
+              if (t == "-c" || t == "--config-env" || t == "-C" ||
+                  t == "--git-dir" || t == "--work-tree" || t == "--namespace" ||
+                  t == "--exec-path" || t == "--super-prefix") j++
+              continue
+            }
+            if (t != "config") exit
+            # config の後ろ: フラグを読み飛ばし、キーと値の 2 つを見る
+            key = ""; value = ""
+            for (k = j + 1; k <= NF; k++) {
+              t = $k
+              if (substr(t, 1, 1) == "-") {
+                if (t == "--file" || t == "-f" || t == "--blob") k++
+                # 読み出し系のフラグが付いていれば変更ではない
+                if (t == "--get" || t == "--get-all" || t == "--get-regexp" ||
+                    t == "--list" || t == "-l" || t == "--unset" ||
+                    t == "--unset-all") { key = ""; break }
+                continue
+              }
+              if (key == "") { key = t; continue }
+              value = t
+              break
+            }
+            if (value != "") print key
+            exit
+          }
+          exit
+        }
+      }
+    ')
+    if printf '%s\n' "$config_hookspath" | tr -d "\"'" |
+      grep -qi '^core\.hookspath$'; then
+      printf '%s\n' "$MARK_HOOKSPATH"
     fi
 
     # 以降の判定が `git <サブコマンド>` の形だけを見ればよいよう、
@@ -577,7 +751,7 @@ if { has '(^|[[:space:]])git[[:space:]]+(commit|push)' && has '(^|[[:space:]])--
 fi
 
 if [ "${hooks_path_bypass:-0}" -gt 0 ]; then
-  deny '-c core.hooksPath による husky の無効化は禁止です（--no-verify と同じ迂回）。失敗したら迂回せず原因を直してください。'
+  deny 'core.hooksPath による husky の無効化は禁止です（-c での上書き、git config での永続設定のどちらも --no-verify と同じ迂回）。失敗したら迂回せず原因を直してください。'
 fi
 
 if [ "${env_bypass:-0}" -gt 0 ]; then
@@ -797,8 +971,11 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
         dst = strip(dst)
         if (index(dst, ":") > 0) dst = substr(dst, index(dst, ":") + 1)
         dst = strip(dst)
-        sub(/^refs\/heads\//, "", dst)
-        sub(/^\+/, "", dst)
+        # 先頭の + は force push そのもの。heads/ を剥がす前に外さないと
+        # +heads/production が production と一致せず素通りする
+        if (sub(/^\+/, "", dst)) force = 1
+        # git は heads/production も refs/heads/production に解決する（DWIM）
+        sub(/^(refs\/)?heads\//, "", dst)
         if (dst == "HEAD" || dst == "") dst = "@CURRENT"
         print force " " dst
       }
@@ -847,8 +1024,12 @@ fi
 NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[bB]|--orphan)|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[cC]|--create|--orphan)|worktree[[:space:]]+add([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[bB])'
 
 # `git branch <名前> [<分岐元>]` もブランチを作る。直後が非フラグのときだけ対象に
-# する（-d / -D / -m / -r / --list 等はブランチを作らない別の操作）
-PLAIN_BRANCH_RE='branch[[:space:]]+[^-[:space:];&|][^[:space:];&|]*([[:space:]]+[^-[:space:];&|][^[:space:];&|]*)?'
+# する（-d / -D / -m / -r / --list 等はブランチを作らない別の操作）。
+# ただし作成の意味を変えないフラグ（--track / -f / -q 等）は間に挟まりうるので、
+# それらは読み飛ばす。挟まった形だけ命名・分岐元の検査が素通りしていた
+# -l は git 2.19 以降 --list（作成しない）なので入れない
+BRANCH_CREATE_FLAG='(-f|--force|-q|--quiet|-t|--track(=[^[:space:];&|]+)?|--no-track|--create-reflog|--recurse-submodules)'
+PLAIN_BRANCH_RE="branch([[:space:]]+$BRANCH_CREATE_FLAG)*[[:space:]]+[^-[:space:];&|][^[:space:];&|]*([[:space:]]+[^-[:space:];&|][^[:space:];&|]*)?"
 
 # --orphan は「親を持たないブランチ」を作る。分岐元の検査は下で行うが、そこへ渡す
 # 分岐元が無いので現在ブランチへフォールバックし、production 上で実行すると
@@ -867,7 +1048,49 @@ plain_branch=''
 if [ -z "$newbranch" ]; then
   plain_branch=$(printf '%s' "$cmd_flags" |
     grep -oE "(^|[[:space:]])git[[:space:]]+$PLAIN_BRANCH_RE" | head -1)
-  newbranch=$(printf '%s' "$plain_branch" | awk '{print $3}')
+  # フラグが挟まると位置が動くので、branch の後ろの「最初の非フラグ」を名前とする
+  newbranch=$(printf '%s' "$plain_branch" | awk '{ nonflag = 0
+    for (i = 1; i <= NF; i++) {
+      if (!seen) { if ($i == "branch") seen = 1; continue }
+      if (substr($i, 1, 1) == "-") continue
+      if (++nonflag == 1) { print $i; exit }
+    } }')
+fi
+
+# `git worktree add <パス>`（-b 無し）は basename(パス) の名前でブランチを作る。
+# <パス> の後ろに既存のコミット / ブランチを書いた形は作成ではないので対象外
+if [ -z "$newbranch" ]; then
+  newbranch=$(printf '%s' "$cmd_flags" | awk '
+    { seen_git = 0; seen_worktree = 0; seen_add = 0
+      creates = 1; nonflag = 0; path = ""
+      for (i = 1; i <= NF; i++) {
+        # 実際の `git worktree add` だけを見る。行のどこかの worktree から
+        # 走査すると、`git log --grep worktree add ../x` のような引数でも
+        # ブランチ作成と誤認する
+        if (!seen_git) { if ($i == "git") seen_git = 1; continue }
+        if (!seen_worktree) {
+          if ($i == "worktree") { seen_worktree = 1; continue }
+          if (substr($i, 1, 1) == "-") continue
+          break
+        }
+        if (!seen_add) { if ($i == "add") seen_add = 1; else break; continue }
+        if ($i ~ /^(-[bB]|--detach|--orphan)$/) { creates = 0; break }
+        if ($i == "--reason") { i++; continue }
+        if (substr($i, 1, 1) == "-") continue
+        if (++nonflag == 1) { path = $i; continue }
+        # <パス> の次の非フラグは既存の commit-ish
+        creates = 0
+        break
+      }
+      if (seen_add && creates && nonflag == 1) {
+        sub(/\/+$/, "", path)
+        sub(/^.*\//, "", path)
+        print path
+        exit
+      }
+      # 見つからなければ次の行（＝次のセグメント）を見る。
+      # ここで exit すると `git status && git worktree add ../x` が素通りする
+    }')
 fi
 
 newbranch=$(unquote "$newbranch")
@@ -917,7 +1140,12 @@ if [ -n "$newbranch" ]; then
   # 分岐元はブランチ名より後ろの「最初の非フラグトークン」。そう決めないと
   # git checkout -b docs/example -q の -q を分岐元と誤認してしまう。
   newbranch_re=$(printf '%s' "$newbranch" | sed 's|[^a-zA-Z0-9_/-]|\\&|g')
-  base=$(printf '%s' "$plain_branch" | awk '{print $4}')
+  base=$(printf '%s' "$plain_branch" | awk '{ nonflag = 0
+    for (i = 1; i <= NF; i++) {
+      if (!seen) { if ($i == "branch") seen = 1; continue }
+      if (substr($i, 1, 1) == "-") continue
+      if (++nonflag == 2) { print $i; exit }
+    } }')
   [ -n "$base" ] || base=$(printf '%s' "$cmd_flags" |
     grep -oE "$NEW_BRANCH_RE[[:space:]]+\"?'?$newbranch_re'?\"?([[:space:]]+[^[:space:];&|]+)*" |
     head -1 |

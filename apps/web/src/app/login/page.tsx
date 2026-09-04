@@ -6,13 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
 
 import { auth } from '@/lib/firebase'
-
-// open redirect 防止: サイト内パス（/ 始まり、// は除外）のみ許可
-function sanitizeRedirect(redirect: string | null): string {
-  if (!redirect) return '/'
-  if (!redirect.startsWith('/') || redirect.startsWith('//')) return '/'
-  return redirect
-}
+import { sanitizeRedirect } from '@/lib/sanitize-redirect'
 
 function LoginInner() {
   const router = useRouter()

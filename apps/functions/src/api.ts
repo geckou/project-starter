@@ -24,6 +24,20 @@ function billingHandler(
     }
   }
 }
+
+/**
+ * 署名検証に使う「パース前の生のボディ」を取り出す。
+ *
+ * onRequest の土台である Functions Framework は、自前のハンドラより前に JSON を
+ * パースする。後段に置いた express.raw() は req._body 済みでスキップされるため、
+ * req.body はオブジェクトになる。生のボディは req.rawBody にしか無い
+ * （Express 単体で動かすローカルのテストでは rawBody が無く、req.body が Buffer）。
+ */
+function extractRawBody(req: express.Request): Buffer | string {
+  const { rawBody } = req as express.Request & { rawBody?: Buffer | string }
+
+  return rawBody ?? (req.body as Buffer)
+}
 // layer:billing:end
 
 /**
@@ -70,14 +84,16 @@ app.use(
 // Webhook の処理は @geckou/billing（geckou/kit）にあり、ここは
 // Express の req/res をパッケージの { rawBody, headers } → { status, body } に
 // 詰め替えるだけの薄いアダプタ。
-// 署名検証には生のボディが必要なため、express.json() より前に
-// raw パーサーで登録する（順序を入れ替えると検証が必ず失敗する）
+// 署名検証には生のボディが必要。Functions では Framework が先に JSON を
+// パースしてしまうので req.rawBody を使う（→ extractRawBody）。
+// express.raw() は Express 単体で動かすとき用の保険で、express.json() より
+// 前に登録する（順序を入れ替えるとローカルでは検証が必ず失敗する）
 app.post(
   '/webhooks/stripe',
   express.raw({ type: '*/*' }),
   billingHandler((req) =>
     getBilling().handleStripeWebhook({
-      rawBody: req.body as Buffer,
+      rawBody: extractRawBody(req),
       headers: req.headers,
     })
   )
@@ -88,7 +104,7 @@ app.post(
   express.raw({ type: '*/*' }),
   billingHandler((req) =>
     getBilling().handleRevenueCatWebhook({
-      rawBody: req.body as Buffer,
+      rawBody: extractRawBody(req),
       headers: req.headers,
     })
   )

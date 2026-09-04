@@ -11,8 +11,10 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
 # 間に挟まる他のフラグ（-q 等）と -B / -C、git branch / git worktree add -b も見る。
 # pre-git-guard.sh は「作成したブランチ名を取り出す」ために NEW_BRANCH_RE と
 # PLAIN_BRANCH_RE の 2 本に分けているが、ここは検出できれば足りるので 1 本にまとめている。
-# 検出する形を変えるときは両方を直すこと（片方だけだと挙動がずれる）
-NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[bB]|--orphan)|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[cC]|--create|--orphan)|worktree[[:space:]]+add([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[bB]|branch[[:space:]]+[^-[:space:]])'
+# 検出する形を変えるときは両方を直すこと（片方だけだと挙動がずれる）。
+# worktree add は -b 付きか、引数がパス 1 つだけの形（basename がブランチ名になる）
+# のときだけ作成。`git worktree add <パス> <既存ブランチ>` は作成ではない
+NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[bB]|--orphan)|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[cC]|--create|--orphan)|worktree[[:space:]]+add([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[bB]|worktree[[:space:]]+add([[:space:]]+-[^[:space:];&|]+)*[[:space:]]+[^-[:space:];&|][^[:space:];&|]*[[:space:]]*($|[;&|])|branch([[:space:]]+(-f|--force|-q|--quiet|-t|--track(=[^[:space:]]+)?|--no-track|--create-reflog|--recurse-submodules))*[[:space:]]+[^-[:space:]])'
 
 printf '%s' "$cmd" | grep -Eq "(^|[[:space:]])git[[:space:]]+$NEW_BRANCH_RE" || exit 0
 

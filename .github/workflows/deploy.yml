@@ -87,8 +87,11 @@ jobs:
 
       # layer:mobile:start
       # ワークスペース名は /init-project でリネームされるため、実行時に読む
-      # （ci.yml / smoke-test.yml と同じ）
+      # （ci.yml / smoke-test.yml と同じ）。
+      # mobile 層を外した派生（apps/mobile ごと削除）でもデプロイが落ちないよう、
+      # 層マニフェストではなく実ファイルの有無で判定する（ci.yml と同じ方針）
       - name: Generate Expo type declarations
+        if: hashFiles('apps/mobile/package.json') != ''
         run: |
           yarn workspace "$(node -p "require('./apps/mobile/package.json').name")" \
             exec expo customize tsconfig.json

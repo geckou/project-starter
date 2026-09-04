@@ -275,7 +275,7 @@ yarn env:production
 
 #### CI 自動デプロイ用の GitHub Secrets 登録
 
-[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) はデプロイ時に環境別の env をシークレットから `.env.local` に書き出す。
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) はデプロイ時に環境別の env をシークレットから `.env.<環境名>` に書き出す（その後 `scripts/use-env.sh` が `.env.local` へ配布する）。
 未登録のまま push すると `.env.local` が空のままビルドされ失敗する。
 リポジトリに以下を登録する（値は対応する env ファイルの全文）:
 
@@ -538,11 +538,14 @@ NEXT_PUBLIC_GTM_ID=GTM-XXXXXX
 
 ## Web のみで使う場合
 
-Mobile が不要なら `apps/mobile/` を削除するだけ。他の設定変更は不要。
+Mobile が不要なら mobile 層を外す。`layers.json`（層マニフェスト）・ワークスペース設定・
+CI の参照までまとめて更新されるので、`rm -rf apps/mobile` で消さないこと
+（消すだけだと Layer Manifest Check が落ちる）。
 
 ```bash
-rm -rf apps/mobile
+node scripts/remove-layer.mjs mobile   # --dry-run で対象を確認できる
 yarn install
+yarn format
 yarn dev:web
 ```
 
