@@ -7,8 +7,8 @@ import type { Subscription } from '@geckou/billing/entitlement'
  * になるため、両方を受ける形で持つ。値として使うときは `toDate()`（`@geckou/shared` が
  * export するユーティリティ）を通すこと。
  *
- * `@geckou/billing` の `DateLike` と同じ形。billing 層を持たない構成でも使えるよう、
- * ここでも定義している
+ * billing 層が使う権利判定パッケージの同名の型と同じ形。billing 層を持たない構成でも
+ * 使えるよう、ここでも定義している
  */
 export type DateLike = Date | { toDate: () => Date }
 

@@ -3,7 +3,7 @@ import type { DateLike } from '../types'
 /**
  * Firestore の日時（`Date` / `Timestamp`）を `Date` へ揃える。
  * 読み出した値は `Timestamp` なので、`getTime()` などを呼ぶ前にこれを通す
- * （`@geckou/billing` の `toDate` と同じ挙動）
+ * （billing 層が使う権利判定パッケージの `toDate` と同じ挙動）
  */
 export function toDate(value: DateLike | null | undefined): Date | null {
   if (value instanceof Date) return value
