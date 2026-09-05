@@ -389,6 +389,95 @@ run 0 'fix/* は release/* から切れる' \
   'git checkout -b fix/typo -q release/1.0.0' feat/existing
 
 echo
+echo '=== 全体レビューで見つかった穴（回帰） ==='
+# #234: --unset / --remove-section も husky を外す
+run 2 'git config --unset core.hooksPath' 'git config --unset core.hooksPath' feat/existing
+run 2 'git config --unset-all core.hooksPath' \
+  'git config --unset-all core.hooksPath' feat/existing
+run 2 'git config --remove-section core' 'git config --remove-section core' feat/existing
+run 2 'サブコマンド形（git config unset）' \
+  'git config unset core.hooksPath' feat/existing
+run 2 'サブコマンド形（git config set）' \
+  'git config set core.hooksPath /dev/null' feat/existing
+run 0 '読み出し（git config core.hooksPath）は通す' \
+  'git config core.hooksPath' feat/existing
+run 0 '読み出し（git config get）は通す' 'git config get core.hooksPath' feat/existing
+
+# #235: alias 経由の呼び出し
+run 2 '-c alias で commit を呼ぶ' \
+  "git -c alias.ci='commit --no-verify' ci -m 'feat: x'" feat/existing
+run 2 '-c alias で push を呼ぶ' \
+  "git -c alias.p='push origin production' p" feat/existing
+run 2 'alias を永続化する' "git config alias.ci 'commit -n'" feat/existing
+
+# #236: コマンド解析の穴
+run 2 "クォート付きのサブコマンド（git 'commit'）" \
+  "git 'commit' -n -m wip" feat/existing
+run 2 'クォートが途中に入るサブコマンド（co"mmit"）' \
+  'git co"mmit" -n -m wip' feat/existing
+run 2 'バックスラッシュ付きのサブコマンド' 'git c\ommit -n -m wip' feat/existing
+run 2 'サブコマンドが置換（判定不能）' 'git $(echo commit) -n -m wip' feat/existing
+run 0 'git --version はサブコマンド無しでも通す' 'git --version' feat/existing
+run 0 'xargs へ渡す形は ask（deny ではない）' \
+  "printf 'commit' | xargs git" feat/existing
+run 0 'パイプでシェルへ流す形は ask（deny ではない）' \
+  "echo 'git commit -n -m wip' | sh" feat/existing
+run 2 'パス付きシェルの heredoc も本文を検査する' \
+  "/bin/sh <<'EOF'
+git commit -n -m wip
+EOF" feat/existing
+run 2 '無クォートの heredoc 本文の置換は検査する' \
+  "cat <<EOF > /dev/null
+\$(git push origin production)
+EOF" feat/existing
+run 0 'クォート付き heredoc の本文はデータとして扱う' \
+  "cat <<'EOF' > /tmp/example.md
+git push origin production
+EOF" feat/existing
+
+# #237: refspec のグロブ・変数・--prune
+run 2 'refspec のグロブ' "git push origin 'refs/heads/*:refs/heads/*'" feat/existing
+run 2 'refspec のグロブ（プレフィックス）' \
+  "git push origin 'refs/heads/prod*'" feat/existing
+run 2 'refspec に変数' 'git push origin HEAD:$b' feat/existing
+run 0 '--prune は ask（deny ではない）' \
+  "git push --prune origin feat/existing" feat/existing
+
+# #238: PR / Issue 本文に書いた git コマンドで止めない
+run 0 'gh pr create の本文に push の例を書く' \
+  "gh pr create --title 'feat: x' --body 'Never run git push origin production directly'" \
+  feat/existing
+run 0 'gh issue create の本文にブランチ作成の例を書く' \
+  "gh issue create --title 'guard' --body 'repro: git checkout -b wip'" feat/existing
+
+# #247: 標準入力で渡すメッセージ（heredoc）も件名を検証する
+run 0 'git commit -F - の heredoc（規約どおり）' \
+  "git commit -F - <<'EOF'
+feat: x
+EOF" feat/existing
+run 2 'git commit -F - の heredoc（規約違反）' \
+  "git commit -F - <<'EOF'
+wip
+EOF" feat/existing
+
+# #239: 破壊的変更の件名
+run 0 'feat!: を許可する' "git commit -m 'feat!: breaking'" feat/existing
+run 0 'feat(scope)!: を許可する' \
+  "git commit -m 'feat(web)!: breaking scoped'" feat/existing
+
+# #240: 分岐元の書き方とブランチの改名
+run 0 'production 上で checkout -b <name> HEAD' 'git checkout -b feat/x HEAD'
+run 0 'production 上で checkout -b <name> @' 'git checkout -b feat/x @'
+run 0 'refs/remotes/origin/production を分岐元に書く' \
+  'git checkout -b feat/x refs/remotes/origin/production' feat/existing
+run 2 'branch -c の新しい名前も命名規則の対象' \
+  'git branch -c feat/existing BAD' feat/existing
+run 2 'branch -m の新しい名前も命名規則の対象' \
+  'git branch -m BAD_NAME' feat/existing
+run 0 'branch -m で規約どおりの名前へ改名する' \
+  'git branch -m feat/renamed-branch' feat/existing
+
+echo
 echo '=== chore/ は許可する（バージョン上げ・依存更新の置き場） ==='
 run 0 'chore/* を production から切る' 'git checkout -b chore/bump-prettier-config'
 run 2 'chore/ もケバブケースを外れると弾く' 'git checkout -b chore/Bump_Config'
@@ -636,6 +725,18 @@ run_dod 0 '対象拡張子から外れていれば走らせない' '{}'
 unset HOOK_CODE_EXTENSIONS
 run_dod 0 'stop_hook_active はコード変更があっても優先される' '{"stop_hook_active":true}'
 
+# 回帰(#241): git status --porcelain は未追跡ディレクトリを 1 行にまとめるため、
+# 新しいディレクトリを丸ごと追加した作業で DoD が走らなかった
+rm -f "$SESSION/probe.ts"
+mkdir -p "$SESSION/newdir"
+echo 'export const y = 1' > "$SESSION/newdir/a.ts"
+HOOK_DOD_TASKS='lint'
+export HOOK_DOD_TASKS
+run_dod 2 '新規ディレクトリ配下のコードでも DoD が走る' '{}'
+unset HOOK_DOD_TASKS
+rm -rf "$SESSION/newdir"
+echo 'export const x = 1' > "$SESSION/probe.ts"
+
 echo
 echo '=== stop-dod-check: config.sh が無くても既定値で動く ==='
 # 既定のランナー（yarn）が無い環境では何もせず終了する
@@ -773,7 +874,13 @@ run_qstart 'Q-001 予約のキャンセル期限' '既定のパスを読む' \
 echo
 echo '=== stop-questions-reminder: 提示忘れの検出 ==='
 run_qstop 2 '未追跡の確認事項ファイルがあればブロックする' '{}'
-run_qstop 0 'フック起因の継続中は再度ブロックしない' '{"stop_hook_active":true}'
+run_qstop 0 'フック起因の継続中は再度ブロックしない（session_id 無し）' \
+  '{"stop_hook_active":true}'
+run_qstop 2 'DoD が先にブロックした継続でも判定は走る' \
+  '{"stop_hook_active":true,"session_id":"s-questions"}'
+run_qstop 0 '同じセッションで 2 回目はブロックしない（無限ループ防止）' \
+  '{"stop_hook_active":true,"session_id":"s-questions"}'
+rm -f "${TMPDIR:-/tmp}/claude-stop-questions-s-questions"
 
 git -C "$SESSION" add .claude/docs/questions.md
 git -C "$SESSION" -c user.email=test@example.com -c user.name=test \
@@ -820,6 +927,16 @@ echo '=== stop-questions-reminder: HTML コメントの中は数えない ==='
 run_qstop 0 '記入例を書き足しただけではブロックしない' '{}'
 
 git -C "$SESSION" checkout -q -- .claude/docs/questions.md
+
+# 回帰(#244): 絶対パスを渡されると git show "HEAD:/abs/..." が必ず失敗し、
+# 比較対象が空になって、未回答が 1 件でもあれば毎回ブロックしていた
+echo
+echo '=== stop-questions-reminder: 絶対パスの設定でも比較できる ==='
+HOOK_QUESTIONS_FILE="$SESSION/.claude/docs/questions.md"
+export HOOK_QUESTIONS_FILE
+run_qstop 0 'HEAD と同じ内容なら絶対パスでもブロックしない' '{}'
+unset HOOK_QUESTIONS_FILE
+
 rm -f "$SESSION/other-questions.md"
 
 # ---- post-git-branch-reminder.sh ----
@@ -908,7 +1025,16 @@ run_roadmap 0 '未コミットの変更が無ければ何も言わない' '{}'
 mkdir -p "$SESSION/.claude/docs"
 echo 'work' > "$SESSION/work.txt"
 run_roadmap 2 '作業があるのに roadmap.md が未更新ならリマインドする' '{}'
-run_roadmap 0 'フック起因の継続中は再度ブロックしない' '{"stop_hook_active":true}'
+run_roadmap 0 'フック起因の継続中は再度ブロックしない（session_id 無し）' \
+  '{"stop_hook_active":true}'
+
+# 回帰(#244): 3 つの Stop フックは同じ stop_hook_active を受け取る。一律に
+# 早期 exit すると、DoD が先にブロックした後は roadmap の判定が走らない
+run_roadmap 2 'DoD が先にブロックした継続でも判定は走る' \
+  '{"stop_hook_active":true,"session_id":"s-roadmap"}'
+run_roadmap 0 '同じセッションで 2 回目はブロックしない（無限ループ防止）' \
+  '{"stop_hook_active":true,"session_id":"s-roadmap"}'
+rm -f "${TMPDIR:-/tmp}/claude-stop-roadmap-s-roadmap"
 
 # git diff は未追跡ファイルに 0 を返すため、新規作成した roadmap.md を
 # 「更新されていない」と判定していた（/kickoff 直後がこの状態）

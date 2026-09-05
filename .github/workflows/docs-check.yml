@@ -8,6 +8,9 @@ name: Docs Check
 #   - この検査はコード側の移動でも壊れる（ファイルを移すとドキュメントが取り残される）ので、
 #     ドキュメント・コードのどちらの変更でも走らせる必要がある
 #   - yarn install が不要で数秒で終わるため、全 PR で回してもコストにならない
+#
+# 層マニフェストの検査（check-layers.mjs）も同じ理由でここに置く。層マーカーは
+# apps/README.md / packages/README.md にもあるため、.md だけの差分でも走らせる必要がある
 
 on:
   pull_request:
@@ -26,3 +29,9 @@ jobs:
 
       - name: Check documentation references
         run: bash scripts/check-docs.sh
+
+      # 層マーカーは README（.md）にも入っている。ci.yml は .md を非コード扱いで
+      # 重いステップを飛ばし、layer-matrix.yml は **/*.md を paths-ignore にしている
+      # ため、マーカーだけを消した PR が緑のまま通っていた（node_modules 不要）
+      - name: Check layer manifest
+        run: node scripts/check-layers.mjs

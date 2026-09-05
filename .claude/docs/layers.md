@@ -139,6 +139,11 @@ node scripts/check-layers.mjs   # マニフェストと実態の一致（CI で�
 bash scripts/test-layers.sh     # 減算スクリプトの回帰テスト（CI で実行）
 ```
 
+`check-layers.mjs` は `.github/workflows/docs-check.yml` が**全ての PR**で実行する。
+層マーカーは `apps/README.md` / `packages/README.md` にも入っており、`ci.yml` は `.md` だけの
+差分で重いステップを飛ばし、`layer-matrix.yml` は `**/*.md` を `paths-ignore` にしているため、
+そこに置くとマーカーだけを消した PR が緑のまま通ってしまう。
+
 さらに `.github/workflows/layer-matrix.yml` が、減算で作った 6 構成
 （`core` / `+firebase` / `+functions` / `+functions+billing` / `+functions+mobile` / 全部入り）と、
 core から加算で組み直した構成を、それぞれインストールして型チェック・Lint・テスト・ビルドまで通す。

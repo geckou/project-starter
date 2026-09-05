@@ -12,6 +12,10 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
 
 [ -z "$cmd" ] && exit 0
 
+# 元のコマンド文字列。heredoc の本文は下の処理で落とすため、
+# `git commit -F -` の件名を取り出すときだけこちらを見る
+raw_cmd=$cmd
+
 # heredoc の本文は、他のプログラムへ渡されるデータ（ファイルの中身、スクリプト、
 # ドキュメント）であって実行される git コマンドではないため、検査対象から外す。
 # ここを見てしまうと、コマンド例を含むドキュメントやスクリプトを書けなくなる。
@@ -45,6 +49,8 @@ cmd=$(printf '%s' "$cmd" | awk '
         m = substr(rest, RSTART, RLENGTH)
         tab_ok = (substr(m, 1, 3) == "<<-")
         sub(/^<<-?[[:space:]]*/, "", m)
+        # マーカーを引用しない heredoc は本文が展開される（= 中の $( ) が実行される）
+        last_marker_quoted = (substr(m, 1, 1) == DQ || substr(m, 1, 1) == SQ)
         gsub(DQ, "", m); gsub(SQ, "", m)
         return m
       }
@@ -73,7 +79,11 @@ cmd=$(printf '%s' "$cmd" | awk '
         line = lines[i]
         # <<- 形式は終了マーカー行の先頭タブを許容する
         if (tab_ok) sub(/^\t+/, "", line)
-        if (line == marker) in_body = 0
+        if (line == marker) { in_body = 0; continue }
+        # マーカーが無クォートなら本文の $( ) / ` ` はシェルが実行する。
+        # 実行される行は検査対象に残す（データとして渡る他の行は落とす）
+        if (!marker_quoted && (index(line, "$(") > 0 || index(line, "`") > 0))
+          print line
         continue
       }
 
@@ -83,11 +93,13 @@ cmd=$(printf '%s' "$cmd" | awk '
       #   - commit -m "$(cat <<EOF ...)" -> 本文はコミットメッセージなので検査する
       #   - sh / bash <<EOF ...          -> 本文は実際に実行されるので検査する
       if (lines[i] ~ /git[[:space:]]+commit/) continue
-      if (lines[i] ~ /(^|[[:space:]|;&(])(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) continue
+      # /bin/sh のようなパス付きの呼び出しも同じ扱いにする
+      if (lines[i] ~ /(^|[[:space:]|;&(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) continue
 
       candidate = heredoc_marker(lines[i])
       if (candidate != "" && has_terminator(i + 1, candidate, tab_ok)) {
         marker = candidate
+        marker_quoted = last_marker_quoted
         in_body = 1
       }
     }
@@ -196,6 +208,9 @@ SEG_END=$(printf '\001.')
 MARK_DIR=$(printf '\001dir')
 MARK_HOOKSPATH=$(printf '\001hookspath')
 MARK_ENV_BYPASS=$(printf '\001envbypass')
+MARK_ALIAS=$(printf '\001alias')
+MARK_INDIRECT=$(printf '\001indirect')
+MARK_UNDECIDABLE=$(printf '\001undecidable')
 
 # husky を環境変数から無効化する経路。HUSKY=0 は husky v9 が公式に用意した
 # 無効化手段、GIT_CONFIG_* は -c を使わずに core.hooksPath を注入する経路
@@ -324,7 +339,29 @@ cmd=$(printf '%s\n' "$segments" | {
         ;;
     esac
 
-    if ! printf '%s' "$seg" | grep -Eq '(^|[[:space:]/])git([[:space:]]|$)'; then
+    # 検査対象は「コマンドとして git を実行するセグメント」だけ。セグメント全体の
+    # 部分一致にすると、gh pr create --body '... git push ...' のように本文へ
+    # コマンド例を引用しただけで規約違反として弾いてしまう
+    seg_cmd=$(printf '%s' "$seg" | awk '
+      BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34) }
+      {
+        for (i = 1; i <= NF; i++) {
+          t = $i
+          # 環境変数の前置き（FOO=bar git … / env FOO=bar git …）は読み飛ばす
+          if (t ~ /^[A-Za-z_][A-Za-z_0-9]*=/) continue
+          gsub(sq, "", t); gsub(dq, "", t)
+          sub(/^.*\//, "", t)
+          if (t == "env") { skip_env = 1; continue }
+          if (skip_env && (t == "-" || t == "-i" || t == "--ignore-environment" ||
+                           t == "-0" || t == "--null")) continue
+          if (skip_env && (t == "-u" || t == "--unset")) { i++; continue }
+          print t
+          break
+        }
+        exit
+      }')
+
+    if [ "$seg_cmd" != "git" ]; then
       # 環境変数の設定は git とは別のセグメントに書ける（`export HUSKY=0; git commit`）。
       # git を含むセグメントだけを見ていると、この形の無効化が素通りする。
       # ただし後続へ効くのは export と代入だけのセグメントで、`HUSKY=0 yarn install`
@@ -337,6 +374,19 @@ cmd=$(printf '%s\n' "$segments" | {
           printf '%s' "$env_only" | grep -Eqi "$ENV_BYPASS_RE"; }; then
         printf '%s\n' "$MARK_ENV_BYPASS"
       fi
+
+      # 間接実行は中身を検査できない。xargs へ git を渡す形と、パイプで
+      # シェルへ流し込む形（引数の無い sh / bash）はユーザーに確認する
+      case $seg_cmd in
+        xargs)
+          printf '%s' "$seg" | grep -Eq '(^|[[:space:]])git([[:space:]]|$)' &&
+            printf '%s\n' "$MARK_INDIRECT"
+          ;;
+        sh | bash | zsh | dash | ksh)
+          [ "$(printf '%s' "$seg" | awk '{ print NF; exit }')" = "1" ] &&
+            printf '%s\n' "$MARK_INDIRECT"
+          ;;
+      esac
       continue
     fi
 
@@ -368,7 +418,27 @@ cmd=$(printf '%s\n' "$segments" | {
         return (r ~ /^-[^ \t]*$/) ? r : ""
       }
 
-      function norm(t,   f) { f = flagform(t); return (f != "") ? f : t }
+      # 空白を含まないトークンは引用を剥がした形へ揃える。git 'commit' /
+      # co"mmit" / c\ommit のような表記ゆれがサブコマンドの判定から外れていた
+      function unqtok(t,   r, i, ch) {
+        r = ""
+        for (i = 1; i <= length(t); i++) {
+          ch = substr(t, i, 1)
+          if (ch == bs && i < length(t)) { i++; r = r substr(t, i, 1); continue }
+          if (ch == sq || ch == dq) continue
+          r = r ch
+        }
+        return r
+      }
+
+      function norm(t,   f, u) {
+        f = flagform(t)
+        if (f != "") return f
+        u = unqtok(t)
+        # 空白を含む値（コミットメッセージ等）は元のまま。引用を剥がすと
+        # トークンの境界が変わってしまう
+        return (u == "" || u ~ /[ \t]/) ? t : u
+      }
 
       {
         q = ""; tok = ""; out = ""; n = length($0)
@@ -466,6 +536,12 @@ cmd=$(printf '%s\n' "$segments" | {
       printf '%s\n' "$MARK_HOOKSPATH"
     fi
 
+    # git -c alias.ci='commit --no-verify' ci のように、その場で alias を定義して
+    # 呼ぶ形はサブコマンドが git の既知コマンドに見えず、検査が丸ごと外れる
+    if printf '%s\n' "$conf_values" | tr -d "\"'" | grep -qi '^alias\.'; then
+      printf '%s\n' "$MARK_ALIAS"
+    fi
+
     # 環境変数の前置きでも husky は無効化できる。HUSKY=0 は husky v9 が公式に用意した
     # 無効化手段、GIT_CONFIG_* は -c を使わずに core.hooksPath を注入する経路。
     # git より前のトークンだけを見る（メッセージ中の言及で誤検出しないため）
@@ -497,32 +573,62 @@ cmd=$(printf '%s\n' "$segments" | {
               continue
             }
             if (t != "config") exit
-            # config の後ろ: フラグを読み飛ばし、キーと値の 2 つを見る
-            key = ""; value = ""
+            # config の後ろ: git 2.46 以降のサブコマンド形（config unset …）と
+            # 従来のフラグ形（config --unset …）の両方を見る。
+            # 値を書かない読み出しだけが「変更しない」
+            mode = ""; key = ""; has_value = 0
             for (k = j + 1; k <= NF; k++) {
               t = $k
               if (substr(t, 1, 1) == "-") {
-                if (t == "--file" || t == "-f" || t == "--blob") k++
-                # 読み出し系のフラグが付いていれば変更ではない
+                if (t == "--file" || t == "-f" || t == "--blob") { k++; continue }
+                if (t == "--unset" || t == "--unset-all") { mode = "unset"; continue }
+                if (t == "--remove-section" || t == "--rename-section") {
+                  mode = "section"; continue
+                }
                 if (t == "--get" || t == "--get-all" || t == "--get-regexp" ||
-                    t == "--list" || t == "-l" || t == "--unset" ||
-                    t == "--unset-all") { key = ""; break }
+                    t == "--get-urlmatch" || t == "--list" || t == "-l") {
+                  mode = "read"; continue
+                }
                 continue
               }
+              if (key == "" && mode == "") {
+                if (t == "unset") { mode = "unset"; continue }
+                if (t == "set" || t == "add" || t == "replace-all") {
+                  mode = "set"; continue
+                }
+                if (t == "remove-section" || t == "rename-section") {
+                  mode = "section"; continue
+                }
+                if (t == "get" || t == "list" || t == "edit") {
+                  mode = "read"; continue
+                }
+              }
               if (key == "") { key = t; continue }
-              value = t
+              has_value = 1
               break
             }
-            if (value != "") print key
+            if (mode == "read" || key == "") exit
+            # セクションごと消す形はキーを持たないので、印を付けて渡す
+            if (mode == "section") print key ".__section__"
+            else if (mode == "unset" || mode == "set" || has_value) print key
             exit
           }
           exit
         }
       }
     ')
+    # --unset / --remove-section も husky を外す（v9 は core.hooksPath で動くため、
+    # 消すことはフックの全消しと同じ）
     if printf '%s\n' "$config_hookspath" | tr -d "\"'" |
-      grep -qi '^core\.hookspath$'; then
+      grep -Eqi '^core\.(hookspath|__section__)$'; then
       printf '%s\n' "$MARK_HOOKSPATH"
+    fi
+
+    # alias を定義すると、以降その名前で commit / push が呼べてしまい、
+    # サブコマンドが既知の名前に見えないため検査が丸ごと外れる
+    if printf '%s\n' "$config_hookspath" | tr -d "\"'" |
+      grep -qi '^alias\.'; then
+      printf '%s\n' "$MARK_ALIAS"
     fi
 
     # 以降の判定が `git <サブコマンド>` の形だけを見ればよいよう、
@@ -535,6 +641,18 @@ cmd=$(printf '%s\n' "$segments" | {
       seg=$next
     done
 
+    # サブコマンドが置換で書かれていると、フックからは何を実行するのか分からない。
+    # 素通しすると `git $(echo commit) -n -m wip` のような形で規約を丸ごと外せる
+    # （置換は括弧で別セグメントへ切り出されるため、ここでは `git` か `git $` になる）
+    after_git=$(printf '%s' "$seg" |
+      awk '{ for (i = 1; i <= NF; i++) if ($i == "git") { print $(i + 1); exit } exit }')
+    case $after_git in
+      '' | '$'* | '`'*)
+        printf '%s\n' "$MARK_UNDECIDABLE"
+        continue
+        ;;
+    esac
+
     # 判定に使う「現在ブランチ」は、このセグメントが実際に動くディレクトリで見る。
     # セッションの HEAD で判定すると、git -C <同一リポの別 worktree> で逆の結果になる
     printf '%s%s\n' "$MARK_DIR" "$target_dir"
@@ -546,11 +664,14 @@ cmd=$(printf '%s\n' "$segments" | {
 
 hooks_path_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_HOOKSPATH$")
 env_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ENV_BYPASS$")
+alias_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ALIAS$")
+indirect=$(printf '%s\n' "$cmd" | grep -c "^$MARK_INDIRECT$")
+undecidable=$(printf '%s\n' "$cmd" | grep -c "^$MARK_UNDECIDABLE$")
 guard_dir=$(printf '%s\n' "$cmd" | sed -n "s/^$MARK_DIR//p" | head -1)
 cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_DIR" |
-  grep -v "^$MARK_HOOKSPATH$" | grep -v "^$MARK_ENV_BYPASS$")
-
-[ -n "$cmd" ] || exit 0
+  grep -v "^$MARK_HOOKSPATH$" | grep -v "^$MARK_ENV_BYPASS$" |
+  grep -v "^$MARK_ALIAS$" | grep -v "^$MARK_INDIRECT$" |
+  grep -v "^$MARK_UNDECIDABLE$")
 
 # --- 短縮フラグの束を 1 文字ずつに展開する ------------------------------
 # git は `-am` のようにフラグを束ねて書ける。束のままだと -m / -F / -n の検出が
@@ -636,7 +757,14 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
 commit_n_bundle=$(printf '%s\n' "$cmd" | grep -c "^$MARK_COMMIT_N$")
 cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_COMMIT_N$")
 
-[ -n "$cmd" ] || exit 0
+# 印だけが立っている（検査対象のコマンドが残っていない）場合も、下の判定へ進む。
+# ここで抜けると、判定不能・alias・間接実行の検出が黙って捨てられる
+if [ -z "$cmd" ] &&
+  [ "${undecidable:-0}" -eq 0 ] && [ "${alias_bypass:-0}" -eq 0 ] &&
+  [ "${indirect:-0}" -eq 0 ] && [ "${hooks_path_bypass:-0}" -eq 0 ] &&
+  [ "${env_bypass:-0}" -eq 0 ]; then
+  exit 0
+fi
 
 # --- コミットメッセージの値を除いた「コマンドとして書かれたトークン」 --------
 # 迂回・push 先・ブランチ名の検出は、メッセージの中身を見てはいけない。
@@ -758,6 +886,18 @@ if [ "${env_bypass:-0}" -gt 0 ]; then
   deny 'HUSKY=0 / GIT_CONFIG_* の前置きによる husky の無効化は禁止です（--no-verify と同じ迂回）。失敗したら迂回せず原因を直してください。'
 fi
 
+if [ "${alias_bypass:-0}" -gt 0 ]; then
+  deny 'git の alias 定義は使用できません（git -c alias.x=… / git config alias.x …）。alias 経由の呼び出しはサブコマンドが既知の名前に見えないため、コミットメッセージ規約・--no-verify 禁止・production への push 禁止の検査がすべて外れます。git のサブコマンドをそのまま書いてください。'
+fi
+
+if [ "${undecidable:-0}" -gt 0 ]; then
+  deny 'git のサブコマンドを変数・コマンド置換で書く形（git $(…) / git `…`）は、何を実行するのか検査できないため使用できません。サブコマンドをそのまま書いてください。'
+fi
+
+if [ "${indirect:-0}" -gt 0 ]; then
+  ask 'git コマンドを間接的に実行しようとしています（xargs へ渡す / パイプでシェルへ流す）。中身を検査できないため、実行してよいかユーザーに確認してください。'
+fi
+
 # --- コミット -----------------------------------------------------------
 if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
   case "$current" in
@@ -870,19 +1010,19 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
 
         if [ -n "$subject" ]; then
           printf '%s\n' "$subject" |
-            grep -Eq "^($TYPES)(\([^)]+\))?: [^[:space:]]" || deny "$msg_ng"
+            grep -Eq "^($TYPES)(\([^)]+\))?!?: [^[:space:]]" || deny "$msg_ng"
         else
           # heredoc ではない置換（-m "$(build-msg)"）は値を取り出せない。
           # コマンド全体から type を探すことしかできない
           printf '%s' "$cmd" |
-            grep -Eq "(^|[[:space:]\"'=])($TYPES)(\([^)]+\))?:(\\\\)?[[:space:]][^[:space:]]" ||
+            grep -Eq "(^|[[:space:]\"'=])($TYPES)(\([^)]+\))?!?:(\\\\)?[[:space:]][^[:space:]]" ||
             deny "$msg_ng"
         fi
         ;;
       *)
         # `--message=feat:\ x` のように、シェルのエスケープ付きで渡される形も通す
         printf '%s\n' "$msg_val" | sed -n '1p' | sed 's/\\ / /g' |
-          grep -Eq "^($TYPES)(\([^)]+\))?: [^[:space:]]" || deny "$msg_ng"
+          grep -Eq "^($TYPES)(\([^)]+\))?!?: [^[:space:]]" || deny "$msg_ng"
         ;;
     esac
   fi
@@ -904,13 +1044,32 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
         ;;
     esac
 
-    [ -r "$msg_file" ] ||
-      deny "コミットメッセージのファイル '$msg_file' が読めないため規約を検証できません。先にファイルを作成するか、-m でメッセージを渡してください。"
+    case "$msg_file" in
+      - | /dev/stdin | /dev/fd/0)
+        # 標準入力はフックが既に読み切っているため、ファイルとしては読めない。
+        # heredoc で渡された本文はコマンド文字列に残っているので、そこから件名を取る
+        # （git の既定の cleanup が先頭の空行を落とすので、最初の非空行が件名）
+        stdin_subject=$(printf '%s\n' "$raw_cmd" | awk '
+          !body && /<<-?[[:space:]]*["'"'"'"'"'"']?[A-Za-z_][A-Za-z_0-9]*/ { body = 1; next }
+          body && $0 !~ /^[[:space:]]*$/ { print; exit }
+        ')
 
-    if ! grep -m1 -v '^[[:space:]]*$' "$msg_file" |
-      grep -Eq "^($TYPES)(\([^)]+\))?: [^[:space:]]"; then
-      deny "$msg_ng（'$msg_file' の1行目）"
-    fi
+        [ -n "$stdin_subject" ] ||
+          deny "標準入力で渡されたコミットメッセージは検証できません（フックが stdin を読み切るため）。heredoc（git commit -F - <<'EOF' … EOF）か -m でメッセージを渡してください。"
+
+        printf '%s\n' "$stdin_subject" |
+          grep -Eq "^($TYPES)(\([^)]+\))?!?: [^[:space:]]" || deny "$msg_ng"
+        ;;
+      *)
+        [ -r "$msg_file" ] ||
+          deny "コミットメッセージのファイル '$msg_file' が読めないため規約を検証できません。先にファイルを作成するか、-m でメッセージを渡してください。"
+
+        if ! grep -m1 -v '^[[:space:]]*$' "$msg_file" |
+          grep -Eq "^($TYPES)(\([^)]+\))?!?: [^[:space:]]"; then
+          deny "$msg_ng（'$msg_file' の1行目）"
+        fi
+        ;;
+    esac
   fi
 
   # -t / --template はエディタ起動前提でメッセージを事前に検証できない
@@ -926,6 +1085,12 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
   # 宛先を 1 つずつ解決する下の判定では拾えないので、ここで落とす
   if has '(^|[[:space:]])git[[:space:]]+push[^|;&]*[[:space:]](--all|--mirror)([[:space:]]|$)'; then
     deny 'git push --all / --mirror は禁止です（production を含む全ブランチを更新するため）。push するブランチを明示してください。'
+  fi
+
+  # --prune は refspec に無いブランチをリモートから削除する。ブランチの削除は
+  # 「その場で止めて聞く」対象（CLAUDE.md「自律性の境界」）
+  if has '(^|[[:space:]])git[[:space:]]+push[^|;&]*[[:space:]]--prune([[:space:]]|$)'; then
+    ask 'git push --prune はリモートのブランチを削除します（refspec に含まれないものが対象）。実行してよいかユーザーに確認してください。'
   fi
 
   # push の宛先ブランチを refspec から取り出す。
@@ -977,6 +1142,9 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
         # git は heads/production も refs/heads/production に解決する（DWIM）
         sub(/^(refs\/)?heads\//, "", dst)
         if (dst == "HEAD" || dst == "") dst = "@CURRENT"
+        # グロブや変数・置換を含む refspec は宛先を決められない。
+        # 素通しすると refs/heads/*:refs/heads/* で production まで更新できる
+        if (dst ~ /[*$`]/) dst = "@UNSAFE"
         print force " " dst
       }
 
@@ -990,6 +1158,7 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
     [ "$dst" = "@CURRENT" ] && dst=$current
 
     case "$dst" in
+      @UNSAFE) exit 13 ;;
       production) exit 10 ;;
     esac
 
@@ -1010,6 +1179,9 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
     11) deny 'production / release/* への force push は禁止です。' ;;
     12)
       ask "release/* / hotfix/* への push は staging への自動デプロイを発火します。ブランチ作成時または PR マージ以外の push は禁止です。実行してよいかユーザーに確認してください。"
+      ;;
+    13)
+      deny 'refspec にグロブ（*）や変数・コマンド置換を含む push は禁止です。宛先を決められないため、production への push かどうかを検査できません。push するブランチを明示してください。'
       ;;
   esac
 fi
@@ -1093,6 +1265,29 @@ if [ -z "$newbranch" ]; then
     }')
 fi
 
+# `git branch -m|-M|-c|-C [<元>] <新しい名前>` も名前を作る。命名規則だけを当てる
+# （分岐元を持たないので fetch の鮮度・分岐元の検査はしない）
+rename_only=''
+if [ -z "$newbranch" ]; then
+  newbranch=$(printf '%s' "$cmd_flags" | awk '
+    {
+      seen_git = 0; seen_branch = 0; is_rename = 0; last = ""
+      for (i = 1; i <= NF; i++) {
+        if (!seen_git) { if ($i == "git") seen_git = 1; continue }
+        if (!seen_branch) {
+          if ($i == "branch") { seen_branch = 1; continue }
+          if (substr($i, 1, 1) == "-") continue
+          break
+        }
+        if ($i ~ /^(-[mMcC]|--move|--copy)$/) { is_rename = 1; continue }
+        if (substr($i, 1, 1) == "-") continue
+        last = $i
+      }
+      if (is_rename && last != "") { print last; exit }
+    }')
+  [ -n "$newbranch" ] && rename_only=1
+fi
+
 newbranch=$(unquote "$newbranch")
 
 if [ -n "$newbranch" ]; then
@@ -1117,6 +1312,9 @@ if [ -n "$newbranch" ]; then
         deny "ブランチ名はケバブケース（小文字英数字とハイフン区切り）にしてください: $newbranch。例: feat/user-profile、チケット番号があれば feat/123-user-profile"
       ;;
   esac
+
+  # ここから先は「新しく切る」ときの検査。改名・複製には分岐元が無い
+  [ -n "$rename_only" ] && exit 0
 
   # 最新の remote 情報を持たずに切ると、進行中の release/* を見落として
   # 何ヶ月も古い土台の上で作業を始めてしまう
@@ -1172,8 +1370,14 @@ if [ -n "$newbranch" ]; then
     base="production"
   fi
   [ -z "$base" ] && base="$current"
+  base=${base#refs/remotes/origin/}
   base=${base#origin/}
   base=${base#refs/heads/}
+  # HEAD / @ は現在ブランチ。解決しないと production 上で `git checkout -b feat/x HEAD`
+  # が「分岐元: HEAD」として拒否される
+  case "$base" in
+    HEAD | @) base=$current ;;
+  esac
 
   case "$newbranch" in
     claude/*) ;;
