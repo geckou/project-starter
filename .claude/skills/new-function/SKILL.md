@@ -93,3 +93,7 @@ export const onUserCreate = onDocumentCreated(
   `apps/functions/.env` は `yarn env:<環境名>` が毎回生成し直すので直接編集しない。
   新しいキーは `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` と
   `apps/functions/.env.example`、ルートの `.env.example` の Functions セクションにも追記する
+- **秘密（API キー・署名シークレット）は `.env` ではなく Secret Manager に置く。**
+  `defineSecret('NAME')` で宣言し、`onRequest({ secrets: [NAME] })` に渡した関数だけが
+  `.value()` で読める。値の登録は `firebase functions:secrets:set NAME`
+  （参考実装: `apps/functions/src/lib/billing.ts`）

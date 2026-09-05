@@ -129,7 +129,8 @@ app/<path>/
 | Web クライアント用 | `.env.local`（ルート） | `NEXT_PUBLIC_FIREBASE_*`               |
 | Mobile 用          | `apps/mobile/.env.local`（use-env.sh が配布） | `FIREBASE_*`（app.config.ts の extra 経由） |
 | サーバー専用       | `.env.local`（ルート） | `FIREBASE_SERVICE_ACCOUNT_KEY`         |
-| Functions 専用     | `apps/functions/.env`（use-env.sh が許可リストのキーのみ生成） | `STRIPE_SECRET_KEY`, `REVENUECAT_WEBHOOK_AUTH` |
+| Functions 専用     | `apps/functions/.env`（use-env.sh が許可リストのキーのみ生成） | `ALLOWED_ORIGINS`, `STRIPE_PRICE_IDS` |
+| Functions の秘密   | Secret Manager（`firebase functions:secrets:set`）。エミュレーターは `apps/functions/.secret.local` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `REVENUECAT_WEBHOOK_AUTH` |
 
 `NEXT_PUBLIC_` プレフィックスはブラウザに露出する。サーバー用の値には絶対に付けない。
 
@@ -140,8 +141,16 @@ app/<path>/
 不要なサーバー秘密を載せないための措置。**Functions に環境変数を追加したら
 `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` にも追記すること。**
 
-外部サービスのテスト用キーと本番キーは環境ごとに分ける。`production` 以外に
-Stripe の本番キー（`sk_live_` / `rk_live_`）が設定されていると `yarn env:<環境名>` はエラーで停止する。
+**秘密は `.env` に置かない。** `.env` の値は関数の環境変数としてデプロイされ、閲覧者ロールでも
+Cloud Console / `gcloud functions describe` から読める。決済キーや Webhook の署名シークレットは
+Secret Manager に置き、`defineSecret()` で宣言して `onRequest({ secrets })` に渡した関数だけに
+マウントする（`apps/functions/src/lib/billing.ts` / `api.ts`。手順は `.claude/docs/billing.md`）。
+**秘密を差し替えたら再デプロイが要る**（関数は登録時点のバージョンに固定される）。
+
+外部サービスのテスト用キーと本番キーは環境ごとに分ける（Secret Manager は
+Firebase プロジェクトごとに別なので、環境の切り替えでキーも入れ替わる）。
+`production` 以外の `.env` に Stripe の本番キー（`sk_live_` / `rk_live_`）が残っていると
+`yarn env:<環境名>` はエラーで停止する。
 
 **本番ビルドで必須の値は、未設定なら起動時に落とす。** `NEXT_PUBLIC_API_BASE_URL` /
 `EXPO_PUBLIC_API_BASE_URL` は未設定だと Functions エミュレーター（`localhost:5001`）へ

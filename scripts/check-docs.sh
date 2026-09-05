@@ -20,6 +20,7 @@ cd "$(dirname "$0")/.."
 # 実在しなくてよいパス。gitignore されるファイルと、必要になった時点で作るもの
 ALLOW_MISSING='
 apps/functions/.env
+apps/functions/.secret.local
 apps/mobile/.env.local
 .claude/docs/roadmap-archive.md
 packages/shared/dist/

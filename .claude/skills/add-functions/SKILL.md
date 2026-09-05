@@ -50,6 +50,9 @@ yarn format
 - `NEXT_PUBLIC_API_BASE_URL` — Web から API を呼ぶベース URL。環境ごとに変わる
 - 新しい環境変数を Functions に足したら `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` にも追記する
   （ここに無いキーは `apps/functions/.env` へ配布されない）
+- **秘密は `.env` に置かない。** `.env` の値は関数の環境変数としてデプロイされ、閲覧者ロールでも
+  Cloud Console から読める。`defineSecret()` で宣言して `onRequest({ secrets })` に渡す
+  （`firebase functions:secrets:set`。→ `.claude/docs/architecture.md`「環境変数の配置」）
 
 ### 2-3. 何を Functions に置くか
 
