@@ -22,12 +22,16 @@ description: React コンポーネントを作成する
 ### Server Component
 
 ```tsx
+import type { ReactNode } from 'react'
+
 type Props = {
-  // props
+  children?: ReactNode
 }
 
-export function ComponentName({}: Props) {
-  return <div></div>
+// 分割代入を空にすると no-empty-pattern で lint エラーになる。
+// 受け取る props が無いうちは props をまとめて受けるか、children を置く
+export function ComponentName({ children }: Props) {
+  return <div>{children}</div>
 }
 ```
 
@@ -36,12 +40,16 @@ export function ComponentName({}: Props) {
 ```tsx
 'use client'
 
+import type { ReactNode } from 'react'
+
 type Props = {
-  // props
+  children?: ReactNode
 }
 
-export function ComponentName({}: Props) {
-  return <div></div>
+// 分割代入を空にすると no-empty-pattern で lint エラーになる。
+// 受け取る props が無いうちは props をまとめて受けるか、children を置く
+export function ComponentName({ children }: Props) {
+  return <div>{children}</div>
 }
 ```
 

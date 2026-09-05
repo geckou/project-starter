@@ -270,6 +270,21 @@ export default function RootLayout() {
 > Sandbox では更新周期が短縮される（例: 月額が数分で更新される）ため、
 > `RENEWAL` や `EXPIRATION` の Webhook を現実的な時間で確認できる。
 
+> **Sandbox のイベントは既定で無視される。** `@geckou/billing` は
+> `event.environment === 'SANDBOX'` のイベントを、`revenuecat.allowSandbox` が
+> true でない限り適用せず 200 を返す（開発ビルドが本番の Webhook URL を叩いたときに、
+> サンドボックス購入で本番の権利が付くのを防ぐため）。**検証する環境の
+> `.env.<環境名>` で `REVENUECAT_ALLOW_SANDBOX=true` を設定すること**（`develop` のみ）。
+> 設定しないと、購入しても `users/{uid}.subscription` は変わらず
+> 「反映されない」で止まる。
+
+> **`TRANSFER` の移動先は既定では反映されない。** `revenuecat.fetchSubscriber`
+> （RevenueCat REST API で現在の権利を取り直すフック）が未配線のため、
+> 権利が別の `app_user_id` へ移ったとき、移動元は `expired` になるが移動先は
+> 次の購入・更新イベントまで「未購読」のままになる（年額なら最長 1 年）。
+> Restore（Transfer to new App User ID）を使う構成では
+> `apps/functions/src/lib/billing.ts` に `fetchSubscriber` を足す。
+
 ---
 
 ## 3. プロダクト側に権利判定を入れる
@@ -420,5 +435,7 @@ yarn test:rules  # Firestore / Storage ルール（要 Firebase エミュレー�
 | `/billing/portal` が 404 | そのユーザーが Stripe で一度も購入しておらず顧客が存在しない。IAP で購入したユーザーはこちら（ストアの設定画面へ誘導する） |
 | `/billing/*` が 503 | `STRIPE_SECRET_KEY` が未設定。Web 決済を使わない構成なら正常な挙動 |
 | IAP の購入が反映されない | `loginRevenueCat(uid)` を呼んでおらず、`app_user_id` が Firebase の uid になっていない |
+| Sandbox で購入しても反映されない（ログに `Ignored RevenueCat SANDBOX event`） | `REVENUECAT_ALLOW_SANDBOX=true` を設定していない。既定では Sandbox のイベントを適用しない |
+| Restore（移行）後に移動先のユーザーが未購読のまま | `revenuecat.fetchSubscriber` が未配線。`TRANSFER` は移動元を失効させるだけで、移動先の権利はペイロードに乗らない |
 | ルールで `subscriptionActive` が常に未定義で全員弾かれる | `SYNC_SUBSCRIPTION_CLAIMS=true` を設定していない。デフォルトは無効 |
 | ルールで弾かれる / 通ってしまう | カスタムクレームが古い。`refreshEntitlement()`（`getIdToken(true)`）で更新する |

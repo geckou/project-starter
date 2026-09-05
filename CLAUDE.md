@@ -393,12 +393,16 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 |---|---|---|
 | SessionStart | `session-start-git-context.sh` | `git fetch origin --prune` を実行し、現在ブランチ・`origin/production` との差分・進行中の `release/*` を文脈に入れる（古い情報のまま作業を始めるのを防ぐ） |
 | SessionStart | `session-start-questions.sh` | 未回答の確認事項（`.claude/docs/questions.md`）を冒頭の文脈に入れる |
-| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名・分岐元・fetch 鮮度・コミットメッセージ形式・husky の迂回（`--no-verify`、`-c core.hooksPath`、`git config core.hooksPath`、`HUSKY=0` / `GIT_CONFIG_*` の前置きと別セグメントでの `export`）・`production` への直接 push を**実行前にブロック**。`sh -c` / `eval` / バッククォートで包んだ形も中身を展開して検査する。`release/*` / `hotfix/*` への push はユーザー承認を求める。検査対象は**このリポジトリへの git 操作だけ**（コマンド中の `cd` / `git -C` を解釈し、別リポジトリへの操作は素通しする） |
+| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名（改名・複製を含む）・分岐元・fetch 鮮度・コミットメッセージ形式・husky の迂回（`--no-verify`、`-c core.hooksPath`、`git config` での設定・`--unset` / `--remove-section`、`HUSKY=0` / `GIT_CONFIG_*` の前置きと別セグメントでの `export`）・alias 定義経由の呼び出し・`production` への直接 push を**実行前にブロック**。`sh -c` / `eval` / バッククォートで包んだ形も中身を展開して検査し、サブコマンドや refspec が置換・グロブで書かれていて判定できない形は拒否する。`release/*` / `hotfix/*` への push と `--prune`、`xargs` / パイプ経由の間接実行はユーザー承認を求める。検査対象は**このリポジトリで git を実行するコマンドだけ**（コマンド中の `cd` / `git -C` を解釈し、別リポジトリへの操作と、`gh pr create --body` のような引数に書いたコマンド例は素通しする） |
 | PostToolUse (Bash) | `post-git-branch-reminder.sh` | ブランチ作成直後、進行中の `release/*` があればマージ要否の確認を促す |
 | PostToolUse (Edit/Write) | `post-edit-reminder.sh` | `firestore.rules` / `packages/shared` 変更時に検証コマンドをリマインド |
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
 | Stop | `stop-roadmap-reminder.sh` | 作業があるのに `roadmap.md` 未更新ならリマインド |
 | Stop | `stop-questions-reminder.sh` | この作業で確認事項を積んだのに提示していなければ、終了前に一覧を出させる |
+
+Stop フックは 3 つとも同じ `stop_hook_active` を受け取る。DoD がブロックした後の継続でも
+残り 2 つの判定が走るように、**フックごとに「1 セッションで 1 回だけブロックする」**形にしてある
+（DoD は実行コストが高いため、継続中はこれまでどおり実行しない）。
 
 ### スタック依存の値は `config.sh` に置く
 

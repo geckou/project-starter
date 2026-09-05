@@ -60,3 +60,41 @@ describe('apiClient', () => {
     expect(authorizationOf(0)).toBeUndefined()
   })
 })
+
+// 回帰: 未設定のまま本番ビルドへ出ると、全ての API が Functions エミュレーター
+// （localhost:5001）を叩いて「Failed to fetch」になっていた
+describe('API_BASE_URL の必須チェック', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('本番ビルドで未設定なら import 時に落とす', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('NEXT_PUBLIC_API_BASE_URL', '')
+    vi.resetModules()
+
+    await expect(import('@/lib/api-client')).rejects.toThrow(
+      'NEXT_PUBLIC_API_BASE_URL'
+    )
+  })
+
+  it('本番ビルドでも設定済みなら読み込める', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    vi.stubEnv('NEXT_PUBLIC_API_BASE_URL', 'https://api.example.com')
+    vi.resetModules()
+
+    await expect(import('@/lib/api-client')).resolves.toBeDefined()
+  })
+
+  it('開発ビルドではエミュレーターへフォールバックする', async () => {
+    vi.stubEnv('NODE_ENV', 'development')
+    vi.stubEnv('NEXT_PUBLIC_API_BASE_URL', '')
+    vi.resetModules()
+
+    const { apiClient: devClient } = await import('@/lib/api-client')
+    await devClient('/health', { authenticated: false })
+
+    expect(fetchMock.mock.calls[0][0]).toContain('http://localhost:5001/')
+  })
+})

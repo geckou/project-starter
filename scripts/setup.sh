@@ -18,15 +18,29 @@ if grep -q "your-project-develop" .firebaserc 2>/dev/null; then
   read -p "staging の Project ID (後で設定する場合は Enter): " STG_ID
   read -p "production の Project ID (後で設定する場合は Enter): " PROD_ID
 
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    [ -n "$DEV_ID" ] && sed -i '' "s/your-project-develop/$DEV_ID/g" .firebaserc
-    [ -n "$STG_ID" ] && sed -i '' "s/your-project-staging/$STG_ID/g" .firebaserc
-    [ -n "$PROD_ID" ] && sed -i '' "s/your-project-production/$PROD_ID/g" .firebaserc
-  else
-    [ -n "$DEV_ID" ] && sed -i "s/your-project-develop/$DEV_ID/g" .firebaserc
-    [ -n "$STG_ID" ] && sed -i "s/your-project-staging/$STG_ID/g" .firebaserc
-    [ -n "$PROD_ID" ] && sed -i "s/your-project-production/$PROD_ID/g" .firebaserc
-  fi
+  # 置換後の文字列は入力そのもの。sed の特殊文字（/ & \ 改行）を素通しすると
+  # .firebaserc が壊れる（貼り付けミスで / が入るだけで起きる）
+  escape_replacement() {
+    printf '%s' "$1" | sed -e 's/[\\&/]/\\&/g' -e 's/$/\\/' | sed -e '$s/\\$//'
+  }
+
+  replace_project_id() {
+    placeholder=$1
+    value=$2
+    [ -n "$value" ] || return 0
+
+    escaped=$(escape_replacement "$value")
+
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' "s/$placeholder/$escaped/g" .firebaserc
+    else
+      sed -i "s/$placeholder/$escaped/g" .firebaserc
+    fi
+  }
+
+  replace_project_id your-project-develop "$DEV_ID"
+  replace_project_id your-project-staging "$STG_ID"
+  replace_project_id your-project-production "$PROD_ID"
 
   echo "[done] .firebaserc を更新しました"
 else

@@ -29,7 +29,7 @@ yarn format
 | ファイル | `apps/web/src/lib/firebase-app.ts` / `firebase.ts`（Auth）/ `firebase-firestore.ts` / `firebase-storage.ts` / `firebase-admin.ts`、`app/{login,dashboard}/`、`app/api/session/`、`components/auth/`、`packages/shared/src/{firebase,firestore,storage,stores}/` |
 | ルール | `firestore.rules` / `storage.rules` / `firestore.indexes.json` / `tests/`（ルールテスト）/ `scripts/test-rules.sh` |
 | 依存 | `firebase` / `firebase-admin` / `@geckou/firebase-client` / `zustand` |
-| 設定 | `firebase.json` の `firestore` / `storage` / エミュレーター、`middleware.ts` のセッション Cookie 判定、CI のルールテスト |
+| 設定 | `firebase.json` の `firestore` / `storage` / エミュレーター、`middleware.ts` のセッション Cookie 判定、`deploy.yml` のルール・インデックスのデプロイ |
 | env | `.env.example` の `NEXT_PUBLIC_FIREBASE_*` / `FIREBASE_SERVICE_ACCOUNT_KEY` 等 |
 
 **ローカルの変更は 3-way マージで保たれる。** 衝突したファイルは実行結果に列挙されるので、

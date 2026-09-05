@@ -39,7 +39,7 @@ node scripts/remove-layer.mjs --target /tmp/x mobile    # 別のディレクト�
 | 対象 | 例 |
 | --- | --- |
 | ファイル・ディレクトリ | `apps/mobile/`、`firestore.rules` |
-| マーカーで囲まれた範囲 | `middleware.ts` のセッション Cookie 判定、CI の Expo ステップ |
+| マーカーで囲まれた範囲 | `middleware.ts` のセッション Cookie 判定、`deploy.yml` の Expo ステップ（`ci.yml` / `smoke-test.yml` は `apps/mobile` の有無を実行時に判定するのでマーカーを持たない） |
 | 依存・スクリプト | `apps/web` の `firebase`、ルートの `dev:mobile` |
 | 設定のキー | `firebase.json` の `functions`、`workspaces.nohoist` |
 | 環境変数 | `.env.example` の該当セクション |
@@ -129,8 +129,8 @@ import { AuthProvider } from '@/components/auth/AuthProvider'
 | `notes` | 判断の理由。なぜその層に属するかを書く |
 
 **層マニフェストはリポジトリの中身の関数**である。共有実装を npm パッケージへ切り出すほど
-層の境界は痩せて安定する（`@geckou/billing` を切り出した結果、billing 層は配線 2 ファイルと
-依存 1 行まで縮んだ）。ファイルを足す・動かすときは `layers.json` も合わせて更新すること。
+層の境界は痩せて安定する（`@geckou/billing` を切り出した結果、billing 層に残るのは
+配線と権利変化フックだけになった）。ファイルを足す・動かすときは `layers.json` も合わせて更新すること。
 
 ## 検証
 
@@ -138,6 +138,11 @@ import { AuthProvider } from '@/components/auth/AuthProvider'
 node scripts/check-layers.mjs   # マニフェストと実態の一致（CI で実行）
 bash scripts/test-layers.sh     # 減算スクリプトの回帰テスト（CI で実行）
 ```
+
+`check-layers.mjs` は `.github/workflows/docs-check.yml` が**全ての PR**で実行する。
+層マーカーは `apps/README.md` / `packages/README.md` にも入っており、`ci.yml` は `.md` だけの
+差分で重いステップを飛ばし、`layer-matrix.yml` は `**/*.md` を `paths-ignore` にしているため、
+そこに置くとマーカーだけを消した PR が緑のまま通ってしまう。
 
 さらに `.github/workflows/layer-matrix.yml` が、減算で作った 6 構成
 （`core` / `+firebase` / `+functions` / `+functions+billing` / `+functions+mobile` / 全部入り）と、

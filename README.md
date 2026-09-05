@@ -190,9 +190,13 @@ yarn setup
 
 これで以下が自動的に行われる:
 
-- `.env.local` の作成（`.env.example` からコピー）
-- `.firebaserc` の Firebase Project ID 設定
-- Node.js / yarn のバージョンチェック
+- `.firebaserc` の Firebase Project ID 設定（対話で入力）
+- 環境別 env ファイル（`.env.develop` / `.env.staging` / `.env.production`）を
+  `.env.example` から作成
+- `.env.local` の作成（`.env.develop` からコピー = 既定は develop 環境）
+- Node.js / yarn / Firebase CLI のバージョン・導入チェック
+- `production` ブランチの保護ルール（`.github/rulesets/production.json`）の取り込み
+  （`gh` が使え、`production` ブランチが既にある場合）
 - `yarn install`（依存関係のインストール）
 
 ### 3. GCP API の有効化（初回のみ）
@@ -247,7 +251,8 @@ GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
 `yarn env:<環境名>` / `yarn deploy:<環境名>` は環境別の env ファイルを前提にする。
 ファイルが無いと [`scripts/use-env.sh`](scripts/use-env.sh) が `exit 1` で止まり、型チェック・デプロイに到達しない。
 
-`.env.example` を各環境用にコピーして作成する（冒頭コメントに手順あり）:
+`yarn setup` が `.env.example` から 3 つとも作成する（既にあるファイルは触らない）。
+手動で作り直す場合はコピーする:
 
 ```bash
 cp .env.example .env.develop
@@ -255,7 +260,7 @@ cp .env.example .env.staging
 cp .env.example .env.production
 ```
 
-環境ごとに書き換える主な値:
+作成された各ファイルに値を入れる。環境ごとに書き換える主な値:
 
 | 変数 | 環境差分 |
 | --- | --- |

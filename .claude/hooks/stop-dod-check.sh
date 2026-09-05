@@ -24,7 +24,10 @@ active=$(printf '%s' "$input" | jq -r '.stop_hook_active // false')
 # コードファイルの未コミット変更がなければ何もしない（ドキュメントのみの作業では走らせない）
 # 空白入りのパス（"my file.ts"）でも拡張子を判定できるよう、
 # ステータス欄（先頭3文字）だけを落として残りをそのままパス名として扱う
-changed=$(git status --porcelain 2>/dev/null | cut -c4- | grep -E "\.($extensions)\$")
+# -uall を付けないと、新規ディレクトリは `?? src/newdir/` の 1 行にまとめられ、
+# 拡張子の判定に当たらない（新しいコンポーネント群を丸ごと足した作業で
+# type-check / lint / test が走らないまま終了できてしまう）
+changed=$(git status --porcelain -uall 2>/dev/null | cut -c4- | grep -E "\.($extensions)\$")
 [ -z "$changed" ] && exit 0
 
 failed=''

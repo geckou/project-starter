@@ -29,7 +29,7 @@ yarn format
 | 区分 | 中身 |
 | --- | --- |
 | ファイル | `apps/mobile/` 一式（Expo Router の画面・`lib/{api-client,firebase,push-notifications,sentry}.ts`・設定） |
-| 設定 | ルート `package.json` の `workspaces.nohoist` と `dev:mobile`、lint-staged、CI / deploy / smoke-test の `expo customize` ステップ、`renovate/mobile.json`（Expo 系の更新ルール） |
+| 設定 | ルート `package.json` の `workspaces.nohoist` と `dev:mobile`、lint-staged、`deploy.yml` の Expo ステップ（`ci.yml` / `smoke-test.yml` は `apps/mobile` の有無を実行時に判定する）、`renovate/mobile.json`（Expo 系の更新ルール） |
 | env | `FIREBASE_*`（Expo 用）/ `EXPO_PUBLIC_API_BASE_URL` / `EXPO_PUBLIC_SENTRY_DSN` |
 
 ## 2. 判断が要る部分

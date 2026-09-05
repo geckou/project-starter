@@ -52,6 +52,14 @@ core の時点で存在し、Blaze プランもこの時点で必須になる。
 - ログインページ: `apps/web/src/app/login/page.tsx`
 - ミドルウェア: `apps/web/src/middleware.ts`
 
+### session cookie の発行は「直近のサインイン」に限る
+
+`/api/session` の POST は `verifyIdToken(idToken, true)` を通し、`auth_time` が 5 分以内の
+ID トークンだけを cookie に交換する（Firebase の公式手順）。見ないと、有効期限 1 時間の
+ID トークンが 1 つ漏れただけで**5 日有効な cookie へ格上げ**できてしまう。
+古い ID トークンは 401（`Recent sign-in required`）になるので、クライアント側は
+再サインイン（または `getIdToken(true)` ではなく再認証）へ誘導する。
+
 ### サインアウトは全デバイスのセッションを失効させる
 
 `/api/session` の DELETE は cookie を消すだけでなく `revokeRefreshTokens(uid)` を呼ぶ。
@@ -134,6 +142,12 @@ app/<path>/
 
 外部サービスのテスト用キーと本番キーは環境ごとに分ける。`production` 以外に
 Stripe の本番キー（`sk_live_` / `rk_live_`）が設定されていると `yarn env:<環境名>` はエラーで停止する。
+
+**本番ビルドで必須の値は、未設定なら起動時に落とす。** `NEXT_PUBLIC_API_BASE_URL` /
+`EXPO_PUBLIC_API_BASE_URL` は未設定だと Functions エミュレーター（`localhost:5001`）へ
+フォールバックするため、`.env.production` への書き忘れが「本番の全 API が Failed to fetch」
+として現れる。`api-client.ts` は `NODE_ENV === 'production'`（Expo は `__DEV__ === false`）で
+未設定なら `throw` する。Functions 側の `ALLOWED_ORIGINS` と同じ方針。
 
 ## 状態管理（Zustand）
 

@@ -84,8 +84,13 @@ const satisfies = (version, range) => {
     (major === boundMajor &&
       (minor > boundMinor || (minor === boundMinor && patch >= boundPatch)))
 
-  // ^0.2.0 は 0.2.x のみ（0 系は minor が major の役割を持つ）
+  // ^0.2.0 は 0.2.x のみ（0 系は minor が major の役割を持つ）。
+  // さらに ^0.0.3 は 0.0.3 だけ（semver の定義どおり patch も固定）
   if (trimmed.startsWith('^')) {
+    if (boundMajor === 0 && boundMinor === 0) {
+      return major === 0 && minor === 0 && patch === boundPatch
+    }
+
     if (boundMajor === 0) {
       return major === 0 && minor === boundMinor && notLower
     }

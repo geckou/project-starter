@@ -37,7 +37,7 @@ app.post('/endpoint-name', requireAuth, async (req, res) => {
     // 成否は HTTP ステータスで表す。apiClient はボディをそのまま
     // ApiResponse.data に入れるため、{ success, data } で包まない
     res.json({ id: 'created-id' })
-  } catch (error) {
+  } catch {
     res.status(500).json({ error: 'Internal server error' })
   }
 })
