@@ -116,14 +116,22 @@ describe('api', () => {
     vi.clearAllMocks()
   })
 
-  // 回帰: 秘密を .env で配ると関数の環境変数としてデプロイされ、閲覧者ロールでも
-  // Cloud Console / gcloud functions describe から読める。Secret Manager から
-  // マウントするために、宣言を onRequest の secrets に渡す必要がある
   describe('onRequest の設定', () => {
-    it('api は BILLING_SECRETS を secrets として宣言する', () => {
+    it('app をそのまま onRequest に渡している', () => {
       expect(onRequestOptions).toHaveLength(1)
       expect(api).toBe(app)
+    })
 
+    // 既定は無制限で、リトライ嵐や攻撃的なリクエストがそのまま課金額になる
+    it('maxInstances でコストに蓋をする', () => {
+      expect(onRequestOptions[0].maxInstances).toBeTypeOf('number')
+    })
+
+    // layer:billing:start
+    // 回帰: 秘密を .env で配ると関数の環境変数としてデプロイされ、閲覧者ロールでも
+    // Cloud Console / gcloud functions describe から読める。Secret Manager から
+    // マウントするために、宣言を onRequest の secrets に渡す必要がある
+    it('BILLING_SECRETS を secrets として宣言する', () => {
       const secretNames = (
         onRequestOptions[0].secrets as { name: string }[]
       ).map((secret) => secret.name)
@@ -134,11 +142,7 @@ describe('api', () => {
         'REVENUECAT_WEBHOOK_AUTH',
       ])
     })
-
-    // 既定は無制限で、Webhook のリトライ嵐がそのまま課金額になる
-    it('maxInstances でコストに蓋をする', () => {
-      expect(onRequestOptions[0].maxInstances).toBeTypeOf('number')
-    })
+    // layer:billing:end
   })
 
   describe('GET /health', () => {
