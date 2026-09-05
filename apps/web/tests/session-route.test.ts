@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // firebase-admin（adminAuth）をモック
 const mockCreateSessionCookie = vi.fn()
+const mockVerifyIdToken = vi.fn()
 const mockVerifySessionCookie = vi.fn()
 const mockRevokeRefreshTokens = vi.fn()
 
@@ -9,6 +10,7 @@ vi.mock('@/lib/firebase-admin', () => ({
   adminAuth: {
     createSessionCookie: (...args: unknown[]) =>
       mockCreateSessionCookie(...args),
+    verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
     verifySessionCookie: (...args: unknown[]) =>
       mockVerifySessionCookie(...args),
     revokeRefreshTokens: (...args: unknown[]) =>
@@ -49,6 +51,8 @@ function buildDeleteRequest(headers: Record<string, string> = {}) {
 describe('POST /api/session', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // 既定は「たった今サインインした」ID トークン
+    mockVerifyIdToken.mockResolvedValue({ auth_time: Date.now() / 1000 })
   })
 
   // 回帰: Origin / Sec-Fetch-Site / Content-Type を見ておらず、攻撃者サイトから
@@ -123,7 +127,7 @@ describe('POST /api/session', () => {
   })
 
   it('idToken の検証に失敗した場合 401 を返す', async () => {
-    mockCreateSessionCookie.mockRejectedValueOnce(new Error('invalid token'))
+    mockVerifyIdToken.mockRejectedValueOnce(new Error('invalid token'))
 
     const response = await POST(
       buildPostRequest(JSON.stringify({ idToken: 'bad-token' }))
@@ -151,6 +155,30 @@ describe('POST /api/session', () => {
       'session-cookie-value',
       expect.objectContaining({ httpOnly: true, path: '/' })
     )
+  })
+
+  // 回帰: auth_time を見ずに交換していたため、有効期限 1 時間の ID トークンが
+  // 1 つ漏れるだけで 5 日有効な cookie に格上げできた
+  it('サインインから時間が経った idToken は 401 を返す', async () => {
+    mockVerifyIdToken.mockResolvedValueOnce({
+      auth_time: Date.now() / 1000 - 10 * 60,
+    })
+
+    const response = await POST(
+      buildPostRequest(JSON.stringify({ idToken: 'old-token' }))
+    )
+
+    expect(response.status).toBe(401)
+    expect(mockCreateSessionCookie).not.toHaveBeenCalled()
+    expect(mockCookieSet).not.toHaveBeenCalled()
+  })
+
+  it('失効チェック付きで idToken を検証する', async () => {
+    mockCreateSessionCookie.mockResolvedValueOnce('session-cookie-value')
+
+    await POST(buildPostRequest(JSON.stringify({ idToken: 'valid-token' })))
+
+    expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token', true)
   })
 })
 

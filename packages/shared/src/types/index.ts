@@ -2,6 +2,16 @@
 import type { Subscription } from '@geckou/billing/entitlement'
 // layer:billing:end
 
+/**
+ * Firestore の日時。**書き込むときは `Date`、読み出すと `Timestamp`**（`toDate()` を持つ）
+ * になるため、両方を受ける形で持つ。値として使うときは `toDate()`（`@geckou/shared` が
+ * export するユーティリティ）を通すこと。
+ *
+ * `@geckou/billing` の `DateLike` と同じ形。billing 層を持たない構成でも使えるよう、
+ * ここでも定義している
+ */
+export type DateLike = Date | { toDate: () => Date }
+
 /** ユーザー */
 export type User = {
   id: string
@@ -12,7 +22,8 @@ export type User = {
   /** Stripe の顧客 ID。Web 決済を使う場合のみ設定される（サーバーのみ書き込み可） */
   stripeCustomerId?: string
   // layer:billing:end
-  createdAt: Date
+  /** Firestore から読み出すと Timestamp。値として使うときは toDate() を通す */
+  createdAt: DateLike
 }
 
 // layer:billing:start

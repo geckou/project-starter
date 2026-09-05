@@ -1,5 +1,6 @@
 'use client'
 
+import { type SubscriptionSource } from '@geckou/shared'
 import { useState } from 'react'
 
 import { openCustomerPortal, startCheckout } from '@/lib/billing'
@@ -7,14 +8,26 @@ import { openCustomerPortal, startCheckout } from '@/lib/billing'
 type Props = {
   /** 既に有効な権利を持っているか。持っていればポータル、無ければ購入を出す */
   isActive: boolean
+  /**
+   * 権利の購入経路。RevenueCat（アプリ内課金）のユーザーは Stripe の顧客を
+   * 持たないため、カスタマーポータルは必ず 404 になる。ボタン自体を出さない
+   */
+  source?: SubscriptionSource
 }
 
-export function BillingActions({ isActive }: Props) {
+export function BillingActions({ isActive, source }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   // 許可リスト（Functions の STRIPE_PRICE_IDS）に含まれる price を指定する
   const priceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ID ?? ''
+
+  // アプリ内課金の管理はストア側にしかない（画面の注記が導線）
+  const canManage = isActive && source !== 'revenuecat'
+
+  if (isActive && !canManage) {
+    return null
+  }
 
   async function handleClick() {
     setLoading(true)

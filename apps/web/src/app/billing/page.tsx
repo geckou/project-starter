@@ -37,7 +37,7 @@ export default async function BillingPage() {
         )}
       </div>
 
-      <BillingActions isActive={active} />
+      <BillingActions isActive={active} source={subscription?.source} />
 
       {subscription?.source === 'revenuecat' && (
         <p className="mt-4 text-sm text-gray-500">

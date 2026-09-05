@@ -17,7 +17,7 @@
 | 公開 | `/` | トップ | | 不要 | | |
 | 公開 | `/login` | ログイン | | 不要 | | |
 | 要認証 | `/dashboard` | ダッシュボード | | 必要 | | middleware は Cookie 存在チェックのみ。実検証（verifySessionCookie）はページ側 |
-| 要認証 | `/billing` | 課金 | 購読状態の表示と Checkout / ポータルへの導線 | 必要 | | billing 層。層を外すと消える |
+| 要認証 | `/billing` | 課金 | 購読状態の表示と Checkout / ポータルへの導線（アプリ内課金で契約中のユーザーには Stripe ポータルの導線を出さず、ストアの設定画面への注記だけを出す） | 必要 | | billing 層。層を外すと消える |
 | 公開 | `/ui-demo` | UI デモ | `@geckou/ui-react` の表示確認用。派生プロジェクトでは削除してよい | 不要 | | |
 
 ### 1-2. Mobile

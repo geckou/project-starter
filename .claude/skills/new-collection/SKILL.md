@@ -14,18 +14,22 @@ description: Firestore コレクションの追加（型定義 + API + ルール
 `packages/shared/src/types/index.ts` にドキュメントの型を追加する。
 
 ```typescript
+import type { DateLike } from './index'
+
 export type Post = {
   id: string
   title: string
   content: string
   authorId: string
-  createdAt: Date
-  updatedAt: Date
+  createdAt: DateLike
+  updatedAt: DateLike
 }
 ```
 
 - `id` フィールドは必須（ドキュメント ID）
-- 日付フィールドは `Date` 型（Firestore Timestamp からの変換はクライアント側で行う）
+- 日付フィールドは `DateLike`（`Date | { toDate(): Date }`）。**書き込みは `Date`、
+  読み出しは `Timestamp`** になるため、どちらかに寄せると実行時に落ちる。
+  値として使うときは `toDate()`（`@geckou/shared` が export）を通す（→ `/new-type`）
 - `packages/shared/src/index.ts` から自動エクスポートされる
 
 ### 2. Firestore セキュリティルールの追加
