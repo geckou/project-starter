@@ -38,8 +38,7 @@ export する方針のため、`firebase/firestore` の `Timestamp` は import �
 `toDate()` を持つ構造型として表現している。
 
 ```typescript
-import type { DateLike } from './index'
-
+// DateLike は同じ index.ts で宣言済み（import は不要）
 export type EntityName = {
   id: string
   createdAt: DateLike

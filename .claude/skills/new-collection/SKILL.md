@@ -14,8 +14,7 @@ description: Firestore コレクションの追加（型定義 + API + ルール
 `packages/shared/src/types/index.ts` にドキュメントの型を追加する。
 
 ```typescript
-import type { DateLike } from './index'
-
+// DateLike は同じ index.ts で宣言済み（import は不要）
 export type Post = {
   id: string
   title: string

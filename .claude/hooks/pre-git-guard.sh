@@ -343,13 +343,25 @@ cmd=$(printf '%s\n' "$segments" | {
     # 部分一致にすると、gh pr create --body '... git push ...' のように本文へ
     # コマンド例を引用しただけで規約違反として弾いてしまう
     seg_cmd=$(printf '%s' "$seg" | awk '
-      BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34) }
+      BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
       {
-        for (i = 1; i <= NF; i++) {
-          t = $i
+        # クォートを跨いでトークンへ分割する。空白区切りで読むと
+        # `FOO='"'"'a b'"'"' git commit` の値の空白で語がずれ、コマンド語を取り違える
+        n = 0; q = ""; tok = ""; len = length($0)
+        for (i = 1; i <= len; i++) {
+          c = substr($0, i, 1)
+          if (q != "") { if (c == q) q = ""; else tok = tok c; continue }
+          if (c == bs && i < len) { i++; tok = tok substr($0, i, 1); continue }
+          if (c == sq || c == dq) { q = c; continue }
+          if (c == " " || c == "\t") { if (tok != "") T[++n] = tok; tok = ""; continue }
+          tok = tok c
+        }
+        if (tok != "") T[++n] = tok
+
+        for (i = 1; i <= n; i++) {
+          t = T[i]
           # 環境変数の前置き（FOO=bar git … / env FOO=bar git …）は読み飛ばす
           if (t ~ /^[A-Za-z_][A-Za-z_0-9]*=/) continue
-          gsub(sq, "", t); gsub(dq, "", t)
           sub(/^.*\//, "", t)
           if (t == "env") { skip_env = 1; continue }
           if (skip_env && (t == "-" || t == "-i" || t == "--ignore-environment" ||
@@ -1050,7 +1062,11 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
         # heredoc で渡された本文はコマンド文字列に残っているので、そこから件名を取る
         # （git の既定の cleanup が先頭の空行を落とすので、最初の非空行が件名）
         stdin_subject=$(printf '%s\n' "$raw_cmd" | awk '
-          !body && /<<-?[[:space:]]*["'"'"'"'"'"']?[A-Za-z_][A-Za-z_0-9]*/ { body = 1; next }
+          # メッセージを渡している git commit の行に付いた heredoc だけを見る。
+          # 最初の heredoc を無条件に選ぶと、先行する別の heredoc（`cat <<X` 等）の
+          # 本文を件名として検証してしまい、規約違反の件名が素通りする
+          !body && /git[[:space:]]+commit/ && /(-F|--fil)/ &&
+            /<<-?[[:space:]]*["'"'"'"'"'"']?[A-Za-z_][A-Za-z_0-9]*/ { body = 1; next }
           body && $0 !~ /^[[:space:]]*$/ { print; exit }
         ')
 

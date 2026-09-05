@@ -460,6 +460,21 @@ run 2 'git commit -F - の heredoc（規約違反）' \
 wip
 EOF" feat/existing
 
+# 引用符付きの環境変数を前置きしてもコマンド語を取り違えない
+run 2 '引用符に空白を含む環境変数を前置きしても git を検査する' \
+  "FOO='a b' git commit -n -m wip" feat/existing
+run 0 '同じ前置きで規約どおりのメッセージなら通す' \
+  "FOO='a b' git commit -m 'feat: x'" feat/existing
+
+# 先行する別の heredoc の本文を件名として検証しない
+run 2 '先行する heredoc があっても commit 本文を検証する' \
+  "cat <<'X' > /dev/null
+feat: これは別の本文
+X
+git commit -F - <<'EOF'
+wip
+EOF" feat/existing
+
 # #239: 破壊的変更の件名
 run 0 'feat!: を許可する' "git commit -m 'feat!: breaking'" feat/existing
 run 0 'feat(scope)!: を許可する' \

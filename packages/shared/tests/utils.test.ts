@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDate, sleep } from '../src/utils'
+import { formatDate, sleep, toDate } from '../src/utils'
 
 describe('formatDate', () => {
   // ローカルタイムゾーン基準のため、テストもローカル時刻のコンストラクタで作る
@@ -41,5 +41,24 @@ describe('sleep', () => {
   it('Promise を返す', () => {
     const result = sleep(1)
     expect(result).toBeInstanceOf(Promise)
+  })
+})
+
+describe('toDate', () => {
+  // Firestore は書き込みを Date で受け、読み出しでは Timestamp（toDate() を持つ）
+  // を返す。値として使う前にここを通す
+  it('Date はそのまま返す', () => {
+    const date = new Date(2026, 3, 3)
+    expect(toDate(date)).toBe(date)
+  })
+
+  it('Timestamp 互換の値は toDate() の結果を返す', () => {
+    const date = new Date(2026, 3, 3)
+    expect(toDate({ toDate: () => date })).toBe(date)
+  })
+
+  it('null / undefined は null を返す', () => {
+    expect(toDate(null)).toBeNull()
+    expect(toDate(undefined)).toBeNull()
   })
 })
