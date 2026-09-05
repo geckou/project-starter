@@ -723,8 +723,41 @@ run_qstart '未回答の確認事項（2 件）' '未回答の件数を出す'
 run_qstart 'Q-001 予約のキャンセル期限' '未回答の見出しを出す'
 refute 'Q-000' '「回答済み」の見出しは拾わない'
 
+# 回帰(#232): questions.md は記入例を HTML コメントで持っている。コメントを
+# 読み飛ばさないと、キューが空の初期状態でも毎回「未回答 1 件」を出していた
+echo
+echo '=== session-start-questions: HTML コメントの中は拾わない ==='
+{
+  printf '# 確認事項キュー\n\n## 未回答\n\n'
+  printf '<!--\n以下のテンプレートで追記する。\n\n### Q-001 一行で書いた問い\n\n- 発生: いつ / どの作業中か\n-->\n\n'
+  printf '（なし）\n\n## 回答済み\n\n<!--\n### Q-000 問い\n-->\n\n（なし）\n'
+} > "$QUESTIONS"
+run_qstart EMPTY '記入例だけの初期状態では何も出さない'
+
+{
+  printf '# 確認事項キュー\n\n## 未回答\n\n'
+  printf '<!--\n### Q-001 一行で書いた問い\n-->\n\n'
+  printf '### Q-010 実際に積んだ問い\n\n- ブロック: 予約キャンセル API\n'
+} > "$QUESTIONS"
+run_qstart '未回答の確認事項（1 件）' 'コメントの外の見出しだけを数える'
+run_qstart 'Q-010 実際に積んだ問い' '実際に積んだ見出しは出す'
+refute 'Q-001' '記入例の見出しは出さない'
+
+# 1 行で閉じるコメントでコメント判定が開きっぱなしにならないこと
+{
+  printf '# 確認事項キュー\n\n## 未回答\n\n'
+  printf '<!-- 1 行で閉じる注記 -->\n\n'
+  printf '### Q-011 注記の後の問い\n'
+} > "$QUESTIONS"
+run_qstart 'Q-011 注記の後の問い' '1 行で閉じるコメントの後の見出しは拾う'
+
 echo
 echo '=== session-start-questions: 設定で場所を差し替えられる ==='
+write_questions '### Q-001 予約のキャンセル期限
+
+- ブロック: 予約キャンセル API
+
+### Q-002 通知の文言'
 printf '# q\n\n## 未回答\n\n### Q-900 差し替え先の問い\n' > "$SESSION/other-questions.md"
 HOOK_QUESTIONS_FILE=other-questions.md
 export HOOK_QUESTIONS_FILE
@@ -773,6 +806,18 @@ write_questions '### Q-001 予約のキャンセル期限
 
 ### Q-002 通知の文言'
 run_qstop 0 '見出しが同じなら本文を直してもブロックしない' '{}'
+
+# 回帰(#232): 抽出は session-start-questions.sh と同じもの。コメントを読み飛ばさないと、
+# 記入例を書き足しただけで「確認事項が増えた」と誤判定してブロックする
+echo
+echo '=== stop-questions-reminder: HTML コメントの中は数えない ==='
+{
+  printf '# 確認事項キュー\n\n## 未回答\n\n'
+  printf '<!--\n### Q-999 記入例の問い\n-->\n\n'
+  printf '### Q-001 予約のキャンセル期限\n\n- ブロック: 予約キャンセル API\n\n'
+  printf '### Q-002 通知の文言\n\n## 回答済み\n\n### Q-000 回答済みの問い\n\n- 回答: 済\n'
+} > "$QUESTIONS"
+run_qstop 0 '記入例を書き足しただけではブロックしない' '{}'
 
 git -C "$SESSION" checkout -q -- .claude/docs/questions.md
 rm -f "$SESSION/other-questions.md"

@@ -15,10 +15,14 @@ file=${HOOK_QUESTIONS_FILE:-.claude/docs/questions.md}
 
 [ -f "$file" ] || exit 0
 
-# 「## 未回答」セクションの中の見出し（### で始まる行）だけを拾う
+# 「## 未回答」セクションの中の見出し（### で始まる行）だけを拾う。
+# HTML コメントの中は読み飛ばす（questions.md は記入例をコメントで持っており、
+# 拾ってしまうと空のキューでも毎回「未回答 1 件」を出す）
 pending=$(awk '
+  in_comment { if (/-->/) in_comment = 0; next }
+  /<!--/ { if (!/-->/) in_comment = 1; next }
   /^## 未回答/ { in_section = 1; next }
-  /^## / { in_section = 0 }
+  /^## / { in_section = 0; next }
   in_section && /^### / { sub(/^### /, ""); print }
 ' "$file")
 

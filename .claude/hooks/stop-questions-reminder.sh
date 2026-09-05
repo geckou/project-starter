@@ -24,11 +24,14 @@ active=$(printf '%s' "$input" | jq -r '.stop_hook_active // false')
 [ -f "$file" ] || exit 0
 git rev-parse --git-dir >/dev/null 2>&1 || exit 0
 
-# 「## 未回答」セクションの見出しだけを取り出す（session-start-questions.sh と同じ抽出）
+# 「## 未回答」セクションの見出しだけを取り出す（session-start-questions.sh と同じ抽出）。
+# HTML コメントの中は読み飛ばす（記入例の見出しを項目として数えないため）
 extract_pending() {
   awk '
+    in_comment { if (/-->/) in_comment = 0; next }
+    /<!--/ { if (!/-->/) in_comment = 1; next }
     /^## 未回答/ { in_section = 1; next }
-    /^## / { in_section = 0 }
+    /^## / { in_section = 0; next }
     in_section && /^### / { sub(/^### /, ""); print }
   '
 }
