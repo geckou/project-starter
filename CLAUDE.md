@@ -470,7 +470,10 @@ ESLint / Prettier / commitlint の設定は、ツール側が**共有設定を n
 - **公開済みの型定義と比べて、破壊的変更が patch に載っていないかを検査する**（自動公開は
   `publish.yml` が、タグ経由は `release.sh` が行う）。
   差分があると止まるので、minor 以上に上げ直すか、互換の追加だと分かっていれば `--force` を付ける
-  （検査できない場合は素通しする安全網。実装は `scripts/check-api-diff.mjs`）
+  （検査できない場合は素通しする安全網。実装は `scripts/check-api-diff.mjs`）。
+  **比較はコメントと空白を落として行う** — `declaration: true` で src のコメント修正が
+  そのまま `.d.ts` に出るため、生テキストで比べると `docs:` 相当の patch のたびに赤くなり、
+  `--force` が習慣になって本来の検知が効かなくなる
 
 ### 依存更新は Renovate の preset で配る
 

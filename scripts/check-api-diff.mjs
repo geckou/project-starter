@@ -186,6 +186,72 @@ function collectFiles(root, extension) {
   return files.sort()
 }
 
+/**
+ * コメントを落とす。文字列・テンプレートリテラルの中の `//` は落とさない。
+ *
+ * `declaration: true` なので src のコメント修正はそのまま .d.ts に出る。
+ * 生テキストで比べると docs 相当の修正を patch で出すたびに publish が赤くなり、
+ * --force を常用する習慣ができて、本来の目的（破壊的変更の検知）が働かなくなる。
+ */
+function stripComments(source) {
+  let out = ''
+  let index = 0
+
+  while (index < source.length) {
+    const char = source[index]
+    const next = source[index + 1]
+
+    if (char === '"' || char === "'" || char === '`') {
+      const quote = char
+      out += char
+      index += 1
+
+      while (index < source.length) {
+        out += source[index]
+
+        if (source[index] === '\\') {
+          out += source[index + 1] ?? ''
+          index += 2
+          continue
+        }
+
+        const closed = source[index] === quote
+        index += 1
+        if (closed) break
+      }
+
+      continue
+    }
+
+    if (char === '/' && next === '/') {
+      while (index < source.length && source[index] !== '\n') index += 1
+      continue
+    }
+
+    if (char === '/' && next === '*') {
+      index += 2
+      while (
+        index < source.length &&
+        !(source[index] === '*' && source[index + 1] === '/')
+      ) {
+        index += 1
+      }
+      index += 2
+      continue
+    }
+
+    out += char
+    index += 1
+  }
+
+  return out
+}
+
+/** 型定義の比較用に正規化する（コメントと空白の差は API の差ではない） */
+function normalizeTypes(content) {
+  return stripComments(content).replace(/\s+/g, ' ').trim()
+}
+
 function diffTrees(before, after, extension) {
   const beforeFiles = collectFiles(before, extension)
   const afterFiles = collectFiles(after, extension)
@@ -203,6 +269,17 @@ function diffTrees(before, after, extension) {
       : null
 
     if (beforeContent === afterContent) continue
+
+    // .d.ts はコメントと空白を落として比べる（両方が存在するときだけ。
+    // 追加・削除はそれ自体が API の変化なので正規化しても消えない）
+    if (
+      extension === '.d.ts' &&
+      beforeContent !== null &&
+      afterContent !== null &&
+      normalizeTypes(beforeContent) === normalizeTypes(afterContent)
+    ) {
+      continue
+    }
 
     changed.push({
       file,

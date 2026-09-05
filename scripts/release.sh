@@ -55,7 +55,11 @@ if [ "${#PACKAGES[@]}" -eq 0 ]; then
   exit 1
 fi
 
-if [ -n "$(git status --porcelain)" ]; then
+# 追跡されているファイルの変更だけを見る。タグが指すのはコミット済みの履歴で、
+# 公開も publish.yml が CI 側のチェックアウトから行うため、未追跡ファイル
+# （.env・作業中のメモ・ビルド生成物）はタグの内容にも公開物にも影響しない。
+# ここで拾うと「.env があるだけでリリースできない」になる
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   echo "コミットされていない変更があります。先にコミットしてください。" >&2
   exit 1
 fi
