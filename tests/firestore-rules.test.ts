@@ -8,7 +8,15 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing'
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore'
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest'
 
 let testEnv: RulesTestEnvironment
@@ -67,6 +75,38 @@ describe('users コレクション', () => {
     await assertSucceeds(
       updateDoc(doc(db, 'users/alice'), { name: 'Alice Updated' })
     )
+  })
+
+  it('他人のドキュメントは update できない', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'users/alice'), { name: 'Alice' })
+    })
+
+    const db = testEnv.authenticatedContext('bob').firestore()
+    await assertFails(updateDoc(doc(db, 'users/alice'), { name: 'Hacked' }))
+  })
+
+  it('未認証では create できない', async () => {
+    const db = testEnv.unauthenticatedContext().firestore()
+    await assertFails(setDoc(doc(db, 'users/alice'), { name: 'Anonymous' }))
+  })
+
+  it('未認証では update できない', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'users/alice'), { name: 'Alice' })
+    })
+
+    const db = testEnv.unauthenticatedContext().firestore()
+    await assertFails(updateDoc(doc(db, 'users/alice'), { name: 'Hacked' }))
+  })
+
+  it('コレクション全体は list できない（本人でも）', async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'users/alice'), { name: 'Alice' })
+    })
+
+    const db = testEnv.authenticatedContext('alice').firestore()
+    await assertFails(getDocs(collection(db, 'users')))
   })
 
   it('本人でも subscription を含めて create はできない', async () => {

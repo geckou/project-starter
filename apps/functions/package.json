@@ -18,8 +18,8 @@
     "node": "22"
   },
   "dependencies": {
-    "@geckou/billing": "^0.3.0",
-    "@geckou/firebase-server": "^0.2.0",
+    "@geckou/billing": "^0.6.0",
+    "@geckou/firebase-server": "^0.3.0",
     "@geckou/shared": "*",
     "cors": "^2.8.5",
     "express": "^4.22.2",
@@ -34,7 +34,6 @@
     "@types/node": "^22.20.1",
     "esbuild": "^0.28.2",
     "eslint": "^9.39.5",
-    "firebase-functions-test": "^3.5.0",
     "typescript": "^5.0.0",
     "vitest": "^4.1.11"
   }

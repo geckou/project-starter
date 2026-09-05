@@ -188,9 +188,14 @@ Auth しか要らないページに Firestore SDK が乗らないようにする
 | 制限 | 値 | 理由 |
 | --- | --- | --- |
 | サイズ | 10MB 未満 | 無制限だと課金と悪用の入口になる |
-| 種別 | `image/*` | 参照実装の想定（アバター・写真） |
+| 種別 | `image/(png\|jpeg\|gif\|webp)` | 参照実装の想定（アバター・写真）。`image/*` にしない理由は下記 |
 
-画像以外も置くプロジェクトは `contentType` の条件を広げる。削除は
+**SVG は意図的に外している。** SVG は `<script>` を含められ、`getDownloadURL` の URL は
+インラインで配信されるため、`firebasestorage.googleapis.com` オリジン上でのスクリプト実行
+（stored XSS）になる。アバター・写真用途なら不要。足すなら配信側の対策
+（`Content-Disposition: attachment` 等）とセットで判断する。
+
+画像以外も置くプロジェクトは `contentType` の列挙を広げる。削除は
 `request.resource` を持たないため、この 2 条件を課さない（`allow delete` を別に書く）。
 拒否ケースは `tests/storage-rules.test.ts` にあり、`yarn test:rules` で検証する。
 
@@ -259,7 +264,8 @@ Apple / Google への月次の取引報告（External Purchase Server API / exte
 決済ロジックの本体は **[`@geckou/billing`](https://github.com/geckou/kit)**（npm パッケージ）にある。
 権利状態の反映（冪等性・順序制御）・Stripe / RevenueCat Webhook・Checkout / ポータル作成・
 カスタムクレーム同期はパッケージ側で実装され、修正は Renovate の更新 PR として届く
-（`renovate.json5`。→ `.claude/docs/dependencies.md`）。
+（`renovate.json5`。→ `.claude/docs/dependencies.md`）。ただし `@geckou/*` が 0.x の間は
+minor が `^` のレンジを跨がないため、Dependency Dashboard で承認するまで PR が出ない。
 リポジトリ内に残るのは配線と、プロジェクトごとに編集するフックのみ。
 
 | 層 | ファイル | 役割 |
@@ -329,11 +335,12 @@ if (isSubscriptionActive(user.subscription)) {
 
 ```
 components/
-├── icons/        # アイコンコンポーネント
+├── icons/        # プロジェクト固有のアイコン
 ├── auth/         # 認証関連（LoginForm, AuthGuard 等）
 └── <feature>/    # 機能別（dashboard/, settings/ 等）
 ```
 
-**汎用 UI（Button, Modal, Input 等）は `@geckou/ui-react` から取る**（`packages/README.md`）。
-`components/` に置くのはプロジェクト固有のものだけ。小規模なうちは `components/` 直下でよい。
+**汎用 UI（Button, Modal, Input 等）とアイコンは `@geckou/ui-react` から取る**（`packages/README.md`）。
+`components/` に置くのはプロジェクト固有のものだけ。`components/icons/` も同じで、
+`@geckou/ui-react` に無いアイコンだけを置く。小規模なうちは `components/` 直下でよい。
 増えてきたら機能別に分ける。

@@ -209,11 +209,6 @@ yarn dev:web
 ```bash
 REVENUECAT_API_KEY_APPLE=appl_...
 REVENUECAT_API_KEY_GOOGLE=goog_...
-```
-
-ルートの `.env.<環境名>`:
-
-```bash
 # RevenueCat Dashboard > Integrations > Webhooks で設定する任意の文字列
 REVENUECAT_WEBHOOK_AUTH=Bearer <任意の長いランダム文字列>
 ```

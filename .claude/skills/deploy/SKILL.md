@@ -77,6 +77,7 @@ CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウ�
 - デプロイ前チェック（型・lint・テスト・ビルド）は deploy.sh が自動実行する。ローカルでスキップしない（`SKIP_CHECKS=1` は CI 専用。CI ではワークフロー側の step が同じチェックを実行済み）
 - Firestore / Storage Rules の変更は本番データに即座に影響するため、production へのデプロイ前に差分を必ず確認する
 - ルールを変更したら `yarn test:rules` を実行する（Firestore / Storage の両方を検証する）
+- 本番環境の `.env.production` の値が最新か確認する
 
 ## 派生プロジェクトへの一度きりの移行
 
@@ -99,4 +100,3 @@ CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウ�
 
 なお pre-commit フック（`.husky/pre-commit`）は同期対象なので、
 書き換えなくてもコミット時の書き換え事故は起きない。
-- 本番環境の `.env.production` の値が最新か確認する

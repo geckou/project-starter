@@ -46,7 +46,9 @@ jobs:
         with:
           token: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
 
-      - uses: AndreasAugustin/actions-template-sync@v2
+      # サードパーティ Action は書き込み権限のあるトークン（TEMPLATE_SYNC_TOKEN）を受け取るため、
+      # 差し替え可能なタグではなくコミット SHA で固定する。更新は Renovate が SHA ごと差し替える
+      - uses: AndreasAugustin/actions-template-sync@8a0f668b83c32a0f673353086d74f12b8853d4f5 # v2.5.3
         with:
           source_repo_path: geckou/project-starter
           upstream_branch: production

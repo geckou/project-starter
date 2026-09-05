@@ -103,6 +103,31 @@ describe('users 領域のアップロード制限', () => {
     )
   })
 
+  it('SVG は拒否する（<script> を含められ、配信 URL 上で実行されるため）', async () => {
+    const storage = testEnv.authenticatedContext('alice').storage()
+
+    await assertFails(
+      uploadString(ref(storage, 'users/alice/avatar.svg'), '<svg />', 'raw', {
+        contentType: 'image/svg+xml',
+      })
+    )
+  })
+
+  it('jpeg / webp は通す', async () => {
+    const storage = testEnv.authenticatedContext('alice').storage()
+
+    await assertSucceeds(
+      uploadString(ref(storage, 'users/alice/photo.jpg'), 'data', 'raw', {
+        contentType: 'image/jpeg',
+      })
+    )
+    await assertSucceeds(
+      uploadString(ref(storage, 'users/alice/photo.webp'), 'data', 'raw', {
+        contentType: 'image/webp',
+      })
+    )
+  })
+
   it('10MB 以上は拒否する', async () => {
     const storage = testEnv.authenticatedContext('alice').storage()
     const tooLarge = new Uint8Array(10 * 1024 * 1024 + 1)

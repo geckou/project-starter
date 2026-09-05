@@ -300,7 +300,7 @@ Closes #166
 - 関数宣言（`function Name()`）で統一（アロー関数のコンポーネントは使わない）
 - default export は Next.js の規約ファイル（`page.tsx`, `layout.tsx` 等）のみ。コンポーネントは named export
 - Server Component をデフォルト、必要時のみ `'use client'`
-- アイコンは `components/icons/`、定数は `lib/constants/`
+- アイコンは汎用なものを `@geckou/ui-react` から取り、プロジェクト固有のものだけ `components/icons/` に置く。定数は `lib/constants/`
 - セマンティック HTML + Tailwind CSS でスタイリング
 - ESLint: 各ワークスペースの `eslint.config.mjs`（flat config）のルールに従う。
   中身は `@geckou/eslint-config` を参照するだけで、ルール本体は

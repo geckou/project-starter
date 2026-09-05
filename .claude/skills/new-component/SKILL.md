@@ -62,7 +62,7 @@ export function ComponentName({ children }: Props) {
 - Props の型は同ファイル内に `type` で定義する（`interface` は使わない）
 - 大きくなったら `@geckou/shared/types` に型を移動する
 - ファイル名・コンポーネント名はパスカルケース（例: `UserProfile.tsx`）
-- アイコンコンポーネントは `components/icons/` に配置する
+- アイコンは汎用なものを `@geckou/ui-react` から取る。プロジェクト固有のアイコンだけ `components/icons/` に配置する
 - 同じ要素を繰り返し使う場合は積極的にコンポーネント化する
 - 略語は避ける（`btn` → `button`, `msg` → `message`）
 - 変数は `const` を使う。配列は複数形にする（`users`, `items`）
