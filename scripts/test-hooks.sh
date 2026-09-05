@@ -49,7 +49,9 @@ init_repo() {
 
 init_repo "$SESSION" production
 git -C "$SESSION" branch feat/existing
+git -C "$SESSION" branch feat/other
 git -C "$SESSION" branch release/1.0.0
+git -C "$SESSION" branch claude/session-abc123
 
 init_repo "$OTHER" main
 init_repo "$SPACED" main
@@ -79,6 +81,21 @@ run() {
     printf 'FAIL [want %s got %s] %s\n     cmd: %s\n     out: %s\n' \
       "$want" "$status" "$desc" "$command" "$LAST_OUT"
   fi
+}
+
+# expect <部分文字列> <説明>: 直前の run の出力に現れるべき文字列。
+# 許可と ask はどちらも exit 0 なので、区別するにはメッセージを見るしかない
+expect() {
+  case "$LAST_OUT" in
+    *"$1"*)
+      pass=$((pass + 1))
+      printf 'ok   [+] %s\n' "$2"
+      ;;
+    *)
+      fail=$((fail + 1))
+      printf 'FAIL %s\n     out: %s\n' "$2" "$LAST_OUT"
+      ;;
+  esac
 }
 
 # refute <部分文字列> <説明>: 直前の run の出力に現れてはいけない文字列
@@ -496,6 +513,57 @@ echo
 echo '=== chore/ は許可する（バージョン上げ・依存更新の置き場） ==='
 run 0 'chore/* を production から切る' 'git checkout -b chore/bump-prettier-config'
 run 2 'chore/ もケバブケースを外れると弾く' 'git checkout -b chore/Bump_Config'
+
+echo
+echo '=== #243: 文章だけの規約を機械的に止める ==='
+run 0 'PR のマージは ask' 'gh pr merge 12 --squash' feat/existing
+expect 'マージは人が決める' 'PR のマージであることを伝える'
+run 0 'gh pr create の本文に書いた gh pr merge は素通し' \
+  "gh pr create --body 'マージは gh pr merge 12 --squash で行う'" feat/existing
+refute 'permissionDecision' '本文中のコマンド例では確認を求めない'
+
+run 0 'ローカルブランチの削除は ask' 'git branch -D feat/other' feat/existing
+expect 'ブランチの削除' '削除であることを伝える'
+run 0 'リモートブランチの削除（--delete）は ask' \
+  'git push origin --delete feat/other' feat/existing
+expect 'リモートのブランチ削除' 'リモート削除であることを伝える'
+run 0 'リモートブランチの削除（:branch）は ask' \
+  'git push origin :feat/other' feat/existing
+expect 'リモートのブランチ削除' 'コロン形式でも検出する'
+run 0 'ブランチの一覧は削除ではない' "git branch -r --list 'origin/release/*'" feat/existing
+refute 'permissionDecision' '一覧では確認を求めない'
+
+run 0 '作業ブランチへの force push は ask' \
+  'git push --force origin feat/existing' feat/existing
+expect '履歴の書き換え' 'force push であることを伝える'
+run 2 'production への force push は deny のまま' \
+  'git push --force origin production' feat/existing
+run 0 '通常の push は素通し' 'git push -u origin feat/existing' feat/existing
+refute 'permissionDecision' '通常の push では確認を求めない'
+
+run 0 'feat/* 同士のマージは ask' 'git merge feat/other' feat/existing
+expect 'feat/* 同士のマージ' 'マージルール違反であることを伝える'
+run 0 'feat/* から release/* のマージは素通し' \
+  'git merge origin/release/1.0.0' feat/existing
+refute 'permissionDecision' 'release/* の取り込みでは確認を求めない'
+run 0 'production 上での feat/* マージは対象外' 'git merge feat/other'
+refute 'permissionDecision' 'feat/* に居ないときは対象外'
+
+run 2 'merge --no-verify は deny' 'git merge --no-verify feat/other' feat/existing
+run 2 'rebase --no-verify は deny' 'git rebase --no-verify production' feat/existing
+
+echo
+echo '=== #245: claude/* の免除はハーネスのセッション内だけ ==='
+run 2 'production から claude/* は切れない' \
+  'git checkout -b claude/whatever' 
+run 2 'claude/ を付けても命名・分岐元の検査は外せない' \
+  'git checkout -b claude/Whatever_Name feat/existing' feat/existing
+run 0 'claude/* セッション内なら名前の形式を問わない' \
+  'git checkout -b claude/Whatever_Name' claude/session-abc123
+run 0 'claude/* セッション内でセッションブランチを切り直せる' \
+  'git checkout -B claude/session-abc123 production' claude/session-abc123
+run 2 'claude/* セッション内でも feat/* からは切れない' \
+  'git checkout -b claude/other feat/existing' claude/session-abc123
 
 echo
 echo '=== 既存の挙動（回帰） ==='

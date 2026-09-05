@@ -566,7 +566,8 @@ ESLint / Prettier で強制できる範囲は各ワークスペースの設定�
 
 ## Git ブランチ運用
 
-**デフォルトブランチは `production`**（`main` ではない）。全てのブランチは `production` から切る。
+**デフォルトブランチは `production`**（`main` ではない）。全てのブランチは `production` から切る
+（例外: QA 修正の `fix/*` は対象の `release/*` から切ってよい）。
 
 - ブランチ命名規則・コミットメッセージ規約・マージルール →
   [CLAUDE.md](CLAUDE.md) の「Git ブランチ運用」。

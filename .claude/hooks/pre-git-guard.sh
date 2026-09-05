@@ -16,6 +16,19 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
 # `git commit -F -` の件名を取り出すときだけこちらを見る
 raw_cmd=$cmd
 
+DOC='詳細は CLAUDE.md「Git ブランチ運用」/ .claude/docs/git-workflow.md を参照。'
+
+deny() {
+  printf '%s\n%s\n' "$1" "$DOC" >&2
+  exit 2
+}
+
+ask() {
+  jq -n --arg r "$1
+$DOC" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
+  exit 0
+}
+
 # heredoc の本文は、他のプログラムへ渡されるデータ（ファイルの中身、スクリプト、
 # ドキュメント）であって実行される git コマンドではないため、検査対象から外す。
 # ここを見てしまうと、コマンド例を含むドキュメントやスクリプトを書けなくなる。
@@ -153,6 +166,16 @@ while [ "$unwrap_count" -lt 3 ]; do
   cmd=$unwrapped
   unwrap_count=$((unwrap_count + 1))
 done
+
+# --- PR のマージ --------------------------------------------------------
+# CLAUDE.md「自律性の境界」で「その場で止めて聞く」に置いている操作。
+# git のサブコマンドではないので、下の git 向けの絞り込みより前に見る。
+# 検査するのは「コマンドの位置に現れた gh pr merge」だけ。引数の中に書いた
+# コマンド例（gh pr create --body '... gh pr merge ...'）は素通しする
+if printf '%s' "$raw_cmd" |
+  grep -Eq '(^|[;&|][[:space:]]*|[[:space:]]&&[[:space:]]|[[:space:]]\|\|[[:space:]])[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'; then
+  ask 'PR のマージはユーザーが判断します（CLAUDE.md「PR は出す、マージは人が決める」）。マージしてよいかユーザーに確認してください。'
+fi
 
 printf '%s' "$cmd" | grep -q 'git' || exit 0
 
@@ -862,18 +885,6 @@ cmd_flags=$(printf '%s\n' "$cmd" | awk '
 ')
 
 TYPES='feat|fix|refactor|style|docs|test|chore'
-DOC='詳細は CLAUDE.md「Git ブランチ運用」/ .claude/docs/git-workflow.md を参照。'
-
-deny() {
-  printf '%s\n%s\n' "$1" "$DOC" >&2
-  exit 2
-}
-
-ask() {
-  jq -n --arg r "$1
-$DOC" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
-  exit 0
-}
 
 has() { printf '%s' "$cmd_flags" | grep -Eq "$1"; }
 
@@ -885,9 +896,9 @@ current=$(git -C "${guard_dir:-.}" rev-parse --abbrev-ref HEAD 2>/dev/null)
 # git は長いオプションを一意な前方一致で受けるため、--no-verif のような略記でも
 # 検証は飛ぶ。--no-ver / --no-verb は --no-verbose と曖昧で git 自身が弾くので、
 # --no-verify だけに一意に定まる --no-veri 以降を対象にする
-if { has '(^|[[:space:]])git[[:space:]]+(commit|push)' && has '(^|[[:space:]])--no-veri[a-z]*([[:space:]]|$)'; } ||
+if { has '(^|[[:space:]])git[[:space:]]+(commit|push|merge|rebase)' && has '(^|[[:space:]])--no-veri[a-z]*([[:space:]]|$)'; } ||
   [ "${commit_n_bundle:-0}" -gt 0 ]; then
-  deny '--no-verify / commit -n による検証スキップは禁止です。pre-commit の lint-staged（フォーマット / lint）まで飛ばしてしまうため、失敗したら迂回せず原因を直してください。'
+  deny '--no-verify / commit -n による検証スキップは禁止です（commit / push / merge / rebase のいずれも）。pre-commit の lint-staged（フォーマット / lint）まで飛ばしてしまうため、失敗したら迂回せず原因を直してください。'
 fi
 
 if [ "${hooks_path_bypass:-0}" -gt 0 ]; then
@@ -1181,6 +1192,9 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
     if [ "$force" = "1" ]; then
       case "$dst" in
         production | release/*) exit 11 ;;
+        # 履歴の書き換えは「その場で止めて聞く」対象（CLAUDE.md「自律性の境界」）。
+        # 作業ブランチでも、他人がチェックアウトしていれば取り返しがつかない
+        *) exit 14 ;;
       esac
     fi
 
@@ -1199,7 +1213,30 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
     13)
       deny 'refspec にグロブ（*）や変数・コマンド置換を含む push は禁止です。宛先を決められないため、production への push かどうかを検査できません。push するブランチを明示してください。'
       ;;
+    14)
+      ask '作業ブランチへの force push は履歴の書き換えです（CLAUDE.md「自律性の境界」で「その場で止めて聞く」に置いている操作）。他の人がそのブランチをチェックアウトしていると取り返しがつきません。実行してよいかユーザーに確認してください。'
+      ;;
   esac
+fi
+
+# --- ブランチの削除 -----------------------------------------------------
+# ローカル（git branch -d/-D）もリモート（push --delete / push origin :branch）も
+# 「その場で止めて聞く」対象（CLAUDE.md「自律性の境界」）。--prune は push の節で見る
+if has '(^|[[:space:]])git[[:space:]]+branch[^|;&]*[[:space:]](-d|-D|--delete)([[:space:]]|$)'; then
+  ask 'ブランチの削除はユーザーが判断します（CLAUDE.md「自律性の境界」）。削除してよいかユーザーに確認してください。'
+fi
+
+if has '(^|[[:space:]])git[[:space:]]+push[^|;&]*[[:space:]](-d|--delete)([[:space:]]|$)' ||
+  has '(^|[[:space:]])git[[:space:]]+push[^|;&]*[[:space:]]"?'"'"'?:'; then
+  ask 'リモートのブランチ削除はユーザーが判断します（CLAUDE.md「自律性の境界」）。削除してよいかユーザーに確認してください。'
+fi
+
+# --- feat/* 同士のマージ ------------------------------------------------
+# CLAUDE.md「マージルール」で禁止している。作業が絡まってレビュー単位が崩れ、
+# 一方だけをリリースへ回す選択ができなくなる
+if [ "${current#feat/}" != "$current" ] &&
+  has '(^|[[:space:]])git[[:space:]]+merge[^|;&]*[[:space:]]"?'"'"'?(origin/)?feat/'; then
+  ask 'feat/* 同士のマージは CLAUDE.md「マージルール」で禁止しています（レビュー単位が崩れ、一方だけをリリースへ回せなくなります）。必要なら release/* 経由にするか、実行してよいかユーザーに確認してください。'
 fi
 
 # --- ブランチ作成 -------------------------------------------------------
@@ -1306,11 +1343,25 @@ fi
 
 newbranch=$(unquote "$newbranch")
 
+# claude/* はハーネス（Claude Code の Web / GitHub Action 等）がセッション用に
+# 作るブランチで、命名も分岐元もこちらでは決められないため免除している。
+# ただし免除するのは**そのセッションの中だけ**。既に claude/* にいるときに限る。
+# production にいるときの `git checkout -b claude/Whatever feat/existing` まで
+# 通してしまうと、命名・分岐元の検査を claude/ を付けるだけで外せることになる
+harness_session=0
+case "$current" in
+  claude/*) harness_session=1 ;;
+esac
+
 if [ -n "$newbranch" ]; then
   case "$newbranch" in
-    feat/* | fix/* | refactor/* | chore/* | test/* | docs/* | release/* | hotfix/* | claude/*) ;;
+    feat/* | fix/* | refactor/* | chore/* | test/* | docs/* | release/* | hotfix/*) ;;
+    claude/*)
+      [ "$harness_session" -eq 1 ] ||
+        deny "claude/* はハーネスがセッション用に作るブランチで、自分で切るものではありません: $newbranch。作業ブランチは feat/ fix/ refactor/ chore/ test/ docs/ release/ hotfix/ のいずれかで始めてください。"
+      ;;
     *)
-      deny "ブランチ命名規則違反です: $newbranch。feat/ fix/ refactor/ chore/ test/ docs/ release/ hotfix/ のいずれかで始めてください。"
+      deny "ブランチ命名規則違反です: $newbranch。feat/ fix/ refactor/ chore/ test/ docs/ release/ hotfix/ のいずれかで始めてください（claude/* はハーネスのセッション用ブランチのための例外で、そのセッションの中でのみ使えます）。"
       ;;
   esac
 
@@ -1318,7 +1369,8 @@ if [ -n "$newbranch" ]; then
   # release/hotfix はバージョン表記（1.0.0 / 1.0.0-rc1）を使うためドットも許す。
   branch_name=${newbranch#*/}
   case "$newbranch" in
-    claude/*) ;; # ハーネスが生成するリモートセッション用ブランチは対象外
+    # 名前はハーネスが決めるので形式は問わない（到達するのは claude/* セッションの中だけ）
+    claude/*) ;;
     release/* | hotfix/*)
       printf '%s' "$branch_name" | grep -Eq '^[a-z0-9]+([.-][a-z0-9]+)*$' ||
         deny "ブランチ名が命名規則に合いません: $newbranch。release/ hotfix/ の後ろはバージョン表記（例: release/1.0.0）にしてください。"
@@ -1396,7 +1448,14 @@ if [ -n "$newbranch" ]; then
   esac
 
   case "$newbranch" in
-    claude/*) ;;
+    # セッションブランチの切り直し（マージ済み PR のあとに production から取り直す
+    # 手順）を通す。それ以外の分岐元は claude/ を付けた検査逃れになるので拒否する
+    claude/*)
+      case "$base" in
+        production | "$current") ;;
+        *) deny "claude/* は production か現在のセッションブランチ（$current）から切ってください（現在の分岐元: $base）。ハーネスのセッション用ブランチのための例外であって、分岐元の検査を外すためのものではありません。" ;;
+      esac
+      ;;
     fix/*)
       case "$base" in
         production | release/*) ;;

@@ -311,6 +311,8 @@ Closes #166
 > このセクションのルールは `.claude/hooks/pre-git-guard.sh` が実行前に検証し、違反コマンドはブロックされる（→「フック（強制ルール）」）。
 
 デフォルトブランチは `production`（`main` ではない）。全てのブランチは `production` から切る。
+**例外は QA 修正の `fix/*`** — 対象の `release/*` から切ってよい（そのリリースに載せるため。
+`release/*` への直接コミットが禁止なので、修正はここを通る）。
 
 作業開始時は必ず次の順で行う。
 
@@ -344,8 +346,15 @@ git merge origin/release/<バージョン>     # そのリリースに載せる�
 | バグ修正 | `fix/<名前>` | develop |
 | ドキュメント | `docs/<名前>` | - |
 | テスト | `test/<名前>` | develop |
+| （ハーネス用） | `claude/<名前>` | - |
 
 ケバブケースで、短く意味が分かる名前にする。チケット番号があれば先頭に付ける。
+
+`claude/*` は**自分で切るものではない。** Claude Code の Web / GitHub Action 等の
+ハーネスがセッション用に作るブランチで、名前も分岐元もこちらでは決められないため、
+`pre-git-guard.sh` は命名と分岐元の検査を免除している。免除は
+**既に `claude/*` にいるセッションの中だけ**で、分岐元も `production` か
+そのセッションブランチに限る（`claude/` を付けて検査を外す抜け道にしないため）。
 
 `chore/` は依存更新・パッケージのバージョン上げ・設定変更など、**機能でもバグ修正でもない作業**に使う
 （コミットの type `chore` に対応する。デプロイ先は無い）。
@@ -393,7 +402,7 @@ CLAUDE.md に書いただけのルールは読み飛ばされうるため、**�
 |---|---|---|
 | SessionStart | `session-start-git-context.sh` | `git fetch origin --prune` を実行し、現在ブランチ・`origin/production` との差分・進行中の `release/*` を文脈に入れる（古い情報のまま作業を始めるのを防ぐ） |
 | SessionStart | `session-start-questions.sh` | 未回答の確認事項（`.claude/docs/questions.md`）を冒頭の文脈に入れる |
-| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名（改名・複製を含む）・分岐元・fetch 鮮度・コミットメッセージ形式・husky の迂回（`--no-verify`、`-c core.hooksPath`、`git config` での設定・`--unset` / `--remove-section`、`HUSKY=0` / `GIT_CONFIG_*` の前置きと別セグメントでの `export`）・alias 定義経由の呼び出し・`production` への直接 push を**実行前にブロック**。`sh -c` / `eval` / バッククォートで包んだ形も中身を展開して検査し、サブコマンドや refspec が置換・グロブで書かれていて判定できない形は拒否する。`release/*` / `hotfix/*` への push と `--prune`、`xargs` / パイプ経由の間接実行はユーザー承認を求める。検査対象は**このリポジトリで git を実行するコマンドだけ**（コマンド中の `cd` / `git -C` を解釈し、別リポジトリへの操作と、`gh pr create --body` のような引数に書いたコマンド例は素通しする） |
+| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名（改名・複製を含む）・分岐元・fetch 鮮度・コミットメッセージ形式・husky の迂回（`--no-verify`（commit / push / merge / rebase）、`-c core.hooksPath`、`git config` での設定・`--unset` / `--remove-section`、`HUSKY=0` / `GIT_CONFIG_*` の前置きと別セグメントでの `export`）・alias 定義経由の呼び出し・`production` への直接 push と force push を**実行前にブロック**。`sh -c` / `eval` / バッククォートで包んだ形も中身を展開して検査し、サブコマンドや refspec が置換・グロブで書かれていて判定できない形は拒否する。**ユーザー承認を求める**もの: `release/*` / `hotfix/*` への push と `--prune`、`xargs` / パイプ経由の間接実行、`gh pr merge`（PR のマージ）、ブランチの削除（ローカル / リモート）、作業ブランチへの force push、`feat/*` 同士のマージ。検査対象は**このリポジトリで git を実行するコマンドだけ**（`gh pr merge` を除く。コマンド中の `cd` / `git -C` を解釈し、別リポジトリへの操作と、`gh pr create --body` のような引数に書いたコマンド例は素通しする） |
 | PostToolUse (Bash) | `post-git-branch-reminder.sh` | ブランチ作成直後、進行中の `release/*` があればマージ要否の確認を促す |
 | PostToolUse (Edit/Write) | `post-edit-reminder.sh` | `firestore.rules` / `packages/shared` 変更時に検証コマンドをリマインド |
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
