@@ -6,6 +6,16 @@ import type { ApiResponse } from '@geckou/shared'
 // Android エミュレーターからは localhost ではなく 10.0.2.2 を指定すること
 const EMULATOR_PROJECT_ID =
   Constants.expoConfig?.extra?.firebaseProjectId || 'your-project-develop'
+
+// 本番ビルドで未設定のままエミュレーターへフォールバックすると、配布したアプリが
+// localhost:5001 を叩いて全ての API が失敗する。起動時に落として気付かせる
+// （Functions 側の ALLOWED_ORIGINS と同じ方針。→ .claude/docs/architecture.md）
+if (!__DEV__ && !process.env.EXPO_PUBLIC_API_BASE_URL) {
+  throw new Error(
+    'EXPO_PUBLIC_API_BASE_URL is required in production builds (.env.production を確認してください)'
+  )
+}
+
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
   `http://localhost:5001/${EMULATOR_PROJECT_ID}/asia-northeast1/api`

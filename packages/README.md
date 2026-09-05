@@ -7,10 +7,13 @@
 
 | ディレクトリ | 説明                                                                        |
 | ------------ | --------------------------------------------------------------------------- |
-<!-- layer:firebase:start -->
-| `shared/`    | 共有の型定義・ユーティリティ・Firebase クライアント（初期化 / Firestore / Storage）・状態管理・i18n・デザイントークン |
-<!-- layer:firebase:end -->
+| `shared/`    | 共有の型定義・ユーティリティ・i18n・デザイントークン |
 | `eslint-config/` / `prettier-config/` / `commitlint-config/` | 第0層（規約）の共通設定。npm へ公開して参照で配る（→「第0層の設定パッケージ」） |
+
+<!-- layer:firebase:start -->
+firebase 層があるとき、`shared/` は Firebase クライアント（初期化 / Firestore / Storage）と
+状態管理（Zustand の認証ストア）も持つ。層を外すとその部分だけが消え、`shared/` 自体は残る。
+<!-- layer:firebase:end -->
 
 ## 第0層の設定パッケージ
 

@@ -10,6 +10,14 @@ const SESSION_COOKIE_NAME = 'session'
 const SESSION_EXPIRES_IN_MS = 1000 * 60 * 60 * 24 * 5 // 5日
 
 /**
+ * ID トークンを session cookie に交換できる猶予（Firebase の公式手順に合わせて 5 分）。
+ *
+ * 見ないと、有効期限 1 時間の ID トークンが 1 つ漏れただけで、5 日有効な cookie へ
+ * 格上げできてしまう（ログイン直後以外の XSS でも成立する）。
+ */
+const MAX_AUTH_AGE_SECONDS = 5 * 60
+
+/**
  * クロスサイトからの呼び出しを弾く（ログイン CSRF = セッション固定への対策）。
  *
  * Next.js の Server Actions には Origin 検査があるが、Route Handler には無い。
@@ -71,6 +79,16 @@ export async function POST(request: Request) {
   }
 
   try {
+    // 直近のサインインでのみ cookie を発行する（checkRevoked も同時に見る）
+    const decoded = await adminAuth.verifyIdToken(idToken, true)
+
+    if (Date.now() / 1000 - decoded.auth_time > MAX_AUTH_AGE_SECONDS) {
+      return NextResponse.json(
+        { error: 'Recent sign-in required' },
+        { status: 401 }
+      )
+    }
+
     const sessionCookie = await adminAuth.createSessionCookie(idToken, {
       expiresIn: SESSION_EXPIRES_IN_MS,
     })

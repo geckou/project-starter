@@ -7,9 +7,9 @@
 
 | ディレクトリ | 説明                                                            | デプロイ先の例          |
 | ------------ | --------------------------------------------------------------- | ----------------------- |
-| `web/`       | Next.js 15 (App Router / SSR)。Tailwind CSS v4                  | Vercel / Cloud Run      |
+| `web/`       | Next.js 15 (App Router / SSR)。Tailwind CSS v4                  | Firebase Hosting（`frameworksBackend`） |
 <!-- layer:mobile:start -->
-| `mobile/`    | Expo SDK 52 (iOS / Android)。NativeWind v4。不要なら削除可      | App Store / Google Play |
+| `mobile/`    | Expo SDK 52 (iOS / Android)。NativeWind v4。不要なら `node scripts/remove-layer.mjs mobile` | App Store / Google Play |
 <!-- layer:mobile:end -->
 <!-- layer:functions:start -->
 | `functions/` | Firebase Cloud Functions (v2)。サーバーサイドのビジネスロジック | Firebase                |

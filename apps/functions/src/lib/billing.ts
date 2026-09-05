@@ -36,6 +36,7 @@ const BILLING_ENV_KEYS = [
   'STRIPE_CANCEL_URL',
   'STRIPE_PORTAL_RETURN_URL',
   'REVENUECAT_WEBHOOK_AUTH',
+  'REVENUECAT_ALLOW_SANDBOX',
   'SYNC_SUBSCRIPTION_CLAIMS',
 ] as const
 
@@ -69,7 +70,12 @@ export function getBilling(): Billing {
         }
       : undefined,
     revenuecat: process.env.REVENUECAT_WEBHOOK_AUTH
-      ? { webhookAuth: process.env.REVENUECAT_WEBHOOK_AUTH }
+      ? {
+          webhookAuth: process.env.REVENUECAT_WEBHOOK_AUTH,
+          // Sandbox（TestFlight / 内部テストトラック）の購入は既定で無視される。
+          // develop 環境だけ true にしないと、IAP の検証手順が「反映されない」で止まる
+          allowSandbox: process.env.REVENUECAT_ALLOW_SANDBOX === 'true',
+        }
       : undefined,
     syncClaims: process.env.SYNC_SUBSCRIPTION_CLAIMS === 'true',
     onSubscriptionUpgraded,

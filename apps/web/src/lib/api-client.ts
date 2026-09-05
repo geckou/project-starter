@@ -5,6 +5,19 @@ import { auth } from '@/lib/firebase'
 // 未設定時は Functions エミュレーターを指す（プロジェクト ID は Firebase 設定から取得）
 const EMULATOR_PROJECT_ID =
   process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'your-project-develop'
+
+// 本番ビルドで未設定のままエミュレーターへフォールバックすると、全ての API が
+// localhost:5001 を叩いて「Failed to fetch」になる。起動時に落として気付かせる
+// （Functions 側の ALLOWED_ORIGINS と同じ方針。→ .claude/docs/architecture.md）
+if (
+  process.env.NODE_ENV === 'production' &&
+  !process.env.NEXT_PUBLIC_API_BASE_URL
+) {
+  throw new Error(
+    'NEXT_PUBLIC_API_BASE_URL is required in production builds (.env.production を確認してください)'
+  )
+}
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   `http://localhost:5001/${EMULATOR_PROJECT_ID}/asia-northeast1/api`
