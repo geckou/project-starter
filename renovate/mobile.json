@@ -16,7 +16,7 @@
       "enabled": false
     },
     {
-      "description": "react / react-dom: Expo SDK と密結合（mobile は 18 系固定）。default プリセットのメジャー全面 ignore と重複するが、そのルールを緩めたときに保護が黙って消えないよう理由を明示して残す",
+      "description": "react / react-dom: Expo SDK と密結合（mobile は 18 系固定）。default プリセットのメジャーは Dependency Dashboard の承認待ち（ignore ではない）なので、承認して上げてしまわないよう、ここで明示的に無効化する",
       "matchPackageNames": ["react", "react-dom"],
       "matchUpdateTypes": ["major"],
       "enabled": false
