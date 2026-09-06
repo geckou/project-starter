@@ -55,7 +55,7 @@ ESLint / Prettier / commitlint の共通設定は npm から取る。scaffold �
 **削除する前に、参照レンジを満たすバージョンが npm に公開済みかを確認する。**
 ローカルの `version` を上げた直後（まだ公開されていない状態）で消すと、次の
 `yarn install` が落ちるか、黙って旧版を掴んで「直したはずの設定が使われない」状態になる
-（CLAUDE.md「第0層の設定は npm パッケージで配る」が警告している失敗形）。
+（`packages/README.md`「第0層の設定は npm パッケージで配る」が警告している失敗形）。
 
 ```bash
 # 各パッケージのローカル version が npm に存在するかを確認する

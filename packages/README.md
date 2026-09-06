@@ -18,7 +18,7 @@ firebase 層があるとき、`shared/` は Firebase クライアント（初期
 ## 第0層の設定パッケージ
 
 ESLint / Prettier / commitlint の共通設定は、このリポジトリから npm へ公開して
-**参照で配る**（CLAUDE.md「第0層の設定は npm パッケージで配る」）。
+**参照で配る**（→ 下の「第0層の設定は npm パッケージで配る」）。
 ツール側が共有設定を npm パッケージとしてしか受け付けないため、Renovate preset や
 reusable workflow のような URL 参照にはできない。
 
@@ -382,3 +382,40 @@ export const colors = {
 2. `package.json` の `name` を `@geckou/<package-name>` にする
 3. `yarn install` を実行
 4. 使いたいアプリの `package.json` に依存として追加（`"@geckou/<package-name>": "*"`）
+
+## 第0層の設定は npm パッケージで配る
+
+ESLint / Prettier / commitlint の設定は、ツール側が**共有設定を npm パッケージとしてしか
+受け付けない**（Renovate preset や reusable workflow のような URL 参照ができない）。
+そこで `packages/` 配下に置いて npm へ公開し、各プロジェクトは参照 1 行だけを持つ。
+
+| パッケージ | 参照する側 |
+| --- | --- |
+| `@geckou/eslint-config`（`.` / `./next` / `./expo` / `./vue` / `./react`） | 各ワークスペースの `eslint.config.mjs` |
+| `@geckou/prettier-config` | `.prettierrc.cjs` |
+| `@geckou/commitlint-config` | `commitlint.config.cjs` |
+
+- **ルールを変えるときは `packages/*-config` を直す。** 参照側のファイルに書き足すのは、
+  プロジェクト固有の値だけ（例: `.prettierrc.cjs` の `tailwindStylesheet`）
+- ESLint のプリセットは**重ねて使わない**。各プリセットはそれぞれ単独で完結する
+  （同じプラグインを別々の実体で登録すると ESLint が `Cannot redefine plugin` で落ちるため）
+- `type-enum` の値は CLAUDE.md「Git ブランチ運用」と `.claude/hooks/pre-git-guard.sh`
+  にもある。フックはシェルなので npm パッケージを参照できず、**ここだけは重複が残る**。
+  type を増減するときは 3 箇所とも直す
+- **version を上げたら、それを参照するワークスペースのレンジも上げる。** `^0.2.0` のまま
+  0.3.0 に上げると、yarn がローカルではなく npm の旧版を落としてきて、直したはずの
+  設定が使われないまま lint も type-check も通る。`node scripts/check-workspace-ranges.mjs`
+  が検出する（CI と `release.sh` の両方で実行）
+- **公開は自動。** version を上げる PR を `production` へマージすると、`publish.yml` が
+  npm に未公開のバージョンを持つパッケージを全部公開する。手で叩くコマンドは無い。
+  タグを打っての公開（`yarn release <パッケージのディレクトリ名>...`）も残してあるが、
+  使うのはリリースの区切りをタグとして残したいときと、破壊的変更の検査を `--force` で
+  通したいときだけ。**`production` に入っていないコミットからは公開できない**
+  （ワークフローが検査する。詳細は `packages/README.md`）
+- **公開済みの型定義と比べて、破壊的変更が patch に載っていないかを検査する**（自動公開は
+  `publish.yml` が、タグ経由は `release.sh` が行う）。
+  差分があると止まるので、minor 以上に上げ直すか、互換の追加だと分かっていれば `--force` を付ける
+  （検査できない場合は素通しする安全網。実装は `scripts/check-api-diff.mjs`）。
+  **比較はコメントと空白を落として行う** — `declaration: true` で src のコメント修正が
+  そのまま `.d.ts` に出るため、生テキストで比べると `docs:` 相当の patch のたびに赤くなり、
+  `--force` が習慣になって本来の検知が効かなくなる

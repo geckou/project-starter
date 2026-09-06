@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# PreToolUse (Bash) フック: CLAUDE.md「Git ブランチ運用」「コミットメッセージ規約」を
+# PreToolUse (Bash) フック: CLAUDE.md「Git ブランチ運用」の規約を
 # 実行前に検証する。
 #
 # 機械的に白黒つく違反は deny（exit 2 でブロック。Claude が自力で直して再実行できる）、

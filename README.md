@@ -135,11 +135,8 @@ project-starter/
 │   │   ├── spec.md              # 仕様書（技術仕様の正）
 │   │   ├── roadmap.md           # ロードマップ（進捗の正）
 │   │   ├── questions.md         # 確認事項キュー（ユーザー確認待ちの判断）
-│   │   └── ...                  # architecture / layers / git-workflow / dependencies 等
+│   │   └── ...                  # workflow / hooks / architecture / layers / git-workflow 等
 │   └── settings.json            # フックの登録
-│
-│   ├── evolution.md             # 昇格プロトコル（pain_count → CLAUDE.md → Hook）
-│   └── short-term/  long-term/  daily/
 │
 ├── scripts/                     # セットアップ・デプロイ・検証スクリプト
 │   ├── setup.sh  use-env.sh  deploy.sh
