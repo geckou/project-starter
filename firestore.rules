@@ -8,13 +8,17 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // layer:billing:start
     // サーバー（Cloud Functions / Admin SDK）だけが書き込めるフィールド。
     // 課金の権利状態をクライアントから自己申告で書き換えられないようにする
     function serverOnlyFields() {
       return ['subscription', 'stripeCustomerId'];
     }
+    // layer:billing:end
 
     // ユーザー: 本人のみ読み書き可。ただし課金関連フィールドは書き換え不可
+    // （課金層を外すと serverOnlyFields() ごと消えるため、下の create / update は
+    //   layers.json の billing.replace で本人判定だけの形に置き換わる）
     match /users/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow create: if request.auth != null && request.auth.uid == userId
@@ -25,15 +29,18 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // layer:billing:start
     // 課金 Webhook の処理済みイベント（冪等性のため Functions が書く）。
     // クライアントからは読み書きさせないので、上の default deny に任せる
     // match /billing_events/{eventId} — 明示的な許可なし
+    // layer:billing:end
 
     // 1プロジェクト相乗り時は環境ごとに明示的に match を書く
     // ワイルドカード /{prefix}users はセグメント内マッチ不可
     // match /stg_users/{userId} { ... }
     // match /dev_users/{userId} { ... }
 
+    // layer:billing:start
     // 例: 有料プラン限定のコレクション。
     // ルートの .env.<環境名> で SYNC_SUBSCRIPTION_CLAIMS=true にすると Webhook が
     // カスタムクレームへ同期するので、Firestore の get() なしで判定できる
@@ -44,6 +51,7 @@ service cloud.firestore {
     //   allow write: if request.auth != null
     //                && request.auth.token.subscriptionActive == true;
     // }
+    // layer:billing:end
 
     // 例: 公開コレクション（認証済みユーザーのみ読み取り可）
     // match /posts/{postId} {

@@ -109,6 +109,9 @@ describe('users コレクション', () => {
     await assertFails(getDocs(collection(db, 'users')))
   })
 
+  // layer:billing:start
+  // 課金の権利状態をクライアントの自己申告で書き換えられないことの検証。
+  // firestore.rules の serverOnlyFields() と対になる
   it('本人でも subscription を含めて create はできない', async () => {
     const db = testEnv.authenticatedContext('alice').firestore()
     await assertFails(
@@ -167,6 +170,7 @@ describe('users コレクション', () => {
       updateDoc(doc(db, 'users/alice'), { name: 'Alice Updated' })
     )
   })
+  // layer:billing:end
 
   it('本人でも delete はできない', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -190,6 +194,7 @@ describe('未定義のコレクション', () => {
   })
 })
 
+// layer:billing:start
 describe('billing_events コレクション', () => {
   it('クライアントからは read できない', async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
@@ -209,3 +214,4 @@ describe('billing_events コレクション', () => {
     )
   })
 })
+// layer:billing:end

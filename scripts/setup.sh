@@ -226,6 +226,55 @@ setup_branch_protection() {
     echo "  → ruleset と二重管理になります。GitHub の Settings > Branches から削除するか、"
     echo "    gh api repos/$REPO/branches/production/protection --method DELETE"
   fi
+
+  setup_release_protection
+}
+
+# release/* / hotfix/* の保護ルール設定。
+#
+# CLAUDE.md「マージルール」の「release/* への直接コミット・push は禁止」は
+# pre-git-guard.sh の承認確認だけでは支えられない（GitHub UI や他のクライアントからは
+# 素通りする）。release/* への push は staging デプロイを発火するため、
+# 未レビューの変更がそのまま staging に載る経路になる。サーバー側でも塞ぐ。
+#
+# ブランチ作成そのものは禁止しない（creation ルールを入れていない）。
+# production から切って feat/* をマージした結果の初回 push は「作成」なので通り、
+# 以降の更新だけが PR 経由に限定される
+setup_release_protection() {
+  RELEASE_RULESET_FILE="$(dirname "$0")/../.github/rulesets/release.json"
+  if [ ! -f "$RELEASE_RULESET_FILE" ]; then
+    echo "[skip] $RELEASE_RULESET_FILE が見つかりません"
+    return
+  fi
+
+  RELEASE_RULESET_NAME=$(node -p \
+    "JSON.parse(require('fs').readFileSync('$RELEASE_RULESET_FILE','utf8')).name" \
+    2>/dev/null || echo 'release-protection')
+
+  if gh api "repos/$REPO/rulesets" --jq '.[].name' 2>/dev/null |
+    grep -qx "$RELEASE_RULESET_NAME"; then
+    echo "[skip] release/* の保護ルール（$RELEASE_RULESET_NAME）は設定済みです"
+    return
+  fi
+
+  read -p "release/* と hotfix/* に保護ルール（PR 必須）を設定しますか？ (Y/n): " PROTECT_RELEASE
+  if [ "$PROTECT_RELEASE" = "n" ] || [ "$PROTECT_RELEASE" = "N" ]; then
+    echo "[skip] release/* の保護ルールをスキップしました"
+    return
+  fi
+
+  if gh api "repos/$REPO/rulesets" \
+    --method POST \
+    --input "$RELEASE_RULESET_FILE" > /dev/null; then
+    echo "[done] release/* と hotfix/* に保護ルール（$RELEASE_RULESET_NAME）を設定しました"
+    echo "  - 更新は PR 必須（QA 修正は fix/* を切って PR でマージする）"
+    echo "  - ブランチの作成（production から切った初回 push）は従来どおり通る"
+  else
+    echo "[error] release/* の保護ルールの設定に失敗しました"
+    echo "  → リポジトリの Admin 権限があるか確認してください"
+    echo "  → Free プランのプライベートリポジトリでは Rulesets を使えません"
+    echo "    （.claude/docs/git-workflow.md「マージルールの強制」を参照）"
+  fi
 }
 
 setup_branch_protection

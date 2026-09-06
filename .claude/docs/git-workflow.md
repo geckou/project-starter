@@ -189,7 +189,8 @@ gh secret set ENV_FILE_PRODUCTION < .env.production
 gh secret set FIREBASE_SERVICE_ACCOUNT < service-account.json
 ```
 
-- `FIREBASE_SERVICE_ACCOUNT` が未設定なら `deploy` ジョブはスキップされ、チェック（型・lint・テスト・ビルド）のみ実行される。
+- `FIREBASE_SERVICE_ACCOUNT` が未設定なら `deploy` ジョブはスキップされ、チェック（型・lint・テスト・ビルド）のみ実行される。判定に使うのは鍵そのものではなく `secrets.FIREBASE_SERVICE_ACCOUNT != ''` の真偽値で、鍵の値を参照する `env:` は「Authenticate to Firebase」ステップだけ（`yarn install` の postinstall や `yarn build` に鍵を渡さないため）。
+- この鍵は staging / production で共通のため、本番の権限が `release/*` の push でも使われる。環境ごとに鍵を分けたい場合は GitHub Environment（production / staging）を作り、`deploy` ジョブに `environment:` を付けて Environment secret に置き換える。
 - `firebase login:ci` の `FIREBASE_TOKEN` は firebase-tools v13 以降非推奨のため使わない。
 - env ファイルを更新したら、対応する `ENV_FILE_*` シークレットも登録し直す。
 
@@ -239,6 +240,23 @@ gh api repos/{owner}/{repo}/rulesets \
 
 内容: production の削除・force push 禁止、PR 必須（レビュー1件）、Required status checks（`guard` / `ci / ci`）。
 `hotfix/*` の緊急セルフマージを許す場合は、取り込み後に UI で bypass 設定を調整する。
+
+`release/*` / `hotfix/*` も同じ仕組みで塞ぐ:
+
+```bash
+gh api repos/{owner}/{repo}/rulesets \
+  --method POST \
+  --input .github/rulesets/release.json
+```
+
+内容: `release/**` と `hotfix/**` の更新を PR 必須にする（承認は 0 件。`fix/*` → `release/*` の
+PR フローはそのまま動く）。**ブランチの作成は禁止していない**ので、`production` から切って
+`feat/*` をマージした結果の初回 push は従来どおり通り、以降の直接 push だけが塞がれる。
+
+これを入れないと、「`release/*` への直接コミット・push は禁止」は `pre-git-guard.sh` の
+承認確認だけで支えられていることになり、GitHub UI や他のクライアントからは素通りする。
+`release/*` への push は staging デプロイを発火するため、未レビューの変更がそのまま
+staging に載る経路になる。
 
 `yarn setup`（`scripts/setup.sh`）もこの定義を取り込む。**保護の定義はこのファイルが正**で、
 legacy の branch protection API とは二重管理にしない（required check 名が片方だけ古いと、
