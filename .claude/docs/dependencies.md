@@ -103,12 +103,3 @@ Renovate preset は設定を配る仕組みであって、`package.json` にフ�
 
 **配布経路を整えると「もう全部自動で流れる」と錯覚しやすく、`resolutions` はその死角に入る。**
 穴が空いていること自体を、ここに明示しておく。
-
-## preset で配る（要点）
-
-依存更新のルールは `renovate/*.json`（テンプレート側の preset）にあり、各プロジェクトは
-`renovate.json5` から `extends` するだけ。**設定のコピーを配らない**ので、ルールの変更は
-preset の1コミットで全派生へ届く。判断（メジャーは Dashboard 承認待ちにする、Expo 系は
-触らせない、自動マージは opt-in 等）の理由は各ルールの `description` に残す。
-詳細と、preset では配れないもの（ルート `package.json` の `resolutions`）は
-`.claude/docs/dependencies.md` を参照。

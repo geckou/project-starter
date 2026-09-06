@@ -5,9 +5,6 @@ Hook 化して機械的に強制する**。実体は `.claude/settings.json` + `
 
 CLAUDE.md にはフックの一覧だけを置き、各フックが何を見るか・どう直すかはここに書く。
 
-CLAUDE.md に書いただけのルールは読み飛ばされうるため、**繰り返し破られるルールは Hook 化して機械的に強制する**。
-実体は `.claude/settings.json` + `.claude/hooks/`。
-
 | タイミング | フック | 内容 |
 |---|---|---|
 | SessionStart | `session-start-git-context.sh` | `git fetch origin --prune` を実行し、現在ブランチ・`origin/production` との差分・進行中の `release/*` を文脈に入れる（古い情報のまま作業を始めるのを防ぐ） |

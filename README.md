@@ -558,7 +558,7 @@ yarn dev:web
 ## 命名規則
 
 ファイル名・変数・型名・CSS クラス名のケースは
-[CLAUDE.md](CLAUDE.md) の「コーディング規約 > 命名規則」を参照。
+[CLAUDE.md](CLAUDE.md) の「コーディング規約」を参照。
 ESLint / Prettier で強制できる範囲は各ワークスペースの設定に入っている。
 
 ---

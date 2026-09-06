@@ -103,6 +103,11 @@ rm -f scripts/release.sh scripts/geckou-release scripts/install-release-command.
 
 `ci.yml` の該当ステップは `hashFiles` で存在を見ているため、消しても CI は緑のまま通る。
 
+あわせて **`.claude/docs/hooks.md` の「本体保守で使うスクリプト」節を削除する。**
+このファイルは Template Sync の対象なので派生にも届くが、節が挙げているスクリプトは
+上で消したものを含み、残すと `yarn check:docs` が参照切れとして検出する
+（節ごと消せば検出されない。テンプレート更新で節が戻ってきたら、また消す）。
+
 ### 4. `@geckou/*` スコープの一括リネーム
 
 ワークスペース内部のスコープ `@geckou/*` を `@<project-name>/*` に一括置換する。
