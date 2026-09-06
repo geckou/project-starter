@@ -343,7 +343,7 @@ node scripts/adopt-references.mjs --repo <派生プロジェクトのパス>
 #### 第0層の設定（`packages/*-config`）の参照化
 
 ESLint / Prettier / commitlint も npm パッケージの参照に切り替える
-（→ CLAUDE.md「第0層の設定は npm パッケージで配る」）。
+（→ `packages/README.md`「第0層の設定は npm パッケージで配る」）。
 
 - 各ワークスペースの `eslint.config.mjs` を生成する。プリセットは `package.json` の依存で
   決める（`next` → `/next`、`expo` → `/expo`、それ以外の TypeScript パッケージ → `.`）
@@ -482,3 +482,31 @@ gh api repos/{owner}/{repo}/rulesets \
 レビューの観点と言語は `.github/copilot-instructions.md` が決める。Copilot code review が
 使えるプラン・組織設定でない場合は取り込みが失敗する（その場合は `.github/workflows/claude.yml`
 の auto-review だけで運用する。両方入れて二重にレビューさせてもよい）。
+
+## ブランチ名とコミットメッセージの補足
+
+CLAUDE.md には規則そのものを置き、その理由と例外の扱いをここに書く。
+
+`claude/*` の扱い（ハーネスが作るブランチで自分では切らない。検査の免除範囲）は
+「作業ブランチの切り方 > 機械的な強制」を参照。
+
+### `chore/` の使いどころ
+
+依存更新・パッケージのバージョン上げ・設定変更など、**機能でもバグ修正でもない作業**に使う
+（コミットの type `chore` に対応する。デプロイ先は無い）。
+
+### コミットメッセージ規約を守る動機
+
+commitlint（`.husky/commit-msg`）は検証するが、**規約違反は警告のみでコミットはブロックしない**。
+派生プロジェクトでは `release/*` に何が載っているかを `git log` で追う場面が多いため、
+type が揃っていること自体が可読性の担保になる。守る動機はそこにある。
+
+ただし **Claude のコミットは `.claude/hooks/pre-git-guard.sh`（PreToolUse）が実行前に検証し、
+規約外のメッセージはブロックする**。人を止めるほどの重みはないが、AI が規約を読み飛ばすのは
+機械的に防げるため。
+
+**PR タイトルも同じ規約に従う。** squash merge のコミットメッセージは PR タイトルから
+作られるが、commitlint もフックもローカルのコミットしか見ない。
+`.github/workflows/pr-title-lint.yml` が PR タイトルを同じ設定で検証する（必須チェックには
+しない。赤で気付ければ十分）。可読性だけの話ではなく、`release-tag.yml` の破壊的変更ゲートが
+squash コミットの件名を読むため、タイトルが崩れると互換性の判断が効かなくなる。

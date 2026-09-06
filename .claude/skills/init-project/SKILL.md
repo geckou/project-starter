@@ -55,7 +55,7 @@ ESLint / Prettier / commitlint の共通設定は npm から取る。scaffold �
 **削除する前に、参照レンジを満たすバージョンが npm に公開済みかを確認する。**
 ローカルの `version` を上げた直後（まだ公開されていない状態）で消すと、次の
 `yarn install` が落ちるか、黙って旧版を掴んで「直したはずの設定が使われない」状態になる
-（CLAUDE.md「第0層の設定は npm パッケージで配る」が警告している失敗形）。
+（`packages/README.md`「第0層の設定は npm パッケージで配る」が警告している失敗形）。
 
 ```bash
 # 各パッケージのローカル version が npm に存在するかを確認する
@@ -102,6 +102,11 @@ rm -f scripts/release.sh scripts/geckou-release scripts/install-release-command.
 ```
 
 `ci.yml` の該当ステップは `hashFiles` で存在を見ているため、消しても CI は緑のまま通る。
+
+あわせて **`.claude/docs/hooks.md` の「本体保守で使うスクリプト」節を削除する。**
+このファイルは Template Sync の対象なので派生にも届くが、節が挙げているスクリプトは
+上で消したものを含み、残すと `yarn check:docs` が参照切れとして検出する
+（節ごと消せば検出されない。テンプレート更新で節が戻ってきたら、また消す）。
 
 ### 4. `@geckou/*` スコープの一括リネーム
 
@@ -212,12 +217,11 @@ Dependency Dashboard も作らないモードで、組織の既定が Silent に
 Dependabot の設定ファイルが残っていれば削除する（PR が二重に立つため）。
 詳細は `.claude/docs/dependencies.md`。
 
-### 8. ドキュメント・メモリの初期化
+### 8. ドキュメントの初期化
 
 - `.claude/docs/planning.md` / `spec.md` / `roadmap.md` のプレースホルダ
   （空のテーブル・コメント）を確認し、プロダクトの内容を記入する
-- `memory/daily/` / `memory/short-term/` / `memory/long-term/` 配下に
-  テンプレート由来の記録が残っていれば削除する（`memory/evolution.md` は残す）
+- `.claude/docs/questions.md` の「回答済み」にテンプレート由来の記録が残っていれば削除する
 
 ## 確認事項
 
@@ -238,4 +242,4 @@ Dependabot の設定ファイルが残っていれば削除する（PR が二重
 - [ ] Copilot の自動レビュー ruleset（`.github/rulesets/copilot-review.json`）を取り込んだ
 - [ ] Renovate の GitHub App をインストールし、Silent mode を OFF にした
 - [ ] Dependency graph / Dependabot alerts を有効化した（脆弱性の PR が来るようにする）
-- [ ] `.claude/docs/` と `memory/` を初期化した
+- [ ] `.claude/docs/` を初期化した

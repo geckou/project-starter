@@ -7,7 +7,7 @@
 ## 層
 
 ```
-第0層（制約層）   .claude/, memory/, 規約設定 — 全層に直交
+第0層（制約層）   .claude/, 規約設定 — 全層に直交
 core              LP が作れる最小構成（Next.js + Hosting + CI/deploy + 環境切替）
  └ firebase       Auth + Firestore + Storage + rules + emulator + Admin SDK
       └ functions apps/functions（API・トリガー・スケジュール実行の器）

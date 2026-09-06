@@ -877,7 +877,7 @@ run 0 'コミットメッセージ中の ; では分割しない' \
 # ---- post-edit-reminder.sh / stop-dod-check.sh ----
 #
 # この2つは config.sh からスタック依存の値を読む。設定が効くことと、
-# config.sh が無くても既定値で動くこと（CLAUDE.md「スタック依存の値は
+# config.sh が無くても既定値で動くこと（`.claude/docs/hooks.md`「スタック依存の値は
 # config.sh に置く」）の両方を検証する。
 
 EDIT_HOOK=$REPO/.claude/hooks/post-edit-reminder.sh

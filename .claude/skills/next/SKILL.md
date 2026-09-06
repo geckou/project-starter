@@ -5,7 +5,7 @@ description: ロードマップから次に着手すべきタスクを選定し�
 
 # next
 
-CLAUDE.md の「次何をすればいい？」の手順を実行する。
+CLAUDE.md「次何をすればいい？」と `.claude/docs/workflow.md` の手順を実行する。
 
 ## 手順
 

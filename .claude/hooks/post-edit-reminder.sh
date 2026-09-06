@@ -1,6 +1,5 @@
 #!/usr/bin/env sh
 # PostToolUse (Edit|Write) フック: 影響の大きいファイルの変更時に検証コマンドをリマインドする
-# memory/evolution.md の Lv.4（Hook = 強制実行）の実体
 #
 # 監視するパスと文言はスタック依存のため config.sh に置く（無ければ既定値で動く）
 

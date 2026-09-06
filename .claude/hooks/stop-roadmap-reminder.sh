@@ -1,6 +1,5 @@
 #!/usr/bin/env sh
 # Stop フック: 作業（未コミット変更）があるのに roadmap.md が未更新なら1回だけリマインドする
-# memory/evolution.md の Lv.4（Hook = 強制実行）の実体
 #
 # ロードマップの場所はドキュメントの持ち方に依存するため config.sh に置く（無ければ既定値で動く）
 

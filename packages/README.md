@@ -18,7 +18,7 @@ firebase 層があるとき、`shared/` は Firebase クライアント（初期
 ## 第0層の設定パッケージ
 
 ESLint / Prettier / commitlint の共通設定は、このリポジトリから npm へ公開して
-**参照で配る**（CLAUDE.md「第0層の設定は npm パッケージで配る」）。
+**参照で配る**。
 ツール側が共有設定を npm パッケージとしてしか受け付けないため、Renovate preset や
 reusable workflow のような URL 参照にはできない。
 
@@ -33,6 +33,10 @@ ESLint はサブパスで層に対応する。`.` は TypeScript パッケージ
 `./react` は React（Next.js 以外）、`./vue` は Vue / Nuxt。
 **プリセットは重ねて使わない**（それぞれ単独で完結する。重ねると同じプラグインを
 別々の実体で登録することになり、ESLint が `Cannot redefine plugin` で落ちる）。
+
+⚠️ commitlint の `type-enum` の値は、CLAUDE.md「Git ブランチ運用」と
+`.claude/hooks/pre-git-guard.sh` にもある。フックはシェルなので npm パッケージを
+参照できず、**ここだけは重複が残る**。type を増減するときは 3 箇所とも直す。
 
 ```js
 // apps/web/eslint.config.mjs
