@@ -10,7 +10,12 @@ service firebase.storage {
 
     // ユーザー領域: 本人のみ読み書き可。
     // アップロードは 10MB 以下の画像に限る（無制限だと課金と悪用の入口になる）。
-    // 画像以外も置くプロジェクトは contentType の条件を広げる
+    // heic / heif は iOS のカメラロールの既定。列挙から漏らすと写真の
+    // アップロードが permission-denied になる。
+    // SVG は含めない: <script> を書けるうえ getDownloadURL の URL がインラインで配信され、
+    // firebasestorage.googleapis.com オリジン上でのスクリプト実行（stored XSS）になるため。
+    // 画像以外も置くプロジェクトは contentType の列挙を広げる（SVG を足すときは
+    // Content-Disposition を attachment にする等、配信側の対策とセットで判断する）
     match /users/{userId}/{allPaths=**} {
       function isOwner() {
         return request.auth != null && request.auth.uid == userId;
@@ -20,7 +25,7 @@ service firebase.storage {
 
       allow write: if isOwner()
                    && request.resource.size < 10 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
+                   && request.resource.contentType.matches('image/(png|jpeg|gif|webp|heic|heif|avif)');
 
       // 削除は request.resource を持たないため、サイズ・種別の条件を付けられない
       allow delete: if isOwner();

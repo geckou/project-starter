@@ -75,6 +75,23 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 - ブランチ名が命名規則（`feat/` `fix/` `refactor/` `chore/` `test/` `docs/` `release/` `hotfix/`）に合わない
 - 分岐元が `production` でない（例外: `fix/*` は `release/*` からも可）
 
+**`claude/*` の扱い。** Claude Code の Web / GitHub Action 等のハーネスは、セッション用の
+ブランチを自分で作る。名前も分岐元もこちら側では決められないため、`claude/*` は命名と
+ケバブケースの検査から外してある。ただし外れるのは**既に `claude/*` にいるセッションの中だけ**で、
+分岐元も `production` かそのセッションブランチに限る。`production` にいるときの
+`git checkout -b claude/Whatever feat/existing` は通らない（`claude/` を付けるだけで
+命名・分岐元の検査を外せる、では意味がないため）。**`claude/*` を自分で切らないこと。**
+
+次の操作は禁止ではないが、実行前にユーザーへの確認を求める（CLAUDE.md「自律性の境界」で
+「その場で止めて聞く」に置いているもの）。
+
+- `gh pr merge`（PR のマージ。マージの判断は人がする）
+- ブランチの削除（`git branch -d/-D`、`git push --delete`、`git push origin :<branch>`、`git push --prune`）
+- 作業ブランチへの force push（`production` / `release/*` へのものは禁止）
+- `feat/*` 同士のマージ
+
+`--no-verify` は commit だけでなく push / merge / rebase でも禁止（husky の迂回になるため）。
+
 セッション開始時には `.claude/hooks/session-start-git-context.sh` が自動で fetch し、進行中の `release/*` を文脈に載せる。
 
 > ⚠️ **作業開始前に必ず `git fetch origin --prune` を実行すること。**

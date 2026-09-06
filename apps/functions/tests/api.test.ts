@@ -20,9 +20,20 @@ vi.mock('firebase-admin/auth', () => ({
   }),
 }))
 
-// onRequest はデプロイ用のラッパーなので素通しにする
+// onRequest はデプロイ用のラッパーなので素通しにする。
+// 渡された options は「どのシークレットをマウントするか」「上限は何か」を
+// 決めるため、テストから読めるように控える
+// vi.mock はファイル先頭へ巻き上げられるため、参照する変数も vi.hoisted で作る
+const { onRequestOptions } = vi.hoisted(() => ({
+  onRequestOptions: [] as Record<string, unknown>[],
+}))
+
 vi.mock('firebase-functions/v2/https', () => ({
-  onRequest: (_options: unknown, handler: unknown) => handler,
+  onRequest: (options: Record<string, unknown>, handler: unknown) => {
+    onRequestOptions.push(options)
+
+    return handler
+  },
 }))
 
 // layer:billing:start
@@ -33,7 +44,13 @@ const mockHandleStripeWebhook = vi.fn()
 const mockHandleRevenueCatWebhook = vi.fn()
 
 vi.mock('../src/lib/billing', () => ({
-  getBilling: () => ({
+  BILLING_SECRETS: [
+    { name: 'STRIPE_SECRET_KEY' },
+    { name: 'STRIPE_WEBHOOK_SECRET' },
+    { name: 'REVENUECAT_WEBHOOK_AUTH' },
+  ],
+  // getBilling は stripe を動的 import するため Promise を返す
+  getBilling: async () => ({
     createCheckoutSession: mockCreateCheckoutSession,
     createPortalSession: mockCreatePortalSession,
     handleStripeWebhook: mockHandleStripeWebhook,
@@ -42,7 +59,7 @@ vi.mock('../src/lib/billing', () => ({
 }))
 // layer:billing:end
 
-import { app } from '../src/api'
+import { api, app } from '../src/api'
 
 let server: Server
 let baseUrl: string
@@ -97,6 +114,35 @@ afterAll(async () => {
 describe('api', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  describe('onRequest の設定', () => {
+    it('app をそのまま onRequest に渡している', () => {
+      expect(onRequestOptions).toHaveLength(1)
+      expect(api).toBe(app)
+    })
+
+    // 既定は無制限で、リトライ嵐や攻撃的なリクエストがそのまま課金額になる
+    it('maxInstances でコストに蓋をする', () => {
+      expect(onRequestOptions[0].maxInstances).toBeTypeOf('number')
+    })
+
+    // layer:billing:start
+    // 回帰: 秘密を .env で配ると関数の環境変数としてデプロイされ、閲覧者ロールでも
+    // Cloud Console / gcloud functions describe から読める。Secret Manager から
+    // マウントするために、宣言を onRequest の secrets に渡す必要がある
+    it('BILLING_SECRETS を secrets として宣言する', () => {
+      const secretNames = (
+        onRequestOptions[0].secrets as { name: string }[]
+      ).map((secret) => secret.name)
+
+      expect(secretNames).toEqual([
+        'STRIPE_SECRET_KEY',
+        'STRIPE_WEBHOOK_SECRET',
+        'REVENUECAT_WEBHOOK_AUTH',
+      ])
+    })
+    // layer:billing:end
   })
 
   describe('GET /health', () => {

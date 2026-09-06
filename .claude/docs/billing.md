@@ -58,7 +58,51 @@
 
    登録後に表示される **署名シークレット（`whsec_...`）を控える**。
 
-### 1-2. 環境変数を設定する
+### 1-2. 秘密を Secret Manager に登録する
+
+**秘密（`STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `REVENUECAT_WEBHOOK_AUTH`）は
+`.env` に書かない。** `.env` の値は関数の環境変数としてデプロイされ、閲覧者ロールでも
+Cloud Console や `gcloud functions describe` から読める。決済キーが読めれば任意の課金操作が、
+署名シークレットが読めれば偽の Webhook イベントの注入ができる。
+
+```bash
+# 対象の Firebase プロジェクトを選んでから（秘密はプロジェクトごとに別物）
+yarn env:develop
+
+firebase functions:secrets:set STRIPE_SECRET_KEY
+firebase functions:secrets:set STRIPE_WEBHOOK_SECRET
+```
+
+> ⚠️ **billing 層を使うなら 3 つとも作る。** `defineSecret()` で宣言した秘密は
+> デプロイ時に Secret Manager 側で解決され、**存在しないと非対話デプロイ（CI）は
+> その場で落ちる**（firebase-tools の `ensureSecret`）。Stripe だけ / IAP だけの構成でも、
+> 使わない側は**ダミー値で作っておく**（値が空文字なら配線は無効のまま動く）。
+>
+> ```bash
+> printf '' | firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH --data-file -
+> ```
+>
+> 「使う側の秘密だけ宣言する」形にすればダミーは要らないが、どのプロバイダを使うかを
+> デプロイ時に知る手段（環境変数の追加）が要り、既定を「両方」にする限り結局 3 つ必要になる。
+> 設定を増やさない側を採った（判断の経緯は `.claude/docs/questions.md` の Q-001）。
+
+値はプロンプトに貼る（履歴に残さないため、引数では渡さない）。確認と削除:
+
+```bash
+firebase functions:secrets:access STRIPE_SECRET_KEY
+firebase functions:secrets:destroy STRIPE_SECRET_KEY
+```
+
+関数へのマウントは配線側が担う。`apps/functions/src/lib/billing.ts` が
+`defineSecret()` で宣言し、`api.ts` の `onRequest({ secrets: BILLING_SECRETS }, app)` に
+渡した関数だけが値を読める。**秘密を増やしたらこの 2 箇所に足す。**
+
+> ⚠️ 秘密を差し替えたら**再デプロイが要る**。関数は登録時点のバージョンに固定される。
+
+**エミュレーターでは `apps/functions/.secret.local` を読む**（`KEY=value` 形式。
+gitignore 済み）。Secret Manager へは行かないので、ローカルではここに書く。
+
+### 1-3. 秘密でない環境変数を設定する
 
 **ルートの `.env.<環境名>` に書く。**ここが単一の正で、`yarn env:<環境名>` が
 `apps/functions/.env` を含む各所へ配布する（`apps/functions/.env` を直接編集しても
@@ -66,8 +110,6 @@
 
 ```bash
 # Functions が使う（yarn env:<環境名> が apps/functions/.env へ配布する）
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
 # 購入を許可する price ID。ここに無い price はサーバーが 400 で拒否する
 STRIPE_PRICE_IDS=price_xxx,price_yyy
 STRIPE_SUCCESS_URL=https://example.com/billing?status=success
@@ -87,22 +129,27 @@ yarn env:develop
 > `STRIPE_SECRET_KEY` に `NEXT_PUBLIC_` を**絶対に付けない**。ブラウザに漏れる。
 > `NEXT_PUBLIC_STRIPE_PRICE_ID` は公開されても問題ない値（購入可否はサーバーの許可リストで決まる）。
 
-**Functions に環境変数を追加したときは `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS`
-にも追記すること。**許可リストに無いキーは `apps/functions/.env` に配布されない。
+**Functions に秘密でない環境変数を追加したときは `scripts/use-env.sh` の
+`FUNCTIONS_ENV_KEYS` にも追記すること。**許可リストに無いキーは
+`apps/functions/.env` に配布されない。秘密は逆に、ここへ**足さない**。
 
-### 1-3. テストモードと本番モードを分ける
+### 1-4. テストモードと本番モードを分ける
 
 **Stripe のテスト/本番はキーで決まる。**`sk_test_` を使えばその環境は全部テストモードで動く。
 別途フラグを立てる必要はない。
 
 | 環境 | Stripe キー | 使う場面 |
 | --- | --- | --- |
-| `.env.develop` | `sk_test_...` | ローカル開発 |
-| `.env.staging` | `sk_test_...` | 動作確認・受け入れ |
-| `.env.production` | `sk_live_...` | 本番 |
+| develop | `sk_test_...` | ローカル開発 |
+| staging | `sk_test_...` | 動作確認・受け入れ |
+| production | `sk_live_...` | 本番 |
 
-`yarn env:<環境名>` は **production 以外に本番キー（`sk_live_` / `rk_live_`）が入っているとエラーで停止する。**
-開発中の操作が実在するカードに課金される事故を防ぐため。
+キーは環境ごとの Firebase プロジェクトの Secret Manager に入る（→ 1-2）ので、
+環境の切り替えでキーも入れ替わる。ローカルは `apps/functions/.secret.local`。
+
+`yarn env:<環境名>` は **production 以外の `.env` に本番キー（`sk_live_` / `rk_live_`）が
+残っているとエラーで停止する。**開発中の操作が実在するカードに課金される事故を防ぐため
+（移行前の `.env` に値が残っているケースの保険。通常は Secret Manager にしか無い）。
 
 **テストモードと本番モードは完全に別世界。** price ID・顧客・サブスクリプション・Webhook
 エンドポイントがすべて別なので、`STRIPE_PRICE_IDS` と `NEXT_PUBLIC_STRIPE_PRICE_ID` も
@@ -156,7 +203,7 @@ stripe test_helpers test_clocks advance --id clock_xxx --frozen-time <unix秒>
 
 有効期限は未来の日付、CVC は任意の3桁でよい。
 
-### 1-4. ローカルで動作確認する
+### 1-5. ローカルで動作確認する
 
 ```bash
 # 1. Functions を起動
@@ -165,8 +212,9 @@ yarn dev:functions
 # 2. 別ターミナルで Stripe CLI から Webhook を転送する
 stripe listen --forward-to \
   http://localhost:5001/<project-id>/asia-northeast1/api/webhooks/stripe
-# 表示された whsec_... をルートの .env.develop の STRIPE_WEBHOOK_SECRET に入れ、
-# yarn env:develop で配布し直してから再起動
+# 表示された whsec_... を apps/functions/.secret.local に
+# STRIPE_WEBHOOK_SECRET=whsec_... の形で書いてから再起動
+# （エミュレーターは Secret Manager ではなくこのファイルを読む）
 
 # 3. Web を起動して /billing から購入
 yarn dev:web
@@ -176,12 +224,14 @@ yarn dev:web
 
 購入後、Firestore の `users/{uid}.subscription` が `status: 'active'` になっていれば成功。
 
-### 1-5. 本番へ
+### 1-6. 本番へ
 
 1. 本番モードで 1-1 をやり直す（price ID も Webhook シークレットも別物になる）
-2. `yarn env:production` で環境を切り替え、`yarn deploy:production`
-3. Webhook のエンドポイント URL を本番の Functions に向ける
-4. **特定商取引法に基づく表記**のページを用意する（日本で有料サービスを提供する場合は必須）
+2. `yarn env:production` で切り替え、本番プロジェクトの Secret Manager に
+   1-2 の手順で秘密を登録し直す（秘密はプロジェクトごとに別物）
+3. `yarn deploy:production`
+4. Webhook のエンドポイント URL を本番の Functions に向ける
+5. **特定商取引法に基づく表記**のページを用意する（日本で有料サービスを提供する場合は必須）
 
 ---
 
@@ -204,24 +254,26 @@ yarn dev:web
 
 ### 2-3. 環境変数を設定する
 
-ルートの `.env.<環境名>`:
+Webhook の検証値は秘密なので Secret Manager に置く（→ 1-2）。
+
+```bash
+# RevenueCat Dashboard > Integrations > Webhooks で設定する任意の文字列
+# （Bearer <長いランダム文字列> の形）
+firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH
+```
+
+ストアの API キーはクライアント（Expo）が使うので、ルートの `.env.<環境名>`:
 
 ```bash
 REVENUECAT_API_KEY_APPLE=appl_...
 REVENUECAT_API_KEY_GOOGLE=goog_...
 ```
 
-ルートの `.env.<環境名>`:
-
-```bash
-# RevenueCat Dashboard > Integrations > Webhooks で設定する任意の文字列
-REVENUECAT_WEBHOOK_AUTH=Bearer <任意の長いランダム文字列>
-```
-
 > ⚠️ `apps/functions/.env` を直接編集しない。`yarn env:<環境名>` が
 > ルートの `.env.<環境名>` から毎回生成し直すため、書いた値は次の環境切替で消える。
 > 新しいキーを足すときは `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` と
-> `apps/functions/.env.example` にも追記する。
+> `apps/functions/.env.example` にも追記する。**秘密は `FUNCTIONS_ENV_KEYS` に足さず、
+> Secret Manager に置く**（→ 1-2）。
 
 ### 2-4. Webhook を登録する
 
@@ -416,6 +468,11 @@ yarn test:rules  # Firestore / Storage ルール（要 Firebase エミュレー�
 - [ ] 特定商取引法に基づく表記を用意した（日本で有料提供する場合）
 - [ ] 開発・検証環境がテストキー（`sk_test_`）を使っている
 - [ ] Test Clock で更新・支払い失敗・失効の遷移を確認した
+- [ ] 秘密（`STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `REVENUECAT_WEBHOOK_AUTH`）が
+      `.env` ではなく Secret Manager にある（`firebase functions:secrets:set`）。
+      **使わないプロバイダの分もダミー値で作った**（未作成だと CI のデプロイが落ちる）
+- [ ] 本番プロジェクトの Secret Manager に本番モードの値を登録し、再デプロイした
+      （関数は登録時点のバージョンに固定される）
 - [ ] 本番モードの price ID / Webhook シークレットに差し替えた
 - [ ] `roadmap.md` の機能ステータス表を更新した
 

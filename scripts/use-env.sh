@@ -18,13 +18,16 @@ fi
 # ルートの .env をまるごとコピーせず、必要なキーだけを許可リストで抽出する
 # （FIREBASE_SERVICE_ACCOUNT_KEY 等の不要なサーバー秘密を載せないため）。
 # Functions に新しい環境変数を追加したらここにも追記すること
+#
+# 秘密（決済キー・Webhook の署名シークレット）はここに入れない。
+# .env の値は関数の環境変数としてデプロイされ、閲覧者ロールでも
+# Cloud Console / gcloud functions describe から読める。
+# 秘密は Secret Manager へ（firebase functions:secrets:set。
+# → apps/functions/src/lib/billing.ts と .claude/docs/billing.md）
 FUNCTIONS_ENV_KEYS=(
   ALLOWED_ORIGINS
   # layer:billing:start
-  REVENUECAT_WEBHOOK_AUTH
   REVENUECAT_ALLOW_SANDBOX
-  STRIPE_SECRET_KEY
-  STRIPE_WEBHOOK_SECRET
   STRIPE_PRICE_IDS
   STRIPE_SUCCESS_URL
   STRIPE_CANCEL_URL
@@ -55,7 +58,9 @@ read_env_value() {
 # layer:billing:start
 # 本番キーの誤用ガード。
 # development 環境に本番キーが入っていると、開発中の操作が実際の決済として
-# 処理され、実在するカードに課金される。取り返しがつかないのでここで止める
+# 処理され、実在するカードに課金される。取り返しがつかないのでここで止める。
+# STRIPE_SECRET_KEY は Secret Manager 管理になったので通常は空だが、
+# 移行前の .env や手元の作業ファイルに残っている場合に備えて検査は残す
 STRIPE_KEY=$(read_env_value STRIPE_SECRET_KEY)
 
 if [ "${ENV}" != "production" ]; then

@@ -4,7 +4,7 @@ import { onRequest } from 'firebase-functions/v2/https'
 
 import { requireAuth, type AuthenticatedRequest } from './lib/auth-middleware'
 // layer:billing:start
-import { getBilling } from './lib/billing'
+import { BILLING_SECRETS, getBilling } from './lib/billing'
 
 /**
  * { status, body } を返す billing の処理を Express ハンドラに変換する。
@@ -91,8 +91,8 @@ app.use(
 app.post(
   '/webhooks/stripe',
   express.raw({ type: '*/*' }),
-  billingHandler((req) =>
-    getBilling().handleStripeWebhook({
+  billingHandler(async (req) =>
+    (await getBilling()).handleStripeWebhook({
       rawBody: extractRawBody(req),
       headers: req.headers,
     })
@@ -102,8 +102,8 @@ app.post(
 app.post(
   '/webhooks/revenuecat',
   express.raw({ type: '*/*' }),
-  billingHandler((req) =>
-    getBilling().handleRevenueCatWebhook({
+  billingHandler(async (req) =>
+    (await getBilling()).handleRevenueCatWebhook({
       rawBody: extractRawBody(req),
       headers: req.headers,
     })
@@ -121,8 +121,8 @@ app.use(express.json())
 app.post(
   '/billing/checkout',
   requireAuth,
-  billingHandler((req) =>
-    getBilling().createCheckoutSession({
+  billingHandler(async (req) =>
+    (await getBilling()).createCheckoutSession({
       uid: (req as AuthenticatedRequest).uid,
       priceId: (req.body as { priceId?: unknown })?.priceId,
     })
@@ -131,8 +131,8 @@ app.post(
 app.post(
   '/billing/portal',
   requireAuth,
-  billingHandler((req) =>
-    getBilling().createPortalSession({
+  billingHandler(async (req) =>
+    (await getBilling()).createPortalSession({
       uid: (req as AuthenticatedRequest).uid,
     })
   )
@@ -149,5 +149,17 @@ app.get('/me', requireAuth, (req, res) => {
   res.json({ uid: (req as AuthenticatedRequest).uid })
 })
 
-// hosting (frameworksBackend) とリージョンを揃える
-export const api = onRequest({ region: 'asia-northeast1' }, app)
+// hosting (frameworksBackend) とリージョンを揃える。
+// secrets は宣言した関数にだけ Secret Manager の値をマウントする（→ lib/billing.ts）。
+// maxInstances はコストの上限。既定は無制限で、Webhook のリトライ嵐や
+// 攻撃的なリクエストがそのまま課金額になるため明示的に蓋をする
+export const api = onRequest(
+  {
+    region: 'asia-northeast1',
+    // layer:billing:start
+    secrets: BILLING_SECRETS,
+    // layer:billing:end
+    maxInstances: 10,
+  },
+  app
+)

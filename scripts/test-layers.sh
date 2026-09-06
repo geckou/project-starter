@@ -373,7 +373,10 @@ else
   fail "RevenueCat の API キーが残っている"
 fi
 
-if grep -q "STRIPE_SECRET_KEY" "$variant/.env.example"; then
+# 宣言（KEY=）で見る。秘密は Secret Manager へ移して .env.example には
+# 説明のコメントしか残っていないため、キー名の出現だけを見ると
+# コメントに当たって素通りし、本来の退行を検出しなくなる
+if grep -q "^STRIPE_PRICE_IDS=" "$variant/.env.example"; then
   pass "Stripe の env（mobile に依存しない課金）は残る"
 else
   fail "Stripe の env まで消えた"

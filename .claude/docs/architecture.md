@@ -129,7 +129,8 @@ app/<path>/
 | Web クライアント用 | `.env.local`（ルート） | `NEXT_PUBLIC_FIREBASE_*`               |
 | Mobile 用          | `apps/mobile/.env.local`（use-env.sh が配布） | `FIREBASE_*`（app.config.ts の extra 経由） |
 | サーバー専用       | `.env.local`（ルート） | `FIREBASE_SERVICE_ACCOUNT_KEY`         |
-| Functions 専用     | `apps/functions/.env`（use-env.sh が許可リストのキーのみ生成） | `STRIPE_SECRET_KEY`, `REVENUECAT_WEBHOOK_AUTH` |
+| Functions 専用     | `apps/functions/.env`（use-env.sh が許可リストのキーのみ生成） | `ALLOWED_ORIGINS`, `STRIPE_PRICE_IDS` |
+| Functions の秘密   | Secret Manager（`firebase functions:secrets:set`）。エミュレーターは `apps/functions/.secret.local` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `REVENUECAT_WEBHOOK_AUTH` |
 
 `NEXT_PUBLIC_` プレフィックスはブラウザに露出する。サーバー用の値には絶対に付けない。
 
@@ -140,8 +141,16 @@ app/<path>/
 不要なサーバー秘密を載せないための措置。**Functions に環境変数を追加したら
 `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` にも追記すること。**
 
-外部サービスのテスト用キーと本番キーは環境ごとに分ける。`production` 以外に
-Stripe の本番キー（`sk_live_` / `rk_live_`）が設定されていると `yarn env:<環境名>` はエラーで停止する。
+**秘密は `.env` に置かない。** `.env` の値は関数の環境変数としてデプロイされ、閲覧者ロールでも
+Cloud Console / `gcloud functions describe` から読める。決済キーや Webhook の署名シークレットは
+Secret Manager に置き、`defineSecret()` で宣言して `onRequest({ secrets })` に渡した関数だけに
+マウントする（`apps/functions/src/lib/billing.ts` / `api.ts`。手順は `.claude/docs/billing.md`）。
+**秘密を差し替えたら再デプロイが要る**（関数は登録時点のバージョンに固定される）。
+
+外部サービスのテスト用キーと本番キーは環境ごとに分ける（Secret Manager は
+Firebase プロジェクトごとに別なので、環境の切り替えでキーも入れ替わる）。
+`production` 以外の `.env` に Stripe の本番キー（`sk_live_` / `rk_live_`）が残っていると
+`yarn env:<環境名>` はエラーで停止する。
 
 **本番ビルドで必須の値は、未設定なら起動時に落とす。** `NEXT_PUBLIC_API_BASE_URL` /
 `EXPO_PUBLIC_API_BASE_URL` は未設定だと Functions エミュレーター（`localhost:5001`）へ
@@ -188,9 +197,14 @@ Auth しか要らないページに Firestore SDK が乗らないようにする
 | 制限 | 値 | 理由 |
 | --- | --- | --- |
 | サイズ | 10MB 未満 | 無制限だと課金と悪用の入口になる |
-| 種別 | `image/*` | 参照実装の想定（アバター・写真） |
+| 種別 | `image/(png\|jpeg\|gif\|webp\|heic\|heif\|avif)` | 参照実装の想定（アバター・写真）。`heic` / `heif` は iOS のカメラロールの既定なので外さない。`image/*` にしない理由は下記 |
 
-画像以外も置くプロジェクトは `contentType` の条件を広げる。削除は
+**SVG は意図的に外している。** SVG は `<script>` を含められ、`getDownloadURL` の URL は
+インラインで配信されるため、`firebasestorage.googleapis.com` オリジン上でのスクリプト実行
+（stored XSS）になる。アバター・写真用途なら不要。足すなら配信側の対策
+（`Content-Disposition: attachment` 等）とセットで判断する。
+
+画像以外も置くプロジェクトは `contentType` の列挙を広げる。削除は
 `request.resource` を持たないため、この 2 条件を課さない（`allow delete` を別に書く）。
 拒否ケースは `tests/storage-rules.test.ts` にあり、`yarn test:rules` で検証する。
 
@@ -259,7 +273,8 @@ Apple / Google への月次の取引報告（External Purchase Server API / exte
 決済ロジックの本体は **[`@geckou/billing`](https://github.com/geckou/kit)**（npm パッケージ）にある。
 権利状態の反映（冪等性・順序制御）・Stripe / RevenueCat Webhook・Checkout / ポータル作成・
 カスタムクレーム同期はパッケージ側で実装され、修正は Renovate の更新 PR として届く
-（`renovate.json5`。→ `.claude/docs/dependencies.md`）。
+（`renovate.json5`。→ `.claude/docs/dependencies.md`）。ただし `@geckou/*` が 0.x の間は
+minor が `^` のレンジを跨がないため、Dependency Dashboard で承認するまで PR が出ない。
 リポジトリ内に残るのは配線と、プロジェクトごとに編集するフックのみ。
 
 | 層 | ファイル | 役割 |
@@ -329,11 +344,12 @@ if (isSubscriptionActive(user.subscription)) {
 
 ```
 components/
-├── icons/        # アイコンコンポーネント
+├── icons/        # プロジェクト固有のアイコン
 ├── auth/         # 認証関連（LoginForm, AuthGuard 等）
 └── <feature>/    # 機能別（dashboard/, settings/ 等）
 ```
 
-**汎用 UI（Button, Modal, Input 等）は `@geckou/ui-react` から取る**（`packages/README.md`）。
-`components/` に置くのはプロジェクト固有のものだけ。小規模なうちは `components/` 直下でよい。
+**汎用 UI（Button, Modal, Input 等）とアイコンは `@geckou/ui-react` から取る**（`packages/README.md`）。
+`components/` に置くのはプロジェクト固有のものだけ。`components/icons/` も同じで、
+`@geckou/ui-react` に無いアイコンだけを置く。小規模なうちは `components/` 直下でよい。
 増えてきたら機能別に分ける。

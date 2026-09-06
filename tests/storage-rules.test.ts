@@ -103,6 +103,34 @@ describe('users 領域のアップロード制限', () => {
     )
   })
 
+  it('SVG は拒否する（<script> を含められ、配信 URL 上で実行されるため）', async () => {
+    const storage = testEnv.authenticatedContext('alice').storage()
+
+    await assertFails(
+      uploadString(ref(storage, 'users/alice/avatar.svg'), '<svg />', 'raw', {
+        contentType: 'image/svg+xml',
+      })
+    )
+  })
+
+  // heic / heif は iOS のカメラロールの既定。列挙から漏らすと
+  // 写真のアップロードが permission-denied になる
+  it('jpeg / webp / heic は通す', async () => {
+    const storage = testEnv.authenticatedContext('alice').storage()
+
+    for (const [name, contentType] of [
+      ['photo.jpg', 'image/jpeg'],
+      ['photo.webp', 'image/webp'],
+      ['photo.heic', 'image/heic'],
+    ]) {
+      await assertSucceeds(
+        uploadString(ref(storage, `users/alice/${name}`), 'data', 'raw', {
+          contentType,
+        })
+      )
+    }
+  })
+
   it('10MB 以上は拒否する', async () => {
     const storage = testEnv.authenticatedContext('alice').storage()
     const tooLarge = new Uint8Array(10 * 1024 * 1024 + 1)
