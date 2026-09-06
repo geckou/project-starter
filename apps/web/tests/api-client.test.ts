@@ -17,7 +17,14 @@ beforeEach(() => {
   auth.currentUser = null
   auth.authStateReady = vi.fn(async () => {})
   fetchMock.mockReset()
-  fetchMock.mockResolvedValue({ ok: true, json: async () => ({ value: 1 }) })
+  // 実装は json() ではなく text() を読む（Express の HTML 応答で
+  // ステータスを失わないため）。json() だけのモックだと全ケースが
+  // 例外経路に落ち、それでも通ってしまう
+  fetchMock.mockResolvedValue({
+    ok: true,
+    status: 200,
+    text: async () => '{"value":1}',
+  })
   vi.stubGlobal('fetch', fetchMock)
 })
 
@@ -34,6 +41,9 @@ function authorizationOf(call: number) {
   return headers['Authorization']
 }
 
+// 応答の解釈（JSON / HTML / エラー）は @geckou/shared/api-client 側の
+// packages/shared/tests/api-client.test.ts が見る。ここで見るのは web 固有の注入
+// （Firebase Auth からのトークン取得と API_BASE_URL の決定）だけ
 describe('apiClient', () => {
   it('セッションの復元が終わってから currentUser を読む', async () => {
     // 復元が終わるまで currentUser は null（永続化されたセッションの復元中）
