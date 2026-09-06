@@ -170,10 +170,98 @@ done
 # --- PR のマージ --------------------------------------------------------
 # CLAUDE.md「自律性の境界」で「その場で止めて聞く」に置いている操作。
 # git のサブコマンドではないので、下の git 向けの絞り込みより前に見る。
-# 検査するのは「コマンドの位置に現れた gh pr merge」だけ。引数の中に書いた
-# コマンド例（gh pr create --body '... gh pr merge ...'）は素通しする
-if printf '%s' "$raw_cmd" |
-  grep -Eq '(^|[;&|][[:space:]]*|[[:space:]]&&[[:space:]]|[[:space:]]\|\|[[:space:]])[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'; then
+# 見るのは heredoc を落とし sh -c / eval を展開したあとの $cmd。$raw_cmd を
+# 正規表現で見ると、heredoc 本文や --body の中の行に誤反応する一方で、
+# sh -c 'gh pr merge …' は素通ししてしまう。
+#
+# クォートを保ったままトークンへ分割し、**コマンドの位置**に来た gh だけを見る。
+# こうしないと `gh pr create --body 'gh pr merge 12 でマージする'` の本文が
+# 別々のトークンとして読まれ、コマンド例を書いただけで止まる
+if printf '%s\n' "$cmd" | awk '
+  BEGIN { SQ = sprintf("%c", 39); DQ = sprintf("%c", 34); BS = sprintf("%c", 92) }
+
+  { all = all $0 "\n" }
+
+  END {
+    n = 0
+    token = ""
+    quote = ""
+    has_token = 0
+
+    # トークン列を作る。セグメントの切れ目は制御文字 \001 で表す
+    for (i = 1; i <= length(all); i++) {
+      c = substr(all, i, 1)
+
+      if (quote != "") {
+        if (c == BS && quote == DQ) { token = token substr(all, i + 1, 1); i++; continue }
+        if (c == quote) { quote = "" ; continue }
+        token = token c
+        continue
+      }
+
+      if (c == SQ || c == DQ) { quote = c; has_token = 1; continue }
+      if (c == BS) { token = token substr(all, i + 1, 1); i++; has_token = 1; continue }
+
+      if (c == " " || c == "\t") {
+        if (has_token) { tokens[++n] = token; token = ""; has_token = 0 }
+        continue
+      }
+
+      if (c == "\n" || c == ";" || c == "&" || c == "|" || c == "(" || c == ")") {
+        if (has_token) { tokens[++n] = token; token = ""; has_token = 0 }
+        tokens[++n] = "\001"
+        continue
+      }
+
+      token = token c
+      has_token = 1
+    }
+    if (has_token) tokens[++n] = token
+
+    # セグメントごとに、コマンドの位置のトークンが gh かを見る
+    start = 1
+    for (i = 1; i <= n + 1; i++) {
+      if (i <= n && tokens[i] != "\001") continue
+      if (segment(start, i - 1)) { print "1"; exit }
+      start = i + 1
+    }
+  }
+
+  # from..to が gh の PR マージなら 1
+  function segment(from, to,   i, t, positional, seen) {
+    i = from
+
+    # 先頭の VAR=値 と、実行を包むだけの語を読み飛ばす
+    while (i <= to) {
+      t = tokens[i]
+      if (t ~ /^[A-Za-z_][A-Za-z_0-9]*=/) { i++; continue }
+      if (t == "command" || t == "env" || t == "nohup" || t == "sudo" || t == "time") { i++; continue }
+      break
+    }
+
+    if (i > to || tokens[i] != "gh") return 0
+    i++
+
+    # フラグとその値を飛ばし、位置引数の最初の 2 つを見る
+    seen = 0
+    while (i <= to) {
+      t = tokens[i]
+
+      if (substr(t, 1, 1) == "-") {
+        # 値を別トークンで取るグローバルフラグ（--repo=x の形は飛ばさなくてよい）
+        if (t == "-R" || t == "--repo") i++
+        i++
+        continue
+      }
+
+      positional[++seen] = t
+      if (seen >= 2) break
+      i++
+    }
+
+    return (positional[1] == "pr" && positional[2] == "merge")
+  }
+' | grep -q 1; then
   ask 'PR のマージはユーザーが判断します（CLAUDE.md「PR は出す、マージは人が決める」）。マージしてよいかユーザーに確認してください。'
 fi
 
@@ -1161,10 +1249,14 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
         # や HEAD:production をクォートで囲んだ形が production と一致せず素通りする。
         # :dst 側にもクォートが残る形に備えて、分割の前後で剥がす
         dst = strip(dst)
+        # 先頭の + は force push そのもの。git の標準形は +<src>:<dst> で、
+        # + は **送信元側** に付く。: で分割したあとだけ見ていると
+        # `git push origin +HEAD:release/1.0.0` が通常 push と判定される。
+        # 分割の前に refspec 全体の先頭を見る
+        if (sub(/^\+/, "", dst)) force = 1
         if (index(dst, ":") > 0) dst = substr(dst, index(dst, ":") + 1)
         dst = strip(dst)
-        # 先頭の + は force push そのもの。heads/ を剥がす前に外さないと
-        # +heads/production が production と一致せず素通りする
+        # heads/ を剥がす前に + を外さないと +heads/production が一致しない
         if (sub(/^\+/, "", dst)) force = 1
         # git は heads/production も refs/heads/production に解決する（DWIM）
         sub(/^(refs\/)?heads\//, "", dst)
@@ -1180,29 +1272,56 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
     }
   ')
 
-  printf '%s\n' "$push_targets" | while IFS=' ' read -r force dst; do
-    [ -n "$dst" ] || continue
-    [ "$dst" = "@CURRENT" ] && dst=$current
+  # 1 コマンドで複数の宛先へ push できるため、最初に当たったものではなく
+  # **全ての宛先を見てから最も重い判定**を採る。先に見つけたところで抜けると
+  # `git push --force origin feat/x production` が、feat/x の ask（14）で
+  # 確定して production の deny（10）に到達しない
+  push_verdict=$(printf '%s\n' "$push_targets" | {
+    worst=0
 
-    case "$dst" in
-      @UNSAFE) exit 13 ;;
-      production) exit 10 ;;
-    esac
+    while IFS=' ' read -r force dst; do
+      [ -n "$dst" ] || continue
+      [ "$dst" = "@CURRENT" ] && dst=$current
+      verdict=0
 
-    if [ "$force" = "1" ]; then
       case "$dst" in
-        production | release/*) exit 11 ;;
-        # 履歴の書き換えは「その場で止めて聞く」対象（CLAUDE.md「自律性の境界」）。
-        # 作業ブランチでも、他人がチェックアウトしていれば取り返しがつかない
-        *) exit 14 ;;
+        @UNSAFE) verdict=13 ;;
+        production) verdict=10 ;;
       esac
-    fi
 
-    case "$dst" in
-      release/* | hotfix/*) exit 12 ;;
-    esac
-  done
-  push_verdict=$?
+      if [ "$verdict" -eq 0 ] && [ "$force" = "1" ]; then
+        case "$dst" in
+          production | release/*) verdict=11 ;;
+          # 履歴の書き換えは「その場で止めて聞く」対象（CLAUDE.md「自律性の境界」）。
+          # 作業ブランチでも、他人がチェックアウトしていれば取り返しがつかない
+          *) verdict=14 ;;
+        esac
+      fi
+
+      if [ "$verdict" -eq 0 ]; then
+        case "$dst" in
+          release/* | hotfix/*) verdict=12 ;;
+        esac
+      fi
+
+      # 重い順に 10（deny）> 11（deny）> 13（deny）> 12（ask）> 14（ask）。
+      # 数の大小ではないので、順位表を引いて比べる
+      rank() {
+        case "$1" in
+          10) printf '5' ;;
+          11) printf '4' ;;
+          13) printf '3' ;;
+          12) printf '2' ;;
+          14) printf '1' ;;
+          *) printf '0' ;;
+        esac
+      }
+
+      [ "$(rank "$verdict")" -gt "$(rank "$worst")" ] && worst=$verdict
+    done
+
+    printf '%s' "$worst"
+  })
 
   case "$push_verdict" in
     10) deny 'production への直接 push は禁止です（PR 必須）。' ;;
@@ -1318,13 +1437,18 @@ if [ -z "$newbranch" ]; then
     }')
 fi
 
-# `git branch -m|-M|-c|-C [<元>] <新しい名前>` も名前を作る。命名規則だけを当てる
-# （分岐元を持たないので fetch の鮮度・分岐元の検査はしない）
+# `git branch -m|-M|-c|-C [<元>] <新しい名前>` も名前を作る。
+#
+# **改名（-m / -M）と複製（-c / -C）は別物。** 改名は同じブランチに別名を付けるだけで
+# 分岐元を持たないが、複製は指定したブランチの先端に新しいブランチを作る＝分岐そのもの。
+# 複製を「分岐元なし」として扱うと、`git branch -C feat/existing claude/new` で
+# 分岐元の検査を丸ごと迂回できる
 rename_only=''
+copy_base=''
 if [ -z "$newbranch" ]; then
-  newbranch=$(printf '%s' "$cmd_flags" | awk '
+  branch_form=$(printf '%s' "$cmd_flags" | awk '
     {
-      seen_git = 0; seen_branch = 0; is_rename = 0; last = ""
+      seen_git = 0; seen_branch = 0; kind = ""; count = 0
       for (i = 1; i <= NF; i++) {
         if (!seen_git) { if ($i == "git") seen_git = 1; continue }
         if (!seen_branch) {
@@ -1332,13 +1456,27 @@ if [ -z "$newbranch" ]; then
           if (substr($i, 1, 1) == "-") continue
           break
         }
-        if ($i ~ /^(-[mMcC]|--move|--copy)$/) { is_rename = 1; continue }
+        if ($i ~ /^(-[mM]|--move)$/) { kind = "move"; continue }
+        if ($i ~ /^(-[cC]|--copy)$/) { kind = "copy"; continue }
         if (substr($i, 1, 1) == "-") continue
-        last = $i
+        names[++count] = $i
       }
-      if (is_rename && last != "") { print last; exit }
+      if (kind == "" || count == 0) next
+      # <元> <新> の 2 つ書かれていれば元が分岐元。1 つなら現在ブランチが元
+      print kind "\t" names[count] "\t" (count >= 2 ? names[count - 1] : "")
+      exit
     }')
-  [ -n "$newbranch" ] && rename_only=1
+
+  if [ -n "$branch_form" ]; then
+    newbranch=$(printf '%s' "$branch_form" | cut -f2)
+
+    if [ "$(printf '%s' "$branch_form" | cut -f1)" = "copy" ]; then
+      copy_base=$(unquote "$(printf '%s' "$branch_form" | cut -f3)")
+      [ -n "$copy_base" ] || copy_base=$current
+    else
+      rename_only=1
+    fi
+  fi
 fi
 
 newbranch=$(unquote "$newbranch")
@@ -1381,7 +1519,7 @@ if [ -n "$newbranch" ]; then
       ;;
   esac
 
-  # ここから先は「新しく切る」ときの検査。改名・複製には分岐元が無い
+  # ここから先は「新しく切る」ときの検査。改名（-m / -M）は分岐元を持たない
   [ -n "$rename_only" ] && exit 0
 
   # 最新の remote 情報を持たずに切ると、進行中の release/* を見落として
@@ -1432,6 +1570,9 @@ if [ -n "$newbranch" ]; then
              if (is_wt && !path_before && stage == 2) { stage = 3; continue }
              print $i; exit
            } }')
+  # 複製（-c / -C）の分岐元は上の解析では取れない。先に決めたものを使う
+  [ -n "$copy_base" ] && base=$copy_base
+
   # 同一コマンド内で production へ切り替えてから分岐する（ドキュメントの手順）ケースを
   # 現在ブランチ起点と誤判定しないよう、チェーンの前半を分岐元として扱う
   if [ -z "$base" ] && has '(^|[[:space:]])git[[:space:]]+(checkout|switch)[[:space:]]+production([[:space:]]|$|&|;)'; then

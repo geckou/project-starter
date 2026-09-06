@@ -113,19 +113,22 @@ describe('users 領域のアップロード制限', () => {
     )
   })
 
-  it('jpeg / webp は通す', async () => {
+  // heic / heif は iOS のカメラロールの既定。列挙から漏らすと
+  // 写真のアップロードが permission-denied になる
+  it('jpeg / webp / heic は通す', async () => {
     const storage = testEnv.authenticatedContext('alice').storage()
 
-    await assertSucceeds(
-      uploadString(ref(storage, 'users/alice/photo.jpg'), 'data', 'raw', {
-        contentType: 'image/jpeg',
-      })
-    )
-    await assertSucceeds(
-      uploadString(ref(storage, 'users/alice/photo.webp'), 'data', 'raw', {
-        contentType: 'image/webp',
-      })
-    )
+    for (const [name, contentType] of [
+      ['photo.jpg', 'image/jpeg'],
+      ['photo.webp', 'image/webp'],
+      ['photo.heic', 'image/heic'],
+    ]) {
+      await assertSucceeds(
+        uploadString(ref(storage, `users/alice/${name}`), 'data', 'raw', {
+          contentType,
+        })
+      )
+    }
   })
 
   it('10MB 以上は拒否する', async () => {

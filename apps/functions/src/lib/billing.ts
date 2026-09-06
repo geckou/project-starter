@@ -34,7 +34,12 @@ const REVENUECAT_WEBHOOK_AUTH = defineSecret('REVENUECAT_WEBHOOK_AUTH')
 
 /**
  * この配線が使うシークレット一式。
- * `onRequest({ secrets: BILLING_SECRETS })` に渡した関数だけが値を読める
+ * `onRequest({ secrets: BILLING_SECRETS })` に渡した関数だけが値を読める。
+ *
+ * ⚠️ 宣言した秘密はデプロイ時に Secret Manager 側で解決されるため、
+ * **3 つとも存在していないと非対話デプロイ（CI）が落ちる。**
+ * Stripe だけ / IAP だけの構成でも、使わない側はダミー値で作っておく
+ * （値が空文字なら下の配線は無効のまま動く。→ `.claude/docs/billing.md`）
  */
 export const BILLING_SECRETS = [
   STRIPE_SECRET_KEY,
@@ -87,11 +92,14 @@ let cachedEnvKey: string | null = null
  * Stripe を使わない構成では一度も使われないコストになる。
  */
 export async function getBilling(): Promise<Billing> {
-  const secretKey = STRIPE_SECRET_KEY.value()
   const envKey = currentEnvKey()
 
   // 環境変数が差し替わった場合（主にテスト）に備えて変化を見る
   if (cached && cachedEnvKey === envKey) return cached
+
+  // .value() は未設定のとき警告を出す。キャッシュ判定より前に読むと、
+  // このキーだけ警告の回数が他の 2 つと揃わない
+  const secretKey = STRIPE_SECRET_KEY.value()
 
   // Web 決済（Stripe）を使わないプロジェクトでは STRIPE_SECRET_KEY 未設定のまま
   // でよい（/billing/* は 503、Stripe Webhook は 500 を返す）

@@ -197,7 +197,7 @@ Auth しか要らないページに Firestore SDK が乗らないようにする
 | 制限 | 値 | 理由 |
 | --- | --- | --- |
 | サイズ | 10MB 未満 | 無制限だと課金と悪用の入口になる |
-| 種別 | `image/(png\|jpeg\|gif\|webp)` | 参照実装の想定（アバター・写真）。`image/*` にしない理由は下記 |
+| 種別 | `image/(png\|jpeg\|gif\|webp\|heic\|heif\|avif)` | 参照実装の想定（アバター・写真）。`heic` / `heif` は iOS のカメラロールの既定なので外さない。`image/*` にしない理由は下記 |
 
 **SVG は意図的に外している。** SVG は `<script>` を含められ、`getDownloadURL` の URL は
 インラインで配信されるため、`firebasestorage.googleapis.com` オリジン上でのスクリプト実行

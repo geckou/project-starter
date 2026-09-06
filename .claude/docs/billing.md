@@ -73,6 +73,18 @@ firebase functions:secrets:set STRIPE_SECRET_KEY
 firebase functions:secrets:set STRIPE_WEBHOOK_SECRET
 ```
 
+> ⚠️ **billing 層を使うなら 3 つとも作る。** `defineSecret()` で宣言した秘密は
+> デプロイ時に Secret Manager 側で解決され、**存在しないと非対話デプロイ（CI）は
+> その場で落ちる**（firebase-tools の `ensureSecret`）。Stripe だけ / IAP だけの構成でも、
+> 使わない側は**ダミー値で作っておく**（値が空文字なら配線は無効のまま動く）。
+>
+> ```bash
+> printf '' | firebase functions:secrets:set REVENUECAT_WEBHOOK_AUTH --data-file -
+> ```
+>
+> 「使う側の秘密だけ宣言する」形にすればダミーは要らないが、どのプロバイダを使うかを
+> デプロイ時に知る手段（環境変数の追加）が要る。→ `.claude/docs/questions.md`
+
 値はプロンプトに貼る（履歴に残さないため、引数では渡さない）。確認と削除:
 
 ```bash
@@ -456,7 +468,8 @@ yarn test:rules  # Firestore / Storage ルール（要 Firebase エミュレー�
 - [ ] 開発・検証環境がテストキー（`sk_test_`）を使っている
 - [ ] Test Clock で更新・支払い失敗・失効の遷移を確認した
 - [ ] 秘密（`STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `REVENUECAT_WEBHOOK_AUTH`）が
-      `.env` ではなく Secret Manager にある（`firebase functions:secrets:set`）
+      `.env` ではなく Secret Manager にある（`firebase functions:secrets:set`）。
+      **使わないプロバイダの分もダミー値で作った**（未作成だと CI のデプロイが落ちる）
 - [ ] 本番プロジェクトの Secret Manager に本番モードの値を登録し、再デプロイした
       （関数は登録時点のバージョンに固定される）
 - [ ] 本番モードの price ID / Webhook シークレットに差し替えた

@@ -566,6 +566,52 @@ run 2 'claude/* セッション内でも feat/* からは切れない' \
   'git checkout -b claude/other feat/existing' claude/session-abc123
 
 echo
+echo '=== レビュー指摘の回帰（#265） ==='
+# 複数 refspec のとき、最初に当たった判定で確定すると
+# `git push --force origin feat/x production` が production の deny に届かない
+run 2 '複数 refspec は最も重い判定を採る（作業ブランチが先）' \
+  'git push --force origin feat/existing production' feat/existing
+run 2 '複数 refspec は最も重い判定を採る（production が先）' \
+  'git push --force origin production feat/existing' feat/existing
+
+# git の標準形 +<src>:<dst> では + が送信元側に付く。: で割ってから見ていると
+# force と判定できず、release/* への強制 push が通常 push の ask になる
+run 2 '+HEAD:release/* は force push として deny' \
+  'git push origin +HEAD:release/1.0.0' feat/existing
+run 0 '+HEAD:feat/* は force push の ask' \
+  'git push origin +HEAD:feat/existing' feat/existing
+expect '履歴の書き換え' '送信元側の + でも force として扱う'
+
+# gh の検査は展開後のコマンドを見る。raw のまま正規表現で見ると
+# heredoc 本文に誤反応し、sh -c 越しは見逃す
+run 0 'sh -c 越しの gh pr merge も ask' "sh -c 'gh pr merge 12'" feat/existing
+expect 'マージは人が決める' '展開してから判定する'
+run 0 'gh -R owner/repo pr merge も ask' \
+  'gh -R geckou/project-starter pr merge 12' feat/existing
+expect 'マージは人が決める' 'グローバルフラグを挟んでも検出する'
+run 0 'heredoc 本文の gh pr merge は素通し' \
+  "cat <<'EOF' > memo.md
+gh pr merge 12 --squash
+EOF" feat/existing
+refute 'permissionDecision' 'データとして書いた行では確認を求めない'
+run 0 'gh pr create の本文（複数行）も素通し' \
+  "gh pr create --body '手順:
+gh pr merge 12 --squash
+以上'" feat/existing
+refute 'permissionDecision' '複数行の --body でも誤検知しない'
+
+# 複製（-c / -C）は指定したブランチの先端に新しいブランチを作る＝分岐そのもの。
+# 改名（-m / -M）と同じ「分岐元なし」扱いにすると、分岐元の検査を迂回できる
+run 2 'branch -C で claude/* の分岐元検査を迂回できない' \
+  'git branch -C feat/existing claude/new' claude/session-abc123
+run 2 'branch -C の分岐元も production 縛り' \
+  'git branch -C feat/existing feat/copied' feat/existing
+run 0 'branch -C を production から切るのは通す' \
+  'git branch -C production feat/copied'
+run 0 'branch -M（改名）は分岐元を持たないので従来どおり' \
+  'git branch -M feat/existing feat/renamed' feat/existing
+
+echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
 run 2 '許可リストに無いプレフィックス' 'git checkout -b feature/user-profile'

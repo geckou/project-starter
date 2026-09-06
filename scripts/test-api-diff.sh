@@ -13,6 +13,8 @@ set -u
 #   3. エクスポートの追加も差分として検出する（互換の追加かは人が判断する）
 #   3b. コメント・空白だけの変更は差分として扱わない
 #   3c. ただし文字列リテラル中の `//` はコメントではないので落とさない
+#   3d. リテラル内部の空白は潰さない（'a b' → 'a  b' は公開型の変更）
+#   3e. /// <reference /> はコメントではないので落とさない
 #   4. 型定義を持たないパッケージは止めず、内容が変わっていることを警告する
 #   5. ビルドできない環境では止めない（検査できないだけ）
 #   6. tarball を展開できないときは止めない
@@ -205,6 +207,43 @@ if [ "$status" -ne 0 ]; then
   pass "URL を含むリテラル型の変更は止める"
 else
   fail "コメント除去が文字列を壊して差分を消した" "$output"
+fi
+
+rm -rf "$work"
+echo ""
+
+echo "[3d] リテラル内部の空白は API の差として扱う"
+work=$(mktemp -d)
+make_package "$work" "export declare const label: 'a b'"
+published=$(pack_published "$work")
+# 正規化がリテラルの中まで潰すと、公開されている型の変更を見逃す
+printf "export declare const label: 'a  b'\n" > "$work/packages/demo/dist/index.d.ts"
+output=$(check "$work" "$published")
+status=$?
+
+if [ "$status" -ne 0 ]; then
+  pass "リテラル型の空白の変更は止める"
+else
+  fail "正規化がリテラル内部まで潰して差分を消した" "$output"
+fi
+
+rm -rf "$work"
+echo ""
+
+echo "[3e] トリプルスラッシュ・ディレクティブ"
+work=$(mktemp -d)
+make_package "$work" '/// <reference types="node" />
+export declare const demo: number'
+published=$(pack_published "$work")
+# /// は // で始まるがコメントではない。消えると利用側がグローバル型を失う
+printf 'export declare const demo: number\n' > "$work/packages/demo/dist/index.d.ts"
+output=$(check "$work" "$published")
+status=$?
+
+if [ "$status" -ne 0 ]; then
+  pass "reference ディレクティブの消失は止める"
+else
+  fail "ディレクティブをコメントとして落とした" "$output"
 fi
 
 rm -rf "$work"
