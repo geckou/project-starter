@@ -28,6 +28,7 @@ FUNCTIONS_ENV_KEYS=(
   ALLOWED_ORIGINS
   # layer:billing:start
   REVENUECAT_ALLOW_SANDBOX
+  STRIPE_ALLOW_TEST_MODE
   STRIPE_PRICE_IDS
   STRIPE_SUCCESS_URL
   STRIPE_CANCEL_URL
@@ -82,6 +83,23 @@ if [ "${ENV}" = "production" ]; then
       echo "  本番で決済を受け付ける場合は本番キー（sk_live_）に差し替えてください。"
       ;;
   esac
+fi
+
+# テストモード許可のまま本番へ行くのを止める。
+# .env.develop を複製して .env.production を作る運用だとフラグが残りやすく、
+# 残ると「本番でテストモードの購入を適用しない」というガード自体が無力になる
+if [ "${ENV}" = "production" ]; then
+  if [ "$(read_env_value STRIPE_ALLOW_TEST_MODE)" = "true" ]; then
+    echo "[error] .env.production で STRIPE_ALLOW_TEST_MODE=true になっています"
+    echo "  テストモードの購入で本番の権利が付きます。空にしてください。"
+    exit 1
+  fi
+
+  if [ "$(read_env_value REVENUECAT_ALLOW_SANDBOX)" = "true" ]; then
+    echo "[error] .env.production で REVENUECAT_ALLOW_SANDBOX=true になっています"
+    echo "  Sandbox の購入で本番の権利が付きます。空にしてください。"
+    exit 1
+  fi
 fi
 # layer:billing:end
 

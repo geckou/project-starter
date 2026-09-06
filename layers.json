@@ -283,6 +283,7 @@
       ],
       "env": [
         "NEXT_PUBLIC_STRIPE_PRICE_ID",
+        "STRIPE_ALLOW_TEST_MODE",
         "STRIPE_PRICE_IDS",
         "STRIPE_SUCCESS_URL",
         "STRIPE_CANCEL_URL",

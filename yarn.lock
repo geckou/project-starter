@@ -2115,10 +2115,10 @@
   resolved "https://registry.yarnpkg.com/@firebase/webchannel-wrapper/-/webchannel-wrapper-1.0.3.tgz#a73bab8eb491d7b8b7be2f0e6c310647835afe83"
   integrity sha512-2xCRM9q9FlzGZCdgDMJwc0gyUkWFtkosy7Xxr6sFgQwn+wMNIWd7xIvYNauU1r64B5L5rsGKy/n9TKJ0aAFeqQ==
 
-"@geckou/billing@^0.6.0":
-  version "0.6.0"
-  resolved "https://registry.yarnpkg.com/@geckou/billing/-/billing-0.6.0.tgz#34d7f63afe038a0ee4d8237f96fa123ece46081c"
-  integrity sha512-S9Tj63n9sP8/yMxBQiwhThSqmk9QaptJynTp2cioVzKuLhcDRBX5Zh0jBUI87647WhLOsqHUfXGrsSEKFyE79g==
+"@geckou/billing@^0.7.0":
+  version "0.7.0"
+  resolved "https://registry.yarnpkg.com/@geckou/billing/-/billing-0.7.0.tgz#9f945063206f4b9f876b55c6ddd6576f44e2ffdd"
+  integrity sha512-Z8x7zfVGo0G6w+NchbBoM56RmqJJFfcC/oArv1VaR2XQd50VhCfGKDD5VjRg/24DglNp7YqKmFUU+V8pJ+RzhA==
 
 "@geckou/firebase-client@^0.2.0":
   version "0.2.0"
