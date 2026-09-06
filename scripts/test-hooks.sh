@@ -542,7 +542,7 @@ run 0 '通常の push は素通し' 'git push -u origin feat/existing' feat/exis
 refute 'permissionDecision' '通常の push では確認を求めない'
 
 run 0 'feat/* 同士のマージは ask' 'git merge feat/other' feat/existing
-expect 'feat/* 同士のマージ' 'マージルール違反であることを伝える'
+expect 'feat/* 同士の取り込み' 'マージルール違反であることを伝える'
 run 0 'feat/* から release/* のマージは素通し' \
   'git merge origin/release/1.0.0' feat/existing
 refute 'permissionDecision' 'release/* の取り込みでは確認を求めない'
@@ -551,6 +551,139 @@ refute 'permissionDecision' 'feat/* に居ないときは対象外'
 
 run 2 'merge --no-verify は deny' 'git merge --no-verify feat/other' feat/existing
 run 2 'rebase --no-verify は deny' 'git rebase --no-verify production' feat/existing
+
+# 回帰(#270): merge の字面だけを見ていたため、同じ結果になる rebase / pull /
+# cherry-pick と refs/heads/ 付きの指定が素通りしていた
+run 0 'feat/* の rebase も ask' 'git rebase feat/other' feat/existing
+expect 'feat/* 同士の取り込み' 'rebase もマージルール違反として扱う'
+run 0 'feat/* の pull も ask' 'git pull origin feat/other' feat/existing
+expect 'feat/* 同士の取り込み' 'pull もマージルール違反として扱う'
+run 0 'feat/* の cherry-pick も ask' 'git cherry-pick feat/other' feat/existing
+expect 'feat/* 同士の取り込み' 'cherry-pick もマージルール違反として扱う'
+run 0 'refs/heads/ 付きの merge も ask' \
+  'git merge refs/heads/feat/other' feat/existing
+expect 'feat/* 同士の取り込み' 'refs/heads/ 接頭辞を剥がして比較する'
+run 0 'release/* の rebase は素通し' \
+  'git rebase origin/release/1.0.0' feat/existing
+refute 'permissionDecision' 'release/* の取り込みでは確認を求めない（rebase）'
+run 0 '引数の無い pull は素通し' 'git pull' feat/existing
+refute 'permissionDecision' '自分のブランチの pull は対象外'
+run 0 '自分のブランチの pull は素通し' \
+  'git pull origin feat/existing' feat/existing
+refute 'permissionDecision' 'リモートから自分のブランチを取り込むだけなら確認しない'
+run 0 '自分のブランチの rebase も素通し' \
+  'git rebase origin/feat/existing' feat/existing
+refute 'permissionDecision' 'rebase でも自分のブランチは対象外'
+# 回帰(#285 レビュー): -- は引数の区切りであって走査の終わりではない
+run 0 '-- の後ろの取り込み元も見る' 'git merge -- feat/other' feat/existing
+expect 'feat/* 同士の取り込み' '-- の後ろでもマージルール違反として扱う'
+
+echo
+echo '=== #269: 予約語・ラッパー語の後ろの git も検査する ==='
+# セグメント先頭のトークンだけを見ていたため、実行を包む語や複合コマンドの
+# 予約語を挟むだけで --no-verify 禁止・メッセージ規約・直接コミット禁止が外れた
+run 2 'command 経由でも検査する' 'command git commit -n -m wip' feat/existing
+run 2 '波括弧の中でも検査する' '{ git commit -n -m wip; }' feat/existing
+run 2 'if / then の後ろでも検査する' \
+  'if true; then git commit -n -m wip; fi' feat/existing
+run 2 'while / do の後ろでも検査する' \
+  'while false; do git commit -n -m wip; done' feat/existing
+run 2 'exec 経由でも検査する' 'exec git commit -n -m wip' feat/existing
+run 2 'time 経由でも検査する' 'time git commit -n -m wip' feat/existing
+run 2 '否定（!）の後ろでも検査する' '! git commit -n -m wip' feat/existing
+run 2 'nohup 経由でも検査する' 'nohup git commit -n -m wip' feat/existing
+run 2 '変数で書いた git は判定不能として deny' \
+  'g=git; $g commit -n -m wip' feat/existing
+expect '検査できない' '判定不能であることを伝える'
+run 2 'コマンド置換で書いた git も deny' \
+  '"$(which git)" commit -n -m wip' feat/existing
+run 2 'バッククォートで書いた git も deny' \
+  '`which git` commit -n -m wip' feat/existing
+expect '検査できない' 'バッククォートのコマンド位置も判定不能として扱う'
+run 0 'コマンド例の引用は素通し' \
+  'echo "command git commit -n -m wip"' feat/existing
+run 0 '包む語があっても規約どおりなら通す' \
+  'command git commit -m "feat: x"' feat/existing
+# 置換というだけで止めない（git と無関係なコマンドを巻き込まない）
+run 0 '置換で書いた git 以外のコマンドは素通し' \
+  '$NODE scripts/x.mjs && git status' feat/existing
+run 0 '引数の位置の置換は対象外' 'echo $(date) && git status' feat/existing
+run 0 'バッククォートでも git 以外なら素通し' \
+  '`which node` script.js && git status' feat/existing
+
+# 回帰(#285 レビュー): ラッパーが取るオプションを読み飛ばさないと、
+# ラッパー名の直後のフラグがコマンド名として確定して検査が外れる
+run 2 'sudo のオプション付きでも検査する' \
+  'sudo -u root git commit -n -m wip' feat/existing
+run 2 'command のオプション付きでも検査する' \
+  'command -p git commit -n -m wip' feat/existing
+run 2 'time のオプション付きでも検査する' \
+  'time -p git commit -n -m wip' feat/existing
+run 2 'time の値付きオプションでも検査する' \
+  'time -o /tmp/t git commit -n -m wip' feat/existing
+run 2 'exec の値付きオプションでも検査する' \
+  'exec -a foo git commit -n -m wip' feat/existing
+run 0 'ラッパー経由でも git でなければ素通し' \
+  'sudo -u root apt update && git status' feat/existing
+
+# 回帰(#285 レビュー): ダブルクォートの中でも $( … ) とバッククォートは
+# シェルが評価する。区切らないと中身が外側のコマンドの一部として素通りする
+run 2 'ダブルクォート内のコマンド置換も検査する' \
+  'echo "$(git commit -n -m wip)"' feat/existing
+run 2 'ダブルクォート内のバッククォートも検査する' \
+  'echo "`git commit -n -m wip`"' feat/existing
+# シングルクォートの中はシェルが評価しないので、今までどおり素通し
+run 0 'シングルクォート内の置換は素通し' \
+  "echo '\$(git commit -n -m wip)'" feat/existing
+run 0 'git を含まない置換は切り出さない' 'echo "$(date)"' feat/existing
+
+echo
+echo '=== #268: 同じコマンド内のブランチ切り替えを判定に使う ==='
+# フック実行時の HEAD だけで判定していたため、CLAUDE.md が勧める手順を
+# 1 コマンドで書くと production 上で「直接コミット」と誤判定していた
+run 0 'checkout -b した先でのコミットは通す' \
+  'git checkout -b feat/new-thing && git commit --allow-empty -m "feat: x"'
+run 0 'switch -c でも同じ' \
+  'git switch -c feat/new-thing && git commit --allow-empty -m "feat: x"'
+run 0 '既存ブランチへ checkout してからのコミットも通す' \
+  'git checkout feat/existing && git commit --allow-empty -m "feat: x"'
+run 2 'ブランチを切らないコミットは deny のまま' \
+  'git commit --allow-empty -m "feat: x"'
+expect 'production への直接コミット' 'production 上の直接コミットは止める'
+run 2 'checkout がパスならブランチ切り替えとみなさない' \
+  'git checkout src/app.ts && git commit --allow-empty -m "feat: x"'
+run 2 '切り替え先が release/* ならコミットは deny' \
+  'git checkout release/1.0.0 && git commit --allow-empty -m "feat: x"'
+expect 'release/* への直接コミット' 'release/* への直接コミットも止める'
+run 2 'ブランチを切っても規約違反のメッセージは deny' \
+  'git checkout -b feat/new-thing && git commit --allow-empty -m "wip"'
+# && 以外の区切りでは、checkout が失敗しても commit が走る。
+# 切り替えの成功を前提にできないので実行時の HEAD で判定する
+run 2 'セミコロン区切りでは切り替えを前提にしない' \
+  'git checkout -b feat/new-thing ; git commit --allow-empty -m "feat: x"'
+expect 'production への直接コミット' '; の後ろは production 上のコミットとして扱う'
+run 2 '|| 区切りでも前提にしない' \
+  'git checkout -b feat/new-thing || git commit --allow-empty -m "feat: x"'
+# 回帰(#285 レビュー): 最初の commit で打ち切ると、後半の切り替え先が
+# production でも通ってしまう。commit ごとに行き先を評価する
+run 2 '2 つ目の commit が production へ戻るなら deny' \
+  'git checkout -b feat/new-thing && git commit --allow-empty -m "feat: x" && git checkout production && git commit --allow-empty -m "feat: y"'
+expect 'production への直接コミット' '後半のコミット先も見る'
+run 0 '同じブランチへの複数コミットは通す' \
+  'git checkout -b feat/new-thing && git commit --allow-empty -m "feat: x" && git commit --allow-empty -m "feat: y"'
+
+# 回帰(#268): refspec 0 個を一律「現在ブランチへの push」と解釈していたため、
+# production 上でのタグ push がブランチへの直接 push としてブロックされていた
+run 0 'production 上でもタグだけの push は通す' 'git push origin --tags'
+refute 'production への直接 push' 'タグの push はブランチ更新と見なさない'
+run 2 '--tags でも refspec に production があれば deny' \
+  'git push origin --tags production'
+run 2 'refspec の無い push は deny のまま' 'git push origin'
+# タグの force push はリモートのタグを別のコミットへ動かす（履歴の書き換え）
+run 0 'タグの force push は ask' 'git push --force --tags origin' feat/existing
+expect 'タグの force push' 'タグの付け替えであることを伝える'
+run 0 'force の無いタグ push は素通し' 'git push --tags origin' feat/existing
+refute 'permissionDecision' '通常のタグ push では確認を求めない'
 
 echo
 echo '=== #245: claude/* の免除はハーネスのセッション内だけ ==='
@@ -864,6 +997,16 @@ export HOOK_DOD_TASKS
 run_dod 2 '新規ディレクトリ配下のコードでも DoD が走る' '{}'
 unset HOOK_DOD_TASKS
 rm -rf "$SESSION/newdir"
+
+# 回帰(#271): git status --porcelain は空白を含むパスを `?? "my file.ts"` と
+# クォートするため、末尾が `"` になって拡張子の判定に当たらなかった
+echo 'export const z = 1' > "$SESSION/my file.ts"
+HOOK_DOD_TASKS='lint'
+export HOOK_DOD_TASKS
+run_dod 2 '空白入りのファイル名でも DoD が走る' '{}'
+unset HOOK_DOD_TASKS
+rm -f "$SESSION/my file.ts"
+
 echo 'export const x = 1' > "$SESSION/probe.ts"
 
 echo

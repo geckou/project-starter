@@ -157,6 +157,8 @@
       "summary": "API・Firestore / Auth トリガー・スケジュール実行の置き場所。API は全クライアントがこの1本を共有する（architecture.md）。外すとプロジェクトは API を持たない。",
       "files": [
         "apps/functions",
+        "packages/shared/src/api-client",
+        "packages/shared/tests/api-client.test.ts",
         "apps/web/src/lib/api-client.ts",
         "apps/web/tests/api-client.test.ts"
       ],
@@ -176,7 +178,8 @@
         ]
       },
       "json": {
-        "firebase.json": [["functions"], ["emulators", "functions"]]
+        "firebase.json": [["functions"], ["emulators", "functions"]],
+        "packages/shared/package.json": [["exports", "./api-client"]]
       },
       "env": ["ALLOWED_ORIGINS", "NEXT_PUBLIC_API_BASE_URL", "SENTRY_DSN"],
       "notes": [
@@ -247,9 +250,12 @@
         "apps/functions/src/lib/billing.ts",
         "apps/functions/src/lib/entitlement-hooks.ts",
         "apps/functions/tests/billing-wiring.test.ts",
+        "apps/functions/tests/billing-lazy-load.test.ts",
         "apps/mobile/src/lib/revenuecat.ts"
       ],
       "blocks": [
+        "firestore.rules",
+        "tests/firestore-rules.test.ts",
         "packages/shared/src/index.ts",
         "packages/shared/src/types/index.ts",
         "packages/shared/tests/types.test.ts",
@@ -279,6 +285,16 @@
           "file": "apps/functions/package.json",
           "find": " --external:stripe",
           "with": ""
+        },
+        {
+          "file": "firestore.rules",
+          "find": "      allow create: if request.auth != null && request.auth.uid == userId\n                    && !request.resource.data.keys().hasAny(serverOnlyFields());\n      allow update: if request.auth != null && request.auth.uid == userId\n                    && !request.resource.data.diff(resource.data)\n                         .affectedKeys().hasAny(serverOnlyFields());",
+          "with": "      allow create: if request.auth != null && request.auth.uid == userId;\n      allow update: if request.auth != null && request.auth.uid == userId;"
+        },
+        {
+          "file": "firestore.rules",
+          "find": "    // ユーザー: 本人のみ読み書き可。ただし課金関連フィールドは書き換え不可\n    // （課金層を外すと serverOnlyFields() ごと消えるため、下の create / update は\n    //   layers.json の billing.replace で本人判定だけの形に置き換わる）",
+          "with": "    // ユーザー: 本人のみ読み書き可"
         }
       ],
       "env": [

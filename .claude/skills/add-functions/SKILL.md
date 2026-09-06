@@ -28,9 +28,9 @@ yarn format
 
 | 区分 | 中身 |
 | --- | --- |
-| ファイル | `apps/functions/` 一式（`api.ts` / `index.ts` / `lib/{auth-middleware,push-notifications,sentry}.ts` / テスト）、`apps/web/src/lib/api-client.ts` |
+| ファイル | `apps/functions/` 一式（`api.ts` / `index.ts` / `lib/{auth-middleware,push-notifications,sentry}.ts` / テスト）、`packages/shared/src/api-client/`（`createApiClient`）とそのテスト、`apps/web/src/lib/api-client.ts` とそのテスト |
 | 依存 | `firebase-functions` / `express` / `cors` / `@geckou/firebase-server` |
-| 設定 | `firebase.json` の `functions` とエミュレーター、deploy のターゲット判定、lint-staged |
+| 設定 | `firebase.json` の `functions` とエミュレーター、`packages/shared/package.json` の `exports["./api-client"]`、deploy のターゲット判定、lint-staged |
 | env | `ALLOWED_ORIGINS` / `NEXT_PUBLIC_API_BASE_URL` / `SENTRY_DSN` |
 
 ## 2. 判断が要る部分

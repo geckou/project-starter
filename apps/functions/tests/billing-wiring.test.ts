@@ -1,10 +1,15 @@
 // 課金の配線（apps/functions/src/lib/billing.ts）のテスト。
 // 課金ロジック自体は @geckou/billing 側でテスト済みなので、ここで見るのは
 // 「いつ何が読み込まれるか」「秘密をどこから取るか」だけ。
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// stripe SDK が評価されたかを記録する。vi.mock のファクトリは
-// 最初の import まで実行されないので、これがそのまま「読み込まれたか」になる。
+// stripe が「リクエスト時に」読み込まれたかを記録する。
+// vi.mock のファクトリは**モックレジストリにキャッシュされ、vi.resetModules() でも
+// 再実行されない**ため、「ファクトリが走ったか」を signal にすると最初のケースでしか
+// 機能しない（実行順に依存する）。代わりに default エクスポートを getter にして、
+// billing.ts が `(await import('stripe')).default` に触った時点を記録する。
+// この形は「モジュールの読み込みでは評価しない」ことの検証には弱いので、
+// そちらは billing-lazy-load.test.ts に分けてある。
 // vi.mock はファイル先頭へ巻き上げられるので、記録先も vi.hoisted で作る
 const { loaded } = vi.hoisted(() => ({ loaded: { stripe: false } }))
 
@@ -15,11 +20,15 @@ const { passed } = vi.hoisted(() => ({
 }))
 
 vi.mock('stripe', () => {
-  loaded.stripe = true
+  class StripeStub {
+    constructor(public readonly secretKey: string) {}
+  }
 
   return {
-    default: class StripeStub {
-      constructor(public readonly secretKey: string) {}
+    get default() {
+      loaded.stripe = true
+
+      return StripeStub
     },
   }
 })
@@ -64,13 +73,15 @@ async function stripeConfigWith(env: Record<string, string>) {
 }
 
 describe('billing の配線', () => {
-  // 回帰: モジュールの先頭で import Stripe すると、index.ts → api.ts の連鎖で
-  // スケジュール関数・トリガーまで含む全関数のコールドスタートに乗る。
-  // esbuild は --external:stripe なので node_modules から実ロードされる
-  it('モジュールの読み込みでは stripe を読み込まない', async () => {
-    await import('../src/lib/billing')
-
-    expect(loaded.stripe).toBe(false)
+  // 各ケースを独立させる。loaded.stripe は一方向にしか変わらないうえ、
+  // getBilling のキャッシュはモジュールスコープに持たれるため、
+  // リセットしないと「先に走ったケース次第で結果が変わる」テストになる
+  // （--sequence.shuffle で落ちていた）
+  beforeEach(() => {
+    vi.resetModules()
+    vi.unstubAllEnvs()
+    loaded.stripe = false
+    passed.config = undefined
   })
 
   it('STRIPE_SECRET_KEY があるときだけ、リクエスト時に stripe を読み込む', async () => {

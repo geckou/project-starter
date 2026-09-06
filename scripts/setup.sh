@@ -106,39 +106,47 @@ fi
 
 echo ""
 
-# GitHub ブランチ保護ルール設定
-setup_branch_protection() {
+# gh が使えるかと、対象リポジトリ（REPO）を確かめる。
+# 保護ルールの設定はこの後に 2 つ続くので、前提の判定はここに 1 か所だけ置く
+# （片方の関数の早期 return にぶら下げると、その分岐に入ったときもう片方が
+#   一度も呼ばれない。「production の保護は設定済み」の派生で release/* の
+#   保護が永久に提案されなくなる形になっていた）
+detect_repo() {
   # gh CLI の存在チェック
   if ! command -v gh &> /dev/null; then
     echo "[skip] GitHub CLI (gh) がインストールされていません"
     echo "  → brew install gh でインストール後、手動でブランチ保護を設定してください"
     echo "  → https://docs.github.com/ja/repositories/configuring-branches-and-merges-in-your-repository/managing-a-branch-rule/managing-a-branch-protection-rule"
-    return
+    return 1
   fi
 
   # gh の認証チェック
   if ! gh auth status &> /dev/null; then
     echo "[skip] GitHub CLI が未認証です"
     echo "  → gh auth login で認証後、再度 yarn setup を実行してください"
-    return
+    return 1
   fi
 
   # リモートURLからリポジトリを検出
   REMOTE_URL=$(git remote get-url origin 2>/dev/null || true)
   if [ -z "$REMOTE_URL" ]; then
     echo "[skip] git remote origin が設定されていません"
-    return
+    return 1
   fi
 
   # owner/repo を抽出（BSD sed は非貪欲量指定子 .+? を解釈できないため多段置換。末尾の / と .git も除去）
   REPO=$(echo "$REMOTE_URL" | sed -E 's#.*github\.com[:/]##; s#/$##; s#\.git$##')
   if [ -z "$REPO" ]; then
     echo "[skip] GitHub リポジトリを検出できませんでした"
-    return
+    return 1
   fi
 
   echo "リポジトリ: $REPO"
+  return 0
+}
 
+# GitHub ブランチ保護ルール設定
+setup_branch_protection() {
   # production ブランチの存在チェック
   if ! gh api "repos/$REPO/branches/production" &> /dev/null; then
     echo "[skip] production ブランチがまだ存在しません"
@@ -228,7 +236,57 @@ setup_branch_protection() {
   fi
 }
 
-setup_branch_protection
+# release/* / hotfix/* の保護ルール設定。
+#
+# CLAUDE.md「マージルール」の「release/* への直接コミット・push は禁止」は
+# pre-git-guard.sh の承認確認だけでは支えられない（GitHub UI や他のクライアントからは
+# 素通りする）。release/* への push は staging デプロイを発火するため、
+# 未レビューの変更がそのまま staging に載る経路になる。サーバー側でも塞ぐ。
+#
+# ブランチ作成そのものは禁止しない（creation ルールを入れていない）。
+# production から切って feat/* をマージした結果の初回 push は「作成」なので通り、
+# 以降の更新だけが PR 経由に限定される
+setup_release_protection() {
+  RELEASE_RULESET_FILE="$(dirname "$0")/../.github/rulesets/release.json"
+  if [ ! -f "$RELEASE_RULESET_FILE" ]; then
+    echo "[skip] $RELEASE_RULESET_FILE が見つかりません"
+    return
+  fi
+
+  RELEASE_RULESET_NAME=$(node -p \
+    "JSON.parse(require('fs').readFileSync('$RELEASE_RULESET_FILE','utf8')).name" \
+    2>/dev/null || echo 'release-protection')
+
+  if gh api "repos/$REPO/rulesets" --jq '.[].name' 2>/dev/null |
+    grep -qx "$RELEASE_RULESET_NAME"; then
+    echo "[skip] release/* の保護ルール（$RELEASE_RULESET_NAME）は設定済みです"
+    return
+  fi
+
+  read -p "release/* と hotfix/* に保護ルール（PR 必須）を設定しますか？ (Y/n): " PROTECT_RELEASE
+  if [ "$PROTECT_RELEASE" = "n" ] || [ "$PROTECT_RELEASE" = "N" ]; then
+    echo "[skip] release/* の保護ルールをスキップしました"
+    return
+  fi
+
+  if gh api "repos/$REPO/rulesets" \
+    --method POST \
+    --input "$RELEASE_RULESET_FILE" > /dev/null; then
+    echo "[done] release/* と hotfix/* に保護ルール（$RELEASE_RULESET_NAME）を設定しました"
+    echo "  - 更新は PR 必須（QA 修正は fix/* を切って PR でマージする）"
+    echo "  - ブランチの作成（production から切った初回 push）は従来どおり通る"
+  else
+    echo "[error] release/* の保護ルールの設定に失敗しました"
+    echo "  → リポジトリの Admin 権限があるか確認してください"
+    echo "  → Free プランのプライベートリポジトリでは Rulesets を使えません"
+    echo "    （.claude/docs/git-workflow.md「マージルールの強制」を参照）"
+  fi
+}
+
+if detect_repo; then
+  setup_branch_protection
+  setup_release_protection
+fi
 
 echo ""
 

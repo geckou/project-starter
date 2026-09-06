@@ -1,6 +1,7 @@
-import { auth } from '@/lib/firebase'
+import { createApiClient } from '@geckou/shared/api-client'
 import Constants from 'expo-constants'
-import type { ApiResponse } from '@geckou/shared'
+
+import { auth } from '@/lib/firebase'
 
 // 未設定時は Functions エミュレーターを指す（プロジェクト ID は app.config.ts の extra から取得）。
 // Android エミュレーターからは localhost ではなく 10.0.2.2 を指定すること
@@ -20,26 +21,17 @@ const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
   `http://localhost:5001/${EMULATOR_PROJECT_ID}/asia-northeast1/api`
 
-type ApiOptions = {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
-  body?: unknown
-  authenticated?: boolean
-}
+export type { ApiOptions } from '@geckou/shared/api-client'
 
 /**
- * Cloud Functions API を呼び出す共通ヘルパー
+ * Cloud Functions API を呼び出す共通ヘルパー。
+ * 応答の解釈は @geckou/shared/api-client にあり、ここは注入だけを行う
  */
-export async function apiClient<T>(
-  path: string,
-  options: ApiOptions = {}
-): Promise<ApiResponse<T>> {
-  const { method = 'GET', body, authenticated = true } = options
+export const apiClient = createApiClient({
+  baseUrl: API_BASE_URL,
+  getIdToken: async () => {
+    if (!auth) return null
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  }
-
-  if (authenticated && auth) {
     // currentUser を同期的に読むだけだと、永続化されたセッションの復元が
     // 終わる前に呼んだ呼び出しが Authorization なしで飛び、API が 401 を返す。
     // 復元の完了を待ってから読む
@@ -47,44 +39,6 @@ export async function apiClient<T>(
 
     const user = auth.currentUser
 
-    if (user) {
-      const token = await user.getIdToken()
-      headers['Authorization'] = `Bearer ${token}`
-    }
-  }
-
-  try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    })
-
-    // Express の未定義ルートは HTML を返す。response.json() を先に呼ぶと
-    // そこで throw し、HTTP ステータスの情報が消える
-    const text = await response.text()
-    let data: unknown = undefined
-
-    try {
-      data = text === '' ? undefined : JSON.parse(text)
-    } catch {
-      data = undefined
-    }
-
-    if (!response.ok) {
-      const message =
-        data !== null && typeof data === 'object' && 'error' in data
-          ? String((data as { error: unknown }).error)
-          : `HTTP ${response.status}`
-
-      return { success: false, error: message }
-    }
-
-    return { success: true, data: data as T }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    }
-  }
-}
+    return user ? await user.getIdToken() : null
+  },
+})

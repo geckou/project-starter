@@ -30,7 +30,59 @@
 - 進めた範囲: 保留の手前までに済ませたこと（あれば）
 -->
 
-（なし）
+### Q-002 memory/（進化的メモリシステム）を読む経路を作るか、システムごと廃止するか
+
+- 発生: 2026-09-06 / Issue #278 の対応中
+- 種別: その他（プロセス）
+- 状況: `memory/` を参照するのは `/wrap-up`（書く側）と `/init-project`（削除する側）だけで、
+  読む経路が無い。`memory/short-term/` の 3 件は書きっぱなしで次のセッションの Claude は見ない。
+  `evolution.md` のプロトコルも守られていない（`pain_count` 1 で Hook 化・CLAUDE.md 化しており、
+  `reinforce_count` はファイル形式に存在しない）。**どちらに揃えるかが方針判断**なので保留した。
+- 選択肢:
+  - A) SessionStart フックで `memory/short-term` / `long-term` の要約を文脈に入れる（推奨）—
+    `session-start-questions.sh` と同じ形で作れる。あわせて `evolution.md` の閾値を実態
+    （pain_count 1 でも昇格している）に合わせるか、閾値どおりに運用し直すかを決める必要がある
+  - B) システムを廃止し、`questions.md` の「回答済み」と CLAUDE.md への直接反映に一本化する。
+    CLAUDE.md「進化的メモリシステム」節と `/wrap-up` の該当手順を削除する
+- ブロック: Issue #278。A を選ぶ場合は `evolution.md` の閾値の扱いも同時に決まらないと着手できない
+- 進めた範囲: なし（実装に入る前に方針が要るため）
+
+### Q-003 CLAUDE.md をどこまで削り、何を `.claude/docs/` へ移すか
+
+- 発生: 2026-09-06 / Issue #282 の対応中
+- 種別: その他（ドキュメント構成）
+- 状況: CLAUDE.md は 700 行前後で毎ターン読み込まれるが、テンプレート本体の保守者にしか
+  関係しない節が多い（上流報告・npm 配布・Renovate・参照切れ検出）。Issue は移動先の候補まで
+  書いているが、**何を残すかは「派生の実装者が毎ターン必要とするもの」の線引き**そのもので、
+  ここを推測で決めると全派生のプロンプトが変わる。保留した。
+- 選択肢:
+  - A) Issue #282 の移動候補どおりに分割する（推奨）— 上流報告は `.claude/docs/` の新規ファイル
+    （upstream-report）へ、npm 配布・Renovate・参照切れは `packages/README.md` と
+    `.claude/docs/dependencies.md` へ、「次何をすればいい？」は `/next` への参照 1 行に、
+    フック表の第 3 列は `.claude/docs/` の新規ファイル（hooks）へ。目標は 300 行以下
+  - B) 移動はせず、「本体保守向け」「派生向け」のマーカーで節を区別するだけに留める。
+    ファイル数が増えず、`.templatesyncignore` の追従も要らない
+  - C) 分割に加えて、同期される共通部と派生固有部をファイルごと分ける
+    （`.templatesyncignore` が `CLAUDE.md` を除外しているため、今は派生の説明が scaffold 時点で凍結する）
+- ブロック: Issue #282
+- 進めた範囲: なし
+
+### Q-004 デプロイの鍵を GitHub Environment で staging / production に分けるか
+
+- 発生: 2026-09-06 / Issue #274 の対応中
+- 種別: セキュリティ
+- 状況: `FIREBASE_SERVICE_ACCOUNT` が job 全体の env に展開されていた問題は直した
+  （鍵を読むのは認証ステップだけ、有無の判定は boolean）。残るのは
+  **この鍵が staging / production で共通**な点で、`release/*` への push でも本番の権限を持つ鍵が使われる。
+  分けるには GitHub 側に Environment を作る必要があり、リポジトリ外の操作を伴うので保留した。
+- 選択肢:
+  - A) 今のまま共通鍵で運用し、`.claude/docs/git-workflow.md` に分け方だけ書いておく（推奨・実施済み）—
+    テンプレートは 1 プロジェクトに複数環境を相乗りさせる構成も想定しており、
+    Environment を前提にすると scaffold 直後に動かない派生が出る
+  - B) `deploy` ジョブに `environment:` を付け、Environment secret に移す。
+    production 側に承認ゲートを付けられる。派生ごとに GitHub 側の設定作業が増える
+- ブロック: Issue #274 の「可能なら GitHub Environment に分ける」部分
+- 進めた範囲: 鍵のスコープ縮小（認証ステップ限定）と、git-workflow.md への追記まで
 
 ---
 

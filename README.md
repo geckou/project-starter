@@ -48,7 +48,8 @@ node scripts/add-layer.mjs billing       # 課金を足す（前提の層も一�
 `/add-firebase` `/add-functions` `/add-mobile` `/add-billing` の各スキルが案内する。
 詳細は [`.claude/docs/layers.md`](.claude/docs/layers.md)。
 
-**リポジトリの既定は今も全部入り**（[#105](https://github.com/geckou/project-starter/issues/105) で進行中）。
+**このリポジトリ自体は全部入りのまま置いてある**（減算・加算の基準点として全層を持つ）。
+派生プロジェクトは `/init-project` で必要な層を選び、不要な層を `remove-layer` で外して始める。
 6 構成（`core` / `+firebase` / `+functions` / `+functions+billing` / `+functions+mobile` / 全部入り）の
 ビルド検証は `.github/workflows/layer-matrix.yml` が行う。
 
@@ -197,6 +198,8 @@ yarn setup
 - Node.js / yarn / Firebase CLI のバージョン・導入チェック
 - `production` ブランチの保護ルール（`.github/rulesets/production.json`）の取り込み
   （`gh` が使え、`production` ブランチが既にある場合）
+- `release/*` / `hotfix/*` の保護ルール（`.github/rulesets/release.json`）の取り込み
+  （更新を PR 必須にする。ブランチの作成は従来どおり通る）
 - `yarn install`（依存関係のインストール）
 
 ### 3. GCP API の有効化（初回のみ）

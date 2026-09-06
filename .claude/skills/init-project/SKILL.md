@@ -39,7 +39,8 @@ yarn setup
 
 - `.firebaserc` のプレースホルダ（`your-project-develop` 等）を実際の Firebase プロジェクト ID に置換
 - `.env.develop` / `.env.staging` / `.env.production` / `.env.local` を `.env.example` から作成
-- Node.js / yarn / Firebase CLI のチェック、production ブランチ保護の設定、依存インストール
+- Node.js / yarn / Firebase CLI のチェック、依存インストール
+- ブランチ保護ルールの取り込み（`production` と、`release/*` / `hotfix/*`。どちらも取り込むか対話で聞かれる）
 
 ### 3. ルート package.json の name 変更
 
@@ -50,6 +51,28 @@ yarn setup
 ESLint / Prettier / commitlint の共通設定は npm から取る。scaffold には
 **公開元の実体**（`packages/*-config`）が付いてくるので、派生プロジェクトでは削除する。
 残すとローカルのワークスペースが優先され、テンプレート側の修正が届かない。
+
+**削除する前に、参照レンジを満たすバージョンが npm に公開済みかを確認する。**
+ローカルの `version` を上げた直後（まだ公開されていない状態）で消すと、次の
+`yarn install` が落ちるか、黙って旧版を掴んで「直したはずの設定が使われない」状態になる
+（CLAUDE.md「第0層の設定は npm パッケージで配る」が警告している失敗形）。
+
+```bash
+# 各パッケージのローカル version が npm に存在するかを確認する
+for pkg in eslint-config prettier-config commitlint-config; do
+  version=$(node -p "require('./packages/$pkg/package.json').version")
+  echo -n "@geckou/$pkg@$version -> "
+  npm view "@geckou/$pkg@$version" version 2>/dev/null || echo '未公開'
+done
+
+# 参照レンジ（ルートと各ワークスペースの package.json）がローカルの version を満たすかも見る
+node scripts/check-workspace-ranges.mjs
+```
+
+**1つでも「未公開」が出たら削除しない。** テンプレート本体側で version を上げる PR を
+`production` にマージすると `publish.yml` が公開するので、公開が済んでから
+この手順に戻る（急ぐ場合は参照レンジを公開済みの版に下げてから削除する）。
+確認が取れたら削除する。
 
 ```bash
 rm -rf packages/eslint-config packages/prettier-config packages/commitlint-config
