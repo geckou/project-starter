@@ -83,6 +83,8 @@ yarn format
 - [ ] Stripe CLI で Webhook を転送し、テストカードで購入 → `users/{uid}.subscription` が更新される
       （`.claude/docs/billing.md`「ローカルで動作確認する」）
 - [ ] 解約・期限切れで権利が落ちる（Test Clock で時間を進めて確認する）
+- [ ] Stripe を使う構成では `STRIPE_ALLOW_TEST_MODE=true` を develop / staging の `.env` に入れた
+      （既定ではテストモードの Webhook を適用しない）
 - [ ] IAP を使う構成では `REVENUECAT_ALLOW_SANDBOX=true` を develop の `.env` に入れた
       （既定では Sandbox のイベントを適用しないため、TestFlight / 内部テストで購入しても
       反映されない。→ `.claude/docs/billing.md`）

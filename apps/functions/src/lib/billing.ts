@@ -63,6 +63,7 @@ const BILLING_ENV_KEYS = [
   'STRIPE_SECRET_KEY',
   'STRIPE_WEBHOOK_SECRET',
   'STRIPE_PRICE_IDS',
+  'STRIPE_ALLOW_TEST_MODE',
   'STRIPE_SUCCESS_URL',
   'STRIPE_CANCEL_URL',
   'STRIPE_PORTAL_RETURN_URL',
@@ -108,6 +109,12 @@ export async function getBilling(): Promise<Billing> {
         client: new (await import('stripe')).default(secretKey),
         webhookSecret: STRIPE_WEBHOOK_SECRET.value(),
         allowedPriceIds: getAllowedPriceIds(),
+        // テストモード（event.livemode === false）の Webhook は既定で無視される。
+        // テスト用の Webhook シークレットを本番の Functions に配線したときに、
+        // テストモードの購入で本番の権利が付くのを防ぐため（RevenueCat の
+        // allowSandbox と同じ扱い）。テストキーで動かす環境では true にしないと
+        // Webhook が「反映されない」で止まる
+        allowTestMode: process.env.STRIPE_ALLOW_TEST_MODE === 'true',
         successUrl: process.env.STRIPE_SUCCESS_URL,
         cancelUrl: process.env.STRIPE_CANCEL_URL,
         portalReturnUrl: process.env.STRIPE_PORTAL_RETURN_URL,

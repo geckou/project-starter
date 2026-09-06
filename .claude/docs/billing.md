@@ -115,6 +115,8 @@ STRIPE_PRICE_IDS=price_xxx,price_yyy
 STRIPE_SUCCESS_URL=https://example.com/billing?status=success
 STRIPE_CANCEL_URL=https://example.com/billing?status=cancelled
 STRIPE_PORTAL_RETURN_URL=https://example.com/billing
+# テストキーで動かす環境（develop / staging）では true。→ 1-4
+STRIPE_ALLOW_TEST_MODE=true
 
 # Web クライアントが使う
 NEXT_PUBLIC_STRIPE_PRICE_ID=price_xxx
@@ -136,13 +138,20 @@ yarn env:develop
 ### 1-4. テストモードと本番モードを分ける
 
 **Stripe のテスト/本番はキーで決まる。**`sk_test_` を使えばその環境は全部テストモードで動く。
-別途フラグを立てる必要はない。
 
-| 環境 | Stripe キー | 使う場面 |
-| --- | --- | --- |
-| develop | `sk_test_...` | ローカル開発 |
-| staging | `sk_test_...` | 動作確認・受け入れ |
-| production | `sk_live_...` | 本番 |
+| 環境 | Stripe キー | `STRIPE_ALLOW_TEST_MODE` | 使う場面 |
+| --- | --- | --- | --- |
+| develop | `sk_test_...` | `true` | ローカル開発 |
+| staging | `sk_test_...` | `true` | 動作確認・受け入れ |
+| production | `sk_live_...` | 空 / `false` | 本番 |
+
+> **Webhook 側だけはフラグが要る。** `@geckou/billing` は `event.livemode` が
+> `false` のイベントを、`stripe.allowTestMode` が true でない限り適用せず 200 を返す
+> （テスト用の Webhook シークレットを本番の Functions に配線したときに、
+> テストモードの購入で本番の権利が付くのを防ぐため。RevenueCat の `allowSandbox` と同じ扱い）。
+> **テストキーで動かす環境の `.env.<環境名>` で `STRIPE_ALLOW_TEST_MODE=true` を
+> 設定すること。**設定しないと、購入しても `users/{uid}.subscription` は変わらず
+> 「反映されない」で止まる（ログに `Ignored Stripe test-mode event` が出る）。
 
 キーは環境ごとの Firebase プロジェクトの Secret Manager に入る（→ 1-2）ので、
 環境の切り替えでキーも入れ替わる。ローカルは `apps/functions/.secret.local`。
@@ -466,7 +475,8 @@ yarn test:rules  # Firestore / Storage ルール（要 Firebase エミュレー�
 - [ ] `onSubscriptionDowngraded` に後始末を実装した（不要ならその判断を記録した）
 - [ ] ルールで課金状態を使うなら `SYNC_SUBSCRIPTION_CLAIMS=true` を設定し、購入完了画面で `refreshEntitlement()` を呼んでいる
 - [ ] 特定商取引法に基づく表記を用意した（日本で有料提供する場合）
-- [ ] 開発・検証環境がテストキー（`sk_test_`）を使っている
+- [ ] 開発・検証環境がテストキー（`sk_test_`）を使い、`STRIPE_ALLOW_TEST_MODE=true` を設定した
+      （設定しないと Stripe Webhook が無視される）
 - [ ] Test Clock で更新・支払い失敗・失効の遷移を確認した
 - [ ] 秘密（`STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` / `REVENUECAT_WEBHOOK_AUTH`）が
       `.env` ではなく Secret Manager にある（`firebase functions:secrets:set`）。
@@ -492,6 +502,7 @@ yarn test:rules  # Firestore / Storage ルール（要 Firebase エミュレー�
 | `/billing/portal` が 404 | そのユーザーが Stripe で一度も購入しておらず顧客が存在しない。IAP で購入したユーザーはこちら（ストアの設定画面へ誘導する） |
 | `/billing/*` が 503 | `STRIPE_SECRET_KEY` が未設定。Web 決済を使わない構成なら正常な挙動 |
 | IAP の購入が反映されない | `loginRevenueCat(uid)` を呼んでおらず、`app_user_id` が Firebase の uid になっていない |
+| テストモードで購入しても反映されない（ログに `Ignored Stripe test-mode event`） | `STRIPE_ALLOW_TEST_MODE=true` を設定していない。既定ではテストモードのイベントを適用しない |
 | Sandbox で購入しても反映されない（ログに `Ignored RevenueCat SANDBOX event`） | `REVENUECAT_ALLOW_SANDBOX=true` を設定していない。既定では Sandbox のイベントを適用しない |
 | Restore（移行）後に移動先のユーザーが未購読のまま | `revenuecat.fetchSubscriber` が未配線。`TRANSFER` は移動元を失効させるだけで、移動先の権利はペイロードに乗らない |
 | ルールで `subscriptionActive` が常に未定義で全員弾かれる | `SYNC_SUBSCRIPTION_CLAIMS=true` を設定していない。デフォルトは無効 |
