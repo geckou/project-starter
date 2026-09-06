@@ -29,6 +29,13 @@ env:
   # actions/* の実行ランタイムを Node 24 に固定（旧 Node ランタイム非推奨警告の抑制）
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# GITHUB_TOKEN は既定でこのワークフローの用途（チェックアウトと検査）に必要な
+# 読み取りだけに絞る。明記しないとリポジトリ既定の権限（permissive なら
+# contents: write）で動くため、install / build が実行する任意のコードに
+# 書き込み権限のトークンが渡る
+permissions:
+  contents: read
+
 jobs:
   # チェックとデプロイを 1 ジョブにまとめている。
   # 分けると actions/checkout + setup-node + yarn install が二重に走り、
@@ -36,12 +43,12 @@ jobs:
   # 「チェックが失敗したらデプロイしない」保証は、step は前段が失敗すると
   # 以降がスキップされるため、ジョブを分けなくても同等に満たされる。
   #
-  # 注: secrets コンテキストは job レベルの if では参照できないため、
-  # job の env に展開して step レベルで判定する
+  # 注: 鍵そのものを job の env に置かない。job env は install / build /
+  # firebase-tools のインストールまで全ステップから読めるため、依存のどれかが
+  # 侵害されると本番の鍵がそのまま抜ける。鍵を参照するのは認証ステップだけにし、
+  # 有無の判定には値を含まない boolean（HAS_SERVICE_ACCOUNT）を使う
   deploy:
     runs-on: ubuntu-latest
-    env:
-      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
     steps:
       # ブランチからデプロイ先の環境を決定し、シークレットの有無を判定
@@ -51,6 +58,8 @@ jobs:
         # 直接展開せず env 経由のクォート付き変数として参照する（シェル注入対策）
         env:
           REF_NAME: ${{ github.ref_name }}
+          # 鍵の中身ではなく「設定されているか」だけを渡す（true / false の文字列）
+          HAS_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
         run: |
           REF="$REF_NAME"
           ENV_NAME=""
@@ -66,7 +75,7 @@ jobs:
           if [ -z "$ENV_NAME" ]; then
             echo "deploy=false" >> $GITHUB_OUTPUT
             echo "::warning::${REF} はデプロイ対象のブランチではないため、チェックのみ実行します"
-          elif [ -n "$FIREBASE_SERVICE_ACCOUNT" ]; then
+          elif [ "$HAS_SERVICE_ACCOUNT" = "true" ]; then
             echo "deploy=true" >> $GITHUB_OUTPUT
           else
             echo "deploy=false" >> $GITHUB_OUTPUT
@@ -264,6 +273,8 @@ jobs:
       # サービスアカウントで認証（FIREBASE_TOKEN は firebase-tools v13+ で非推奨）
       - name: Authenticate to Firebase
         if: steps.env.outputs.deploy == 'true' && steps.targets.outputs.targets != ''
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> $GITHUB_ENV

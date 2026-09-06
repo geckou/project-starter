@@ -33,6 +33,13 @@ env:
   # actions/* の実行ランタイムを Node 24 に固定（旧 Node ランタイム非推奨警告の抑制）
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# GITHUB_TOKEN は既定でこのワークフローの用途（チェックアウトと検査）に必要な
+# 読み取りだけに絞る。明記しないとリポジトリ既定の権限（permissive なら
+# contents: write）で動くため、install / build が実行する任意のコードに
+# 書き込み権限のトークンが渡る
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
