@@ -48,9 +48,8 @@ node scripts/add-layer.mjs billing       # 課金を足す（前提の層も一�
 `/add-firebase` `/add-functions` `/add-mobile` `/add-billing` の各スキルが案内する。
 詳細は [`.claude/docs/layers.md`](.claude/docs/layers.md)。
 
-**このリポジトリ自体は全部入りのまま置いてある**（層は減算で外す方式のため、
-テンプレート側は全ての層を持っている必要がある）。派生プロジェクトは
-`/init-project` で必要な層を選び、不要な層を `remove-layer` で外して始める。
+**このリポジトリ自体は全部入りのまま置いてある**（減算・加算の基準点として全層を持つ）。
+派生プロジェクトは `/init-project` で必要な層を選び、不要な層を `remove-layer` で外して始める。
 6 構成（`core` / `+firebase` / `+functions` / `+functions+billing` / `+functions+mobile` / 全部入り）の
 ビルド検証は `.github/workflows/layer-matrix.yml` が行う。
 

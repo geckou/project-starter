@@ -250,6 +250,7 @@
         "apps/functions/src/lib/billing.ts",
         "apps/functions/src/lib/entitlement-hooks.ts",
         "apps/functions/tests/billing-wiring.test.ts",
+        "apps/functions/tests/billing-lazy-load.test.ts",
         "apps/mobile/src/lib/revenuecat.ts"
       ],
       "blocks": [

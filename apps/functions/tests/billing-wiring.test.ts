@@ -3,11 +3,13 @@
 // 「いつ何が読み込まれるか」「秘密をどこから取るか」だけ。
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// stripe SDK が読み込まれたかを記録する。
+// stripe が「リクエスト時に」読み込まれたかを記録する。
 // vi.mock のファクトリは**モックレジストリにキャッシュされ、vi.resetModules() でも
 // 再実行されない**ため、「ファクトリが走ったか」を signal にすると最初のケースでしか
 // 機能しない（実行順に依存する）。代わりに default エクスポートを getter にして、
 // billing.ts が `(await import('stripe')).default` に触った時点を記録する。
+// この形は「モジュールの読み込みでは評価しない」ことの検証には弱いので、
+// そちらは billing-lazy-load.test.ts に分けてある。
 // vi.mock はファイル先頭へ巻き上げられるので、記録先も vi.hoisted で作る
 const { loaded } = vi.hoisted(() => ({ loaded: { stripe: false } }))
 
@@ -80,15 +82,6 @@ describe('billing の配線', () => {
     vi.unstubAllEnvs()
     loaded.stripe = false
     passed.config = undefined
-  })
-
-  // 回帰: モジュールの先頭で import Stripe すると、index.ts → api.ts の連鎖で
-  // スケジュール関数・トリガーまで含む全関数のコールドスタートに乗る。
-  // esbuild は --external:stripe なので node_modules から実ロードされる
-  it('モジュールの読み込みでは stripe を読み込まない', async () => {
-    await import('../src/lib/billing')
-
-    expect(loaded.stripe).toBe(false)
   })
 
   it('STRIPE_SECRET_KEY があるときだけ、リクエスト時に stripe を読み込む', async () => {

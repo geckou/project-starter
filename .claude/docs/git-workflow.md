@@ -88,7 +88,9 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 - `gh pr merge`（PR のマージ。マージの判断は人がする）
 - ブランチの削除（`git branch -d/-D`、`git push --delete`、`git push origin :<branch>`、`git push --prune`）
 - 作業ブランチへの force push（`production` / `release/*` へのものは禁止）
-- `feat/*` 同士のマージ
+- タグの force push（リモートのタグを別のコミットへ動かす操作）
+- `feat/*` 同士の取り込み（`merge` / `rebase` / `pull` / `cherry-pick`。自分のブランチを
+  リモートから取り込むだけの `git pull origin <自分>` は対象外）
 
 `--no-verify` は commit だけでなく push / merge / rebase でも禁止（husky の迂回になるため）。
 
@@ -252,6 +254,12 @@ gh api repos/{owner}/{repo}/rulesets \
 内容: `release/**` と `hotfix/**` の更新を PR 必須にする（承認は 0 件。`fix/*` → `release/*` の
 PR フローはそのまま動く）。**ブランチの作成は禁止していない**ので、`production` から切って
 `feat/*` をマージした結果の初回 push は従来どおり通り、以降の直接 push だけが塞がれる。
+
+⚠️ **`hotfix/*` も対象に含めている。** `hotfix/*` への push も staging への自動デプロイを
+発火するため（`deploy.yml`）、理由は `release/*` と同じ。ただし緊急対応中に「作成 push のあと
+もう 1 コミット直して push」ができなくなるので、hotfix を急ぐ運用なら取り込み後に
+`bypass_actors`（リポジトリ管理者ロール）を UI で足しておく。`pre-git-guard.sh` は
+`release/*` / `hotfix/*` どちらへの push でもユーザーに確認を求めるので、ローカル側の扱いは揃っている。
 
 これを入れないと、「`release/*` への直接コミット・push は禁止」は `pre-git-guard.sh` の
 承認確認だけで支えられていることになり、GitHub UI や他のクライアントからは素通りする。
