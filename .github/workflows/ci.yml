@@ -18,7 +18,7 @@ name: CI
 on:
   workflow_call:
   pull_request:
-    branches: [production, 'release/**']
+    branches: [production, 'release/**', 'hotfix/**']
     # paths-ignore は使わない。除外に当たった PR ではこのワークフローが起動せず、
     # required status check が Pending のままマージできなくなるため
     # （ドキュメントだけを変えた release/* → production の PR で実際に詰まる）。

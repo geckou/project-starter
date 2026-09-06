@@ -368,6 +368,22 @@ segments=$(printf '%s' "$cmd" | awk '
   # 行末のバックスラッシュは行の継続。文字として残すと `git commit -m \` の
   # 次の行のメッセージが、値ではなく別のトークンとして読まれる
   function cont(i) { return (substr(all, i + 1, 1) == "\n") }
+  # start から closer までの置換の中身に git の呼び出しがあるか。
+  # ダブルクォートの中の置換を切り出すかどうかの判定に使う（切り出すのは
+  # 中身が実際に git を実行する形のときだけ）
+  function subst_has_git(start, closer,   j, d, ch, body) {
+    d = 1
+    body = ""
+    for (j = start; j <= length(all); j++) {
+      ch = substr(all, j, 1)
+      if (closer == ")") {
+        if (ch == "(") d++
+        else if (ch == ")") { d--; if (d == 0) break }
+      } else if (ch == closer) break
+      body = body ch
+    }
+    return (body ~ /(^|[ \t;&|(])git[ \t]/) ? 1 : 0
+  }
   { all = all $0 "\n" }
   END {
     q = ""; seg = ""; n = length(all)
@@ -377,6 +393,33 @@ segments=$(printf '%s' "$cmd" | awk '
       if (q == dq) {
         if (c == bs) { if (cont(i)) { i++; continue }
                        seg = seg c substr(all, i + 1, 1); i++; continue }
+        # ダブルクォートの中でも $( … ) とバッククォートはシェルが評価する。
+        # 区切らないと `echo "$(git commit -n -m wip)"` の中身が外側の echo の
+        # 一部として読まれ、検査から丸ごと落ちる（シングルクォートの中は
+        # 評価されないので、上の q == sq の分岐は今までどおり素通しでよい）。
+        #
+        # ただし中身が git でないなら区切らない。`git commit -m "$(cat <<EOF …)"`
+        # の置換まで切り出すと、メッセージの値が git のセグメントから消えて
+        # 規約どおりのコミットでも弾かれる
+        if (c == "$" && substr(all, i + 1, 1) == "(" && subst_has_git(i + 2, ")")) {
+          depth++
+          at_cmd[depth] = at_cmd_pos(seg, "")
+          restore_dq[depth] = 1
+          emit(seg); seg = ""
+          emit(sub_open)
+          q = ""
+          i++
+          continue
+        }
+        if (c == bt && subst_has_git(i + 1, bt)) {
+          bt_dq = 1
+          bt_at_cmd = at_cmd_pos(seg, "")
+          emit(seg); seg = ""
+          emit(sub_open)
+          bt_open = 1
+          q = ""
+          continue
+        }
         seg = seg c
         if (c == dq) q = ""
         continue
@@ -398,6 +441,8 @@ segments=$(printf '%s' "$cmd" | awk '
           emit(sub_close)
           if (depth > 0) {
             if (at_cmd[depth]) emit(subst_cmd_end)
+            # ダブルクォートの中から入った置換なら、閉じたあとは再び引用の中
+            if (restore_dq[depth]) { q = dq; restore_dq[depth] = 0 }
             depth--
           }
         }
@@ -410,6 +455,8 @@ segments=$(printf '%s' "$cmd" | awk '
         emit(seg); seg = ""
         emit(bt_open ? sub_close : sub_open)
         if (bt_open && bt_at_cmd) emit(subst_cmd_end)
+        # ダブルクォートの中から始まったバッククォートなら、閉じたあとは引用の中へ戻る
+        if (bt_open && bt_dq) { q = dq; bt_dq = 0 }
         bt_open = 1 - bt_open
         continue
       }
@@ -554,17 +601,33 @@ cmd=$(printf '%s\n' "$segments" | {
           # 環境変数の前置き（FOO=bar git … / env FOO=bar git …）は読み飛ばす
           if (t ~ /^[A-Za-z_][A-Za-z_0-9]*=/) continue
           sub(/^.*\//, "", t)
-          if (t == "env") { skip_env = 1; continue }
+          if (t == "env") { skip_env = 1; in_wrapper = 1; wrapper = t; continue }
           if (skip_env && (t == "-" || t == "-i" || t == "--ignore-environment" ||
                            t == "-0" || t == "--null")) continue
           if (skip_env && (t == "-u" || t == "--unset")) { i++; continue }
+          # ラッパーが取るオプションも読み飛ばす。ラッパー名の直後を
+          # コマンド名として確定すると、`sudo -u root git commit -n` の -u や
+          # `command -p git commit -n` の -p が seg_cmd になり、git と判定されない。
+          # 値を別トークンで取るかどうかはラッパーごとに違う（sudo の -p は
+          # プロンプト文字列を取るが、command / time の -p は値を取らない）
+          if (in_wrapper && substr(t, 1, 1) == "-" && t != "-") {
+            if (wrapper == "sudo" && (t == "-u" || t == "-g" || t == "-p" ||
+                t == "-C" || t == "-r" || t == "-t" || t == "-U" || t == "-h" ||
+                t == "--user" || t == "--group" || t == "--prompt" ||
+                t == "--close-from" || t == "--role" || t == "--type" ||
+                t == "--other-user" || t == "--host")) i++
+            else if (wrapper == "time" && (t == "-f" || t == "-o" ||
+                t == "--format" || t == "--output")) i++
+            else if (wrapper == "exec" && t == "-a") i++
+            continue
+          }
           # 実行を包むだけの語（gh 側の判定と同じ一覧）と、シェルの予約語を読み飛ばす。
           # セグメント先頭のトークンだけを見ていると `command git commit -n` /
           # `{ git commit -n; }` / `if true; then git commit -n; fi` が
           # 「git ではない」と判定され、--no-verify 禁止・コミットメッセージ規約・
           # production への直接コミット禁止の全部が丸ごと外れる
           if (t == "command" || t == "exec" || t == "nohup" || t == "sudo" ||
-              t == "time" || t == "builtin") continue
+              t == "time" || t == "builtin") { in_wrapper = 1; wrapper = t; continue }
           if (t == "!" || t == "{" || t == "}" || t == "if" || t == "then" ||
               t == "elif" || t == "else" || t == "fi" || t == "while" ||
               t == "until" || t == "do" || t == "done") continue
@@ -1136,6 +1199,11 @@ fi
 #   trust    … checkout -b / -B、switch -c / -C、switch <名前>
 #              （switch はパスを取らないので、名前は必ずブランチ）
 #   verify   … checkout <名前>（パスかもしれないので、実在するブランチのときだけ採る）
+#
+# 1 コマンドに commit が複数あることもあるので、**commit ごとに**そのときの
+# 切り替え状態を出す（最初の 1 件で打ち切ると
+# `git checkout -b feat/x && git commit … && git checkout production && git commit …`
+# の後半が feat/x のものとして通ってしまう）。切り替えが無い commit は空行で出す
 switch_info=$(printf '%s\n' "$cmd_flags" | awk -v seq_break="$MARK_SEQ" '
   # && 以外の区切り（; 改行 | & ||）を跨いだら、直前の切り替えの成功を前提にできない。
   # `git checkout -b feat/x ; git commit …` は checkout が失敗しても commit が走る
@@ -1144,7 +1212,7 @@ switch_info=$(printf '%s\n' "$cmd_flags" | awk -v seq_break="$MARK_SEQ" '
     for (i = 1; i <= NF; i++) {
       if ($i != "git") continue
       s = $(i + 1)
-      if (s == "commit") { if (found != "") print found; exit }
+      if (s == "commit") { print found; continue }
       if (s != "checkout" && s != "switch") continue
 
       for (j = i + 2; j <= NF; j++) {
@@ -1163,36 +1231,42 @@ switch_info=$(printf '%s\n' "$cmd_flags" | awk -v seq_break="$MARK_SEQ" '
     }
   }')
 
-commit_branch=''
-if [ -n "$switch_info" ]; then
-  switch_kind=${switch_info%% *}
-  switch_name=${switch_info#* }
-  # HEAD / @ は「現在ブランチから切る」形。名前としては使えないので現状のまま扱う
-  case $switch_name in
-    HEAD | @ | '') switch_name='' ;;
-  esac
+# 各 commit の行き先を解決する。1 つでも禁止先に落ちるなら deny
+commit_targets=$(printf '%s\n' "$switch_info" | {
+  while IFS= read -r info; do
+    branch=''
+    if [ -n "$info" ]; then
+      kind=${info%% *}
+      name=${info#* }
+      # HEAD / @ は「現在ブランチから切る」形。名前としては使えない
+      case $name in
+        HEAD | @ | '') name='' ;;
+      esac
 
-  if [ -n "$switch_name" ]; then
-    if [ "$switch_kind" = trust ]; then
-      commit_branch=$switch_name
-    elif git -C "${guard_dir:-.}" show-ref --verify --quiet \
-      "refs/heads/$switch_name" 2>/dev/null; then
-      commit_branch=$switch_name
+      if [ -n "$name" ]; then
+        if [ "$kind" = trust ]; then
+          branch=$name
+        elif git -C "${guard_dir:-.}" show-ref --verify --quiet \
+          "refs/heads/$name" 2>/dev/null; then
+          branch=$name
+        fi
+      fi
     fi
-  fi
-fi
 
-commit_current=${commit_branch:-$current}
+    printf '%s\n' "${branch:-$current}"
+  done
+})
 
 if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
-  case "$commit_current" in
-    production)
-      deny "production への直接コミットは禁止です（PR 必須）。作業ブランチを切ってください。"
-      ;;
-    release/*)
-      deny "release/* への直接コミットは禁止です（push が staging への自動デプロイを発火するため）。fix/* を切って release へ PR でマージしてください。コミット先: $commit_current"
-      ;;
-  esac
+  # switch_info が空（cmd_flags に commit の行が無い形）でも現在ブランチで判定する
+  [ -n "$commit_targets" ] || commit_targets=$current
+
+  printf '%s\n' "$commit_targets" | grep -qx 'production' &&
+    deny "production への直接コミットは禁止です（PR 必須）。作業ブランチを切ってください。"
+
+  release_target=$(printf '%s\n' "$commit_targets" | grep -m1 '^release/') || release_target=''
+  [ -n "$release_target" ] &&
+    deny "release/* への直接コミットは禁止です（push が staging への自動デプロイを発火するため）。fix/* を切って release へ PR でマージしてください。コミット先: $release_target"
 
   msg_ng="コミットメッセージ規約違反です。'<type>: <description>' 形式にしてください（type: feat, fix, refactor, style, docs, test, chore）。例: 'feat: ユーザープロフィール画面を追加'"
 
@@ -1562,7 +1636,10 @@ if [ "${current#feat/}" != "$current" ]; then
 
         for (j = i + 2; j <= NF; j++) {
           t = $j
-          if (t == "--") break
+          # -- は引数の区切りであって走査の終わりではない。ここで打ち切ると
+          # `git merge -- feat/other` のように区切りの後ろへ置いた取り込み元を
+          # 見落とす（checkout の -- は「以降はパス」なので、あちらは打ち切ってよい）
+          if (t == "--") continue
           if (substr(t, 1, 1) == "-") continue
           # 接頭辞を剥がして比較できる形へ揃える。pull は <リモート> <ブランチ> の
           # 2 引数を取るので、非フラグを全部出して呼び出し側で見る

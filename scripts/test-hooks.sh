@@ -574,6 +574,9 @@ refute 'permissionDecision' 'リモートから自分のブランチを取り込
 run 0 '自分のブランチの rebase も素通し' \
   'git rebase origin/feat/existing' feat/existing
 refute 'permissionDecision' 'rebase でも自分のブランチは対象外'
+# 回帰(#285 レビュー): -- は引数の区切りであって走査の終わりではない
+run 0 '-- の後ろの取り込み元も見る' 'git merge -- feat/other' feat/existing
+expect 'feat/* 同士の取り込み' '-- の後ろでもマージルール違反として扱う'
 
 echo
 echo '=== #269: 予約語・ラッパー語の後ろの git も検査する ==='
@@ -608,6 +611,32 @@ run 0 '引数の位置の置換は対象外' 'echo $(date) && git status' feat/e
 run 0 'バッククォートでも git 以外なら素通し' \
   '`which node` script.js && git status' feat/existing
 
+# 回帰(#285 レビュー): ラッパーが取るオプションを読み飛ばさないと、
+# ラッパー名の直後のフラグがコマンド名として確定して検査が外れる
+run 2 'sudo のオプション付きでも検査する' \
+  'sudo -u root git commit -n -m wip' feat/existing
+run 2 'command のオプション付きでも検査する' \
+  'command -p git commit -n -m wip' feat/existing
+run 2 'time のオプション付きでも検査する' \
+  'time -p git commit -n -m wip' feat/existing
+run 2 'time の値付きオプションでも検査する' \
+  'time -o /tmp/t git commit -n -m wip' feat/existing
+run 2 'exec の値付きオプションでも検査する' \
+  'exec -a foo git commit -n -m wip' feat/existing
+run 0 'ラッパー経由でも git でなければ素通し' \
+  'sudo -u root apt update && git status' feat/existing
+
+# 回帰(#285 レビュー): ダブルクォートの中でも $( … ) とバッククォートは
+# シェルが評価する。区切らないと中身が外側のコマンドの一部として素通りする
+run 2 'ダブルクォート内のコマンド置換も検査する' \
+  'echo "$(git commit -n -m wip)"' feat/existing
+run 2 'ダブルクォート内のバッククォートも検査する' \
+  'echo "`git commit -n -m wip`"' feat/existing
+# シングルクォートの中はシェルが評価しないので、今までどおり素通し
+run 0 'シングルクォート内の置換は素通し' \
+  "echo '\$(git commit -n -m wip)'" feat/existing
+run 0 'git を含まない置換は切り出さない' 'echo "$(date)"' feat/existing
+
 echo
 echo '=== #268: 同じコマンド内のブランチ切り替えを判定に使う ==='
 # フック実行時の HEAD だけで判定していたため、CLAUDE.md が勧める手順を
@@ -635,6 +664,13 @@ run 2 'セミコロン区切りでは切り替えを前提にしない' \
 expect 'production への直接コミット' '; の後ろは production 上のコミットとして扱う'
 run 2 '|| 区切りでも前提にしない' \
   'git checkout -b feat/new-thing || git commit --allow-empty -m "feat: x"'
+# 回帰(#285 レビュー): 最初の commit で打ち切ると、後半の切り替え先が
+# production でも通ってしまう。commit ごとに行き先を評価する
+run 2 '2 つ目の commit が production へ戻るなら deny' \
+  'git checkout -b feat/new-thing && git commit --allow-empty -m "feat: x" && git checkout production && git commit --allow-empty -m "feat: y"'
+expect 'production への直接コミット' '後半のコミット先も見る'
+run 0 '同じブランチへの複数コミットは通す' \
+  'git checkout -b feat/new-thing && git commit --allow-empty -m "feat: x" && git commit --allow-empty -m "feat: y"'
 
 # 回帰(#268): refspec 0 個を一律「現在ブランチへの push」と解釈していたため、
 # production 上でのタグ push がブランチへの直接 push としてブロックされていた

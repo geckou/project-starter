@@ -39,7 +39,8 @@ yarn setup
 
 - `.firebaserc` のプレースホルダ（`your-project-develop` 等）を実際の Firebase プロジェクト ID に置換
 - `.env.develop` / `.env.staging` / `.env.production` / `.env.local` を `.env.example` から作成
-- Node.js / yarn / Firebase CLI のチェック、production ブランチ保護の設定、依存インストール
+- Node.js / yarn / Firebase CLI のチェック、依存インストール
+- ブランチ保護ルールの取り込み（`production` と、`release/*` / `hotfix/*`。どちらも取り込むか対話で聞かれる）
 
 ### 3. ルート package.json の name 変更
 

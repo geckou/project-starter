@@ -23,7 +23,7 @@ on:
   workflow_call:
   pull_request:
     types: [opened, edited, reopened, synchronize]
-    branches: [production, 'release/**']
+    branches: [production, 'release/**', 'hotfix/**']
 
 concurrency:
   group: pr-title-lint-${{ github.event.pull_request.number || github.ref }}

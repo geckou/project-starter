@@ -46,19 +46,24 @@ export function createApiClient({
       'Content-Type': 'application/json',
     }
 
-    if (authenticated && getIdToken) {
-      const token = await getIdToken()
-
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
-    }
-
     try {
+      // トークンの取得も try の中に入れる。Firebase の ID トークン更新は
+      // 通信エラーで reject しうるので、外に置くと呼び出し側が前提にしている
+      // ApiResponse ではなく例外が飛ぶ
+      if (authenticated && getIdToken) {
+        const token = await getIdToken()
+
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+      }
+
       const response = await fetch(`${baseUrl}${path}`, {
         method,
         headers,
-        body: body ? JSON.stringify(body) : undefined,
+        // false / 0 / '' も正当なペイロードなので、真偽で落とさず
+        // 「渡されなかった」だけを除外する
+        body: body === undefined ? undefined : JSON.stringify(body),
       })
 
       // Express の未定義ルートは HTML を返す。response.json() を先に呼ぶと

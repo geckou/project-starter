@@ -15,7 +15,7 @@ name: Layer Matrix
 on:
   workflow_dispatch:
   pull_request:
-    branches: [production, 'release/**']
+    branches: [production, 'release/**', 'hotfix/**']
     # 減算後の構成は、層に属する「あらゆるファイル」の変更で壊れうる
     # （マーカーの付いていない依存が残ったファイルに増えると、全部入りのビルドは
     # 通るのに減算後だけ落ちる）。対象を層の仕組みに絞らず、ci.yml と同じく

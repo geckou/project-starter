@@ -198,6 +198,8 @@ yarn setup
 - Node.js / yarn / Firebase CLI のバージョン・導入チェック
 - `production` ブランチの保護ルール（`.github/rulesets/production.json`）の取り込み
   （`gh` が使え、`production` ブランチが既にある場合）
+- `release/*` / `hotfix/*` の保護ルール（`.github/rulesets/release.json`）の取り込み
+  （更新を PR 必須にする。ブランチの作成は従来どおり通る）
 - `yarn install`（依存関係のインストール）
 
 ### 3. GCP API の有効化（初回のみ）

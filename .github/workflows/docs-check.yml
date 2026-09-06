@@ -14,7 +14,7 @@ name: Docs Check
 
 on:
   pull_request:
-    branches: [production, 'release/**']
+    branches: [production, 'release/**', 'hotfix/**']
 
 concurrency:
   group: docs-check-${{ github.ref }}

@@ -120,4 +120,25 @@ describe('createApiClient: リクエストの組み立て', () => {
 
     expect(fetchMock.mock.calls[0][1].body).toBeUndefined()
   })
+
+  // 回帰: 真偽で落としていたため、false / 0 / '' が「渡されなかった」扱いになっていた
+  it('falsy な body も JSON として送る', async () => {
+    await client()('/flags', { method: 'POST', body: false })
+
+    expect(fetchMock.mock.calls[0][1].body).toBe('false')
+  })
+
+  // 回帰: トークン取得を try の外に置くと、ここで例外が飛んで
+  // 呼び出し側が前提にしている ApiResponse にならない
+  it('トークンの取得に失敗してもエラーを ApiResponse で返す', async () => {
+    const failing = async () => {
+      throw new Error('token refresh failed')
+    }
+
+    expect(await client(failing)('/me')).toEqual({
+      success: false,
+      error: 'token refresh failed',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })
