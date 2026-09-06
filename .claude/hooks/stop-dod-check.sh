@@ -22,12 +22,16 @@ active=$(printf '%s' "$input" | jq -r '.stop_hook_active // false')
 [ "$active" = "true" ] && exit 0
 
 # コードファイルの未コミット変更がなければ何もしない（ドキュメントのみの作業では走らせない）
-# 空白入りのパス（"my file.ts"）でも拡張子を判定できるよう、
-# ステータス欄（先頭3文字）だけを落として残りをそのままパス名として扱う
+# -z を付けるのは、既定の出力が空白や非 ASCII を含むパスを `?? "my file.ts"` と
+# C 形式でクォートするため。末尾が `"` になって拡張子の判定に当たらず、
+# 空白入りのファイルを足した作業で DoD が走らないまま終了できてしまう。
+# -z はクォートせず NUL 区切りで出すので、改行に直してからステータス欄（先頭3文字）を落とす
+# （リネームは `XY 新パス` と `旧パス` の2レコードに分かれ、旧パス側は先頭3文字が
+# 削れるが、拡張子の判定には影響しない）
 # -uall を付けないと、新規ディレクトリは `?? src/newdir/` の 1 行にまとめられ、
 # 拡張子の判定に当たらない（新しいコンポーネント群を丸ごと足した作業で
 # type-check / lint / test が走らないまま終了できてしまう）
-changed=$(git status --porcelain -uall 2>/dev/null | cut -c4- | grep -E "\.($extensions)\$")
+changed=$(git status --porcelain -z -uall 2>/dev/null | tr '\0' '\n' | cut -c4- | grep -E "\.($extensions)\$")
 [ -z "$changed" ] && exit 0
 
 failed=''

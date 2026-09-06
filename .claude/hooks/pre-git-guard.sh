@@ -322,6 +322,8 @@ MARK_ENV_BYPASS=$(printf '\001envbypass')
 MARK_ALIAS=$(printf '\001alias')
 MARK_INDIRECT=$(printf '\001indirect')
 MARK_UNDECIDABLE=$(printf '\001undecidable')
+# コマンド名が置換で書かれている（判定不能）ことを seg_cmd 経由で伝える印
+SUBST_CMD=$(printf '\001subst')
 
 # husky を環境変数から無効化する経路。HUSKY=0 は husky v9 が公式に用意した
 # 無効化手段、GIT_CONFIG_* は -c を使わずに core.hooksPath を注入する経路
@@ -453,7 +455,7 @@ cmd=$(printf '%s\n' "$segments" | {
     # 検査対象は「コマンドとして git を実行するセグメント」だけ。セグメント全体の
     # 部分一致にすると、gh pr create --body '... git push ...' のように本文へ
     # コマンド例を引用しただけで規約違反として弾いてしまう
-    seg_cmd=$(printf '%s' "$seg" | awk '
+    seg_cmd=$(printf '%s' "$seg" | awk -v subst_cmd="$SUBST_CMD" '
       BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
       {
         # クォートを跨いでトークンへ分割する。空白区切りで読むと
@@ -478,11 +480,31 @@ cmd=$(printf '%s\n' "$segments" | {
           if (skip_env && (t == "-" || t == "-i" || t == "--ignore-environment" ||
                            t == "-0" || t == "--null")) continue
           if (skip_env && (t == "-u" || t == "--unset")) { i++; continue }
+          # 実行を包むだけの語（gh 側の判定と同じ一覧）と、シェルの予約語を読み飛ばす。
+          # セグメント先頭のトークンだけを見ていると `command git commit -n` /
+          # `{ git commit -n; }` / `if true; then git commit -n; fi` が
+          # 「git ではない」と判定され、--no-verify 禁止・コミットメッセージ規約・
+          # production への直接コミット禁止の全部が丸ごと外れる
+          if (t == "command" || t == "exec" || t == "nohup" || t == "sudo" ||
+              t == "time" || t == "builtin") continue
+          if (t == "!" || t == "{" || t == "}" || t == "if" || t == "then" ||
+              t == "elif" || t == "else" || t == "fi" || t == "while" ||
+              t == "until" || t == "do" || t == "done") continue
+          # 変数・コマンド置換で書かれたコマンドは、何が実行されるのか検査できない。
+          # 素通しすると `g=git; $g commit -n -m wip` や `"$(which git)" commit …` で
+          # 検査を丸ごと外せる。サブコマンドが置換のときと同じく判定不能として扱う
+          if (t ~ /[$]/ || t ~ /`/) { print subst_cmd; exit }
           print t
           break
         }
         exit
       }')
+
+    # 置換で書かれたコマンド名は deny（サブコマンドの置換と同じ扱い）
+    if [ "$seg_cmd" = "$SUBST_CMD" ]; then
+      printf '%s\n' "$MARK_UNDECIDABLE"
+      continue
+    fi
 
     if [ "$seg_cmd" != "git" ]; then
       # 環境変数の設定は git とは別のセグメントに書ける（`export HUSKY=0; git commit`）。
@@ -1002,7 +1024,7 @@ if [ "${alias_bypass:-0}" -gt 0 ]; then
 fi
 
 if [ "${undecidable:-0}" -gt 0 ]; then
-  deny 'git のサブコマンドを変数・コマンド置換で書く形（git $(…) / git `…`）は、何を実行するのか検査できないため使用できません。サブコマンドをそのまま書いてください。'
+  deny 'git を変数・コマンド置換で書く形（git $(…) / git `…` / $g commit / "$(which git)" commit）は、何を実行するのか検査できないため使用できません。git とサブコマンドをそのまま書いてください。'
 fi
 
 if [ "${indirect:-0}" -gt 0 ]; then
@@ -1010,13 +1032,68 @@ if [ "${indirect:-0}" -gt 0 ]; then
 fi
 
 # --- コミット -----------------------------------------------------------
+# コミットが起きるブランチは、フック実行時の HEAD とは限らない。
+# CLAUDE.md「Git ブランチ運用」が勧める手順を 1 コマンドで書くと
+# （`git checkout -b feat/x && git commit -m "feat: x"`）、HEAD だけで判定した
+# 場合に production 上での「直接コミット」と誤判定してブロックしてしまう。
+# git commit より前のセグメントにあるブランチ切り替えを拾って判定に使う。
+#
+#   trust    … checkout -b / -B、switch -c / -C、switch <名前>
+#              （switch はパスを取らないので、名前は必ずブランチ）
+#   verify   … checkout <名前>（パスかもしれないので、実在するブランチのときだけ採る）
+switch_info=$(printf '%s\n' "$cmd_flags" | awk '
+  {
+    for (i = 1; i <= NF; i++) {
+      if ($i != "git") continue
+      s = $(i + 1)
+      if (s == "commit") { if (found != "") print found; exit }
+      if (s != "checkout" && s != "switch") continue
+
+      for (j = i + 2; j <= NF; j++) {
+        t = $j
+        if (t == "--") break
+        if (substr(t, 1, 1) == "-") {
+          if (t == "-b" || t == "-B" || t == "-c" || t == "-C" || t == "--create") {
+            if (j < NF) found = "trust " $(j + 1)
+            break
+          }
+          continue
+        }
+        found = ((s == "switch") ? "trust " : "verify ") t
+        break
+      }
+    }
+  }
+  END { }')
+
+commit_branch=''
+if [ -n "$switch_info" ]; then
+  switch_kind=${switch_info%% *}
+  switch_name=${switch_info#* }
+  # HEAD / @ は「現在ブランチから切る」形。名前としては使えないので現状のまま扱う
+  case $switch_name in
+    HEAD | @ | '') switch_name='' ;;
+  esac
+
+  if [ -n "$switch_name" ]; then
+    if [ "$switch_kind" = trust ]; then
+      commit_branch=$switch_name
+    elif git -C "${guard_dir:-.}" show-ref --verify --quiet \
+      "refs/heads/$switch_name" 2>/dev/null; then
+      commit_branch=$switch_name
+    fi
+  fi
+fi
+
+commit_current=${commit_branch:-$current}
+
 if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
-  case "$current" in
+  case "$commit_current" in
     production)
       deny "production への直接コミットは禁止です（PR 必須）。作業ブランチを切ってください。"
       ;;
     release/*)
-      deny "release/* への直接コミットは禁止です（push が staging への自動デプロイを発火するため）。fix/* を切って release へ PR でマージしてください。現在: $current"
+      deny "release/* への直接コミットは禁止です（push が staging への自動デプロイを発火するため）。fix/* を切って release へ PR でマージしてください。現在: $commit_current"
       ;;
   esac
 
@@ -1229,12 +1306,17 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
       remote_seen = 0
       refspecs = 0
       started = 0
+      tags_only = 0
 
       for (i = 1; i <= NF; i++) {
         if (!started) { if ($i == "push") started = 1; continue }
 
         if (substr($i, 1, 1) == "-") {
           if ($i ~ /^(--force([^-]|$)|--force-with-lease|-f$)/) force = 1
+          # --tags は「refspec を書かない = 現在ブランチ」の例外。タグだけを送るので
+          # ブランチは更新されない。--follow-tags はブランチの push にタグを添える
+          # だけなので対象外
+          if ($i == "--tags") tags_only = 1
           # 値を取るオプションは次のトークンを読み飛ばす
           if ($i == "-o" || $i == "--push-option" || $i == "--repo" ||
               $i == "--receive-pack" || $i == "--exec") i++
@@ -1267,8 +1349,9 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
         print force " " dst
       }
 
-      # refspec を書かない形は現在ブランチが宛先（push.default = simple / current）
-      if (refspecs == 0) print force " @CURRENT"
+      # refspec を書かない形は現在ブランチが宛先（push.default = simple / current）。
+      # ただし --tags だけの push はブランチを更新しないので宛先を持たない
+      if (refspecs == 0 && !tags_only) print force " @CURRENT"
     }
   ')
 
@@ -1352,10 +1435,15 @@ fi
 
 # --- feat/* 同士のマージ ------------------------------------------------
 # CLAUDE.md「マージルール」で禁止している。作業が絡まってレビュー単位が崩れ、
-# 一方だけをリリースへ回す選択ができなくなる
+# 一方だけをリリースへ回す選択ができなくなる。
+#
+# 見るのは merge だけではない。rebase / pull / cherry-pick でも同じ結果
+# （相手の作業が自分のブランチに載る）になるので、字面が merge かどうかで
+# 分けると `git rebase feat/other` が素通りする。
+# refs/heads/ 接頭辞（`git merge refs/heads/feat/other`）も剥がして比較する
 if [ "${current#feat/}" != "$current" ] &&
-  has '(^|[[:space:]])git[[:space:]]+merge[^|;&]*[[:space:]]"?'"'"'?(origin/)?feat/'; then
-  ask 'feat/* 同士のマージは CLAUDE.md「マージルール」で禁止しています（レビュー単位が崩れ、一方だけをリリースへ回せなくなります）。必要なら release/* 経由にするか、実行してよいかユーザーに確認してください。'
+  has '(^|[[:space:]])git[[:space:]]+(merge|rebase|pull|cherry-pick)[^|;&]*[[:space:]]"?'"'"'?(refs/heads/|origin/|refs/remotes/origin/)?feat/'; then
+  ask 'feat/* 同士のマージ（merge / rebase / pull / cherry-pick）は CLAUDE.md「マージルール」で禁止しています（レビュー単位が崩れ、一方だけをリリースへ回せなくなります）。必要なら release/* 経由にするか、実行してよいかユーザーに確認してください。'
 fi
 
 # --- ブランチ作成 -------------------------------------------------------
