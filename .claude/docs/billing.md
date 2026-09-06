@@ -152,6 +152,12 @@ yarn env:develop
 > **テストキーで動かす環境の `.env.<環境名>` で `STRIPE_ALLOW_TEST_MODE=true` を
 > 設定すること。**設定しないと、購入しても `users/{uid}.subscription` は変わらず
 > 「反映されない」で止まる（ログに `Ignored Stripe test-mode event` が出る）。
+>
+> ⚠️ **既存の派生プロジェクトは配線側の追従も要る。** `apps/` は Template Sync の
+> 対象外なので、このドキュメントだけが同期されて
+> `apps/functions/src/lib/billing.ts` の `stripe` 設定に `allowTestMode` が
+> 渡っていない状態になりうる。`allowTestMode` は任意プロパティで型チェックもテストも
+> 通ってしまうため、env を設定しても直らないときはここを確認する。
 
 キーは環境ごとの Firebase プロジェクトの Secret Manager に入る（→ 1-2）ので、
 環境の切り替えでキーも入れ替わる。ローカルは `apps/functions/.secret.local`。
@@ -228,6 +234,10 @@ stripe listen --forward-to \
 # 3. Web を起動して /billing から購入
 yarn dev:web
 ```
+
+> Stripe CLI が転送するイベントは全てテストモード（`livemode: false`）。
+> `.env.develop` に `STRIPE_ALLOW_TEST_MODE=true` を入れて `yarn env:develop` 済みで
+> ないと、Webhook は 200 を返すだけで権利が反映されない（→ 1-4）。
 
 テストカードは `4242 4242 4242 4242`（有効期限は未来の日付、CVC は任意の3桁）。
 
@@ -497,6 +507,7 @@ yarn test:rules  # Firestore / Storage ルール（要 Firebase エミュレー�
 | `/billing/checkout` が 400 `Invalid priceId` | `STRIPE_PRICE_IDS` に該当の price ID が入っていない。商品 ID（`prod_...`）を入れていないか確認 |
 | price ID は合っているのに Stripe 側で `No such price` | テストモードで作った price を本番キーで使っている（またはその逆）。price ID はモードごとに別物 |
 | `yarn env:develop` がエラーで止まる | `.env.develop` に本番キー（`sk_live_` / `rk_live_`）が入っている。テストキーに差し替える |
+| `yarn env:production` がエラーで止まる | `.env.production` に `STRIPE_ALLOW_TEST_MODE=true` / `REVENUECAT_ALLOW_SANDBOX=true` が残っている（develop の複製でよく起きる）。空にする |
 | 環境を切り替えたのに Functions が前の環境を見ている | Functions に追加した環境変数が `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` に入っていない |
 | `/billing/portal` が 500 | Stripe Dashboard でカスタマーポータルを有効化していない |
 | `/billing/portal` が 404 | そのユーザーが Stripe で一度も購入しておらず顧客が存在しない。IAP で購入したユーザーはこちら（ストアの設定画面へ誘導する） |

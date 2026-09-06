@@ -40,16 +40,27 @@ vi.mock('@geckou/billing', () => ({
 async function stripeConfigWith(env: Record<string, string>) {
   const { getBilling } = await import('../src/lib/billing')
 
+  // 呼び出しごとに消す。キャッシュが返った場合に前回の設定が残っていると、
+  // 「作り直されなかった」ことが stale な値として現れて読みにくい
+  passed.config = undefined
+
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_dummy')
   vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_dummy')
   for (const [key, value] of Object.entries(env)) {
     vi.stubEnv(key, value)
   }
 
-  await getBilling()
-  vi.unstubAllEnvs()
+  try {
+    await getBilling()
+  } finally {
+    vi.unstubAllEnvs()
+  }
 
-  return passed.config?.stripe as Record<string, unknown> | undefined
+  // 上で undefined を代入しているため、TS はここまで narrow したままになる
+  // （実際に書くのは vi.mock のファクトリなので推論では追えない）
+  const config = passed.config as Record<string, unknown> | undefined
+
+  return config?.stripe as Record<string, unknown> | undefined
 }
 
 describe('billing の配線', () => {

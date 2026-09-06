@@ -66,9 +66,13 @@ yarn format
   サーバー側で固定する（オープンリダイレクト防止）
 - `SYNC_SUBSCRIPTION_CLAIMS` — セキュリティルールから
   `request.auth.token.subscriptionActive` を使う場合のみ `true`
+- `STRIPE_ALLOW_TEST_MODE` / `REVENUECAT_ALLOW_SANDBOX` — テストモード / Sandbox の
+  Webhook を適用するか。**既定は適用しない**ので、テストキーで動かす環境では `true`。
+  本番では空のままにする
 
 > `yarn env:<環境名>` は production 以外に本番キー（`sk_live_`）が入っていると停止する。
-> 開発中の操作が実際のカードに課金されるのを防ぐためのガードなので、迂回しないこと。
+> 逆に production で `STRIPE_ALLOW_TEST_MODE` / `REVENUECAT_ALLOW_SANDBOX` が `true` でも停止する。
+> どちらも取り返しのつかない事故を防ぐガードなので、迂回しないこと。
 
 ### 2-4. 権利変化フック（プロダクト固有）
 
