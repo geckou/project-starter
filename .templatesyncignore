@@ -12,7 +12,6 @@ CLAUDE.md
 README.md
 
 # プロジェクトの学習メモリ
-memory/
 
 # 環境・Firebase 設定（プロジェクトごとに異なる）
 .env*

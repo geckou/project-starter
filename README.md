@@ -16,7 +16,7 @@
 
 | 層 | 中身 | スタック依存 |
 | --- | --- | --- |
-| **第0層（制約層）** | `.claude/hooks/`、`CLAUDE.md` の規約、`memory/`、プロセス系スキル（`/kickoff` `/next` `/questions` `/wrap-up` `/new-skill`）、commitlint・ESLint 共通ルール・Prettier | **なし** |
+| **第0層（制約層）** | `.claude/hooks/`、`CLAUDE.md` の規約、プロセス系スキル（`/kickoff` `/next` `/questions` `/wrap-up` `/new-skill`）、commitlint・ESLint 共通ルール・Prettier | **なし** |
 | **スタック層** | Next.js + Firebase Hosting + CI/deploy + 環境切替、Firebase（Auth/Firestore/Storage）、Expo、課金 | あり |
 
 **第0層はスタック層に属さない。** スタックが変わっても、規約を機械的に強制する仕組みはそのまま使える。
@@ -138,7 +138,6 @@ project-starter/
 │   │   └── ...                  # architecture / layers / git-workflow / dependencies 等
 │   └── settings.json            # フックの登録
 │
-├── memory/                      # 進化的メモリ（フィードバックの蓄積と昇格）
 │   ├── evolution.md             # 昇格プロトコル（pain_count → CLAUDE.md → Hook）
 │   └── short-term/  long-term/  daily/
 │

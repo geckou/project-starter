@@ -212,12 +212,11 @@ Dependency Dashboard も作らないモードで、組織の既定が Silent に
 Dependabot の設定ファイルが残っていれば削除する（PR が二重に立つため）。
 詳細は `.claude/docs/dependencies.md`。
 
-### 8. ドキュメント・メモリの初期化
+### 8. ドキュメントの初期化
 
 - `.claude/docs/planning.md` / `spec.md` / `roadmap.md` のプレースホルダ
   （空のテーブル・コメント）を確認し、プロダクトの内容を記入する
-- `memory/daily/` / `memory/short-term/` / `memory/long-term/` 配下に
-  テンプレート由来の記録が残っていれば削除する（`memory/evolution.md` は残す）
+- `.claude/docs/questions.md` の「回答済み」にテンプレート由来の記録が残っていれば削除する
 
 ## 確認事項
 
@@ -238,4 +237,4 @@ Dependabot の設定ファイルが残っていれば削除する（PR が二重
 - [ ] Copilot の自動レビュー ruleset（`.github/rulesets/copilot-review.json`）を取り込んだ
 - [ ] Renovate の GitHub App をインストールし、Silent mode を OFF にした
 - [ ] Dependency graph / Dependabot alerts を有効化した（脆弱性の PR が来るようにする）
-- [ ] `.claude/docs/` と `memory/` を初期化した
+- [ ] `.claude/docs/` を初期化した
