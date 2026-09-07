@@ -65,15 +65,34 @@ command -v gh >/dev/null 2>&1 || pass
 # gh repo set-default の設定先（別のリポジトリでもありうる）を見に行き、
 # 「比べた先と PR を探した先が違う」状態で通過 / ブロックしてしまう
 remote_url=$(git remote get-url "$remote" 2>/dev/null) || pass
-repo=$(printf '%s' "$remote_url" |
-  sed -e 's#^git@[^:]*:#/#' -e 's#^ssh://[^/]*/#/#' -e 's#^[a-z]*://[^/]*/#/#' \
-    -e 's#\.git$##' -e 's#^/##')
+
+# ホストと owner/repo を分けて取る。ホストを捨てると GitHub 以外
+# （gitlab.com 等）の remote でも同名の GitHub リポジトリを見に行ってしまう
+remote_host=$(printf '%s' "$remote_url" |
+  sed -n -e 's#^git@\([^:]*\):.*#\1#p' -e 's#^ssh://\([^/]*\)/.*#\1#p' \
+    -e 's#^[a-z][a-z0-9+.-]*://\([^/]*\)/.*#\1#p' | head -1)
+remote_host=${remote_host#*@}
+remote_path=$(printf '%s' "$remote_url" |
+  sed -e 's#^git@[^:]*:#/#' -e 's#^ssh://[^/]*/#/#' \
+    -e 's#^[a-z][a-z0-9+.-]*://[^/]*/#/#' -e 's#\.git$##' -e 's#^/##')
 
 # owner/repo の形にならないもの（ローカルのパス等）は判定できないので何もしない
-case $repo in
+case $remote_path in
   (*/*/*) pass ;;
   (*/*) ;;
   (*) pass ;;
+esac
+
+# GitHub 以外のホストは gh では検索できない。GitHub Enterprise は
+# HOOK_PR_GITHUB_HOST に指定してもらい、HOST/OWNER/REPO の形で渡す
+ghe_host=${HOOK_PR_GITHUB_HOST:-}
+case $remote_host in
+  (github.com) repo=$remote_path ;;
+  ('') pass ;;
+  (*)
+    [ -n "$ghe_host" ] && [ "$remote_host" = "$ghe_host" ] || pass
+    repo=$remote_host/$remote_path
+    ;;
 esac
 
 open_prs=$(gh pr list --repo "$repo" --head "$branch" --state open \

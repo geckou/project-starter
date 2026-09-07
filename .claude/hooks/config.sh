@@ -43,3 +43,7 @@ HOOK_ROADMAP_FILE=${HOOK_ROADMAP_FILE:-'.claude/docs/roadmap.md'}
 # 派生プロジェクトが既定ブランチを main にしている場合はここを変える
 HOOK_PR_REMOTE=${HOOK_PR_REMOTE:-'origin'}
 HOOK_PR_BASE_BRANCH=${HOOK_PR_BASE_BRANCH:-'production'}
+
+# GitHub Enterprise を使う場合のホスト名（例: ghe.example.com）。
+# 未設定なら github.com の remote だけを見る
+HOOK_PR_GITHUB_HOST=${HOOK_PR_GITHUB_HOST:-''}

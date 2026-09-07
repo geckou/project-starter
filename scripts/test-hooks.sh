@@ -1434,6 +1434,19 @@ run_pr 0 'push 前（手元のコミットだけ）ならブロックしない' 
 git -C "$PR_WORK" checkout -q feat/thing
 run_pr 0 'remote の URL から owner/repo を決められなければ何もしない' '{}'
 
+# GitHub 以外のホストは gh では検索できない（同名の GitHub リポジトリを
+# 見に行かないこと）
+git -C "$PR_WORK" remote set-url origin https://gitlab.com/example/repo.git
+run_pr 0 'GitHub 以外のホストの remote では何もしない' '{}'
+
+# GitHub Enterprise は設定したホストだけ HOST/OWNER/REPO で渡す
+git -C "$PR_WORK" remote set-url origin https://ghe.example.com/example/repo.git
+run_pr 0 '未設定の GitHub Enterprise ホストでは何もしない' '{}'
+HOOK_PR_GITHUB_HOST=ghe.example.com
+export HOOK_PR_GITHUB_HOST
+run_pr 2 '設定した GitHub Enterprise ホストなら判定する' '{}'
+unset HOOK_PR_GITHUB_HOST
+
 git -C "$PR_WORK" remote set-url origin https://github.com/example/repo.git
 run_pr 2 'push 済みで open な PR が無ければブロックする' '{}'
 
