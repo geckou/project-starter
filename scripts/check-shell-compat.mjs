@@ -14,9 +14,9 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+// 検査対象のディレクトリ。引数で差し替えられる（回帰テストが使う）。
 // URL.pathname は空白や # をパーセントエンコードしたまま返すため、
-// パスへ戻すには fileURLToPath を通す
-// 検査対象のディレクトリ。引数で差し替えられる（回帰テストが使う）
+// 既定値はパスへ戻すのに fileURLToPath を通す
 const HOOK_DIR =
   process.argv[2] ??
   fileURLToPath(new URL('../.claude/hooks/', import.meta.url))
