@@ -12,8 +12,14 @@
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const HOOK_DIR = new URL('../.claude/hooks/', import.meta.url).pathname
+// URL.pathname は空白や # をパーセントエンコードしたまま返すため、
+// パスへ戻すには fileURLToPath を通す
+// 検査対象のディレクトリ。引数で差し替えられる（回帰テストが使う）
+const HOOK_DIR =
+  process.argv[2] ??
+  fileURLToPath(new URL('../.claude/hooks/', import.meta.url))
 
 // bash 3.2 と同じ素朴な読み方でコマンド置換の中身を切り出す
 function commandSubstitutions(src) {
@@ -21,17 +27,35 @@ function commandSubstitutions(src) {
   const stack = []
   let quote = ''
 
+  // 置換の開始。二重引用符の中でも $( … ) はシェルが評価するため、
+  // 引用の状態を退避して置換の中を「引用の外」として読み直す
+  const openSubstitution = (i) => {
+    stack.push({ start: i + 2, depth: 0, savedQuote: quote })
+    quote = ''
+  }
+
   for (let i = 0; i < src.length; i++) {
     const c = src[i]
 
+    // 単一引用符の中は展開されないので、置換の開始としては読まない
     if (quote === "'") {
       if (c === "'") quote = ''
       continue
     }
 
     if (quote === '"') {
-      if (c === '\\') i++
-      else if (c === '"') quote = ''
+      if (c === '\\') {
+        i++
+        continue
+      }
+      if (c === '"') {
+        quote = ''
+        continue
+      }
+      if (c === '$' && src[i + 1] === '(' && src[i + 2] !== '(') {
+        openSubstitution(i)
+        i++
+      }
       continue
     }
 
@@ -52,7 +76,7 @@ function commandSubstitutions(src) {
     }
 
     if (c === '$' && src[i + 1] === '(' && src[i + 2] !== '(') {
-      stack.push({ start: i + 2, depth: 0 })
+      openSubstitution(i)
       i++
       continue
     }
@@ -68,6 +92,7 @@ function commandSubstitutions(src) {
           end: i,
           body: src.slice(top.start, i),
         })
+        quote = top.savedQuote
         stack.pop()
       } else {
         top.depth--

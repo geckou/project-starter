@@ -1355,5 +1355,52 @@ run_roadmap 2 '既定のパスで判定する' '{}' "$NOCONFIG/stop-roadmap-remi
 
 rm -f "$SESSION/work.txt"
 
+
+# ---- scripts/check-shell-compat.mjs ----
+#
+# bash 3.2（macOS の /bin/sh）で構文解析できない書き方の検出そのものを検証する。
+# 検出できないと、フックが手元だけで丸ごと動かなくなる壊れ方が CI をすり抜ける。
+
+if command -v node >/dev/null 2>&1; then
+  # ディレクトリ名に空白を入れるのは、URL.pathname のままだと開けないため
+  COMPAT_BAD="$SANDBOX/compat bad"
+  COMPAT_OK="$SANDBOX/compat ok"
+  mkdir -p "$COMPAT_BAD" "$COMPAT_OK"
+
+  # 素の case（パターンが ( で開かれていない）を置換の中に置く
+  printf 'x=$(case $y in a) echo 1 ;; esac)\n' > "$COMPAT_BAD/bare.sh"
+  # 二重引用符の中の置換も見る（$( ) は引用の中でも評価される）
+  printf 'x="$(case $y in b) echo 1 ;; esac)"\n' > "$COMPAT_BAD/in-quotes.sh"
+  printf 'x=$(case $y in (a) echo 1 ;; esac)\n' > "$COMPAT_OK/ok.sh"
+  # 単一引用符の中は展開されないので、置換としては読まない
+  printf "awk 'case) { }'\n" >> "$COMPAT_OK/ok.sh"
+
+  # run_compat <期待する終了コード> <説明> <検査対象のディレクトリ>
+  run_compat() {
+    want=$1
+    desc=$2
+    dir=$3
+
+    LAST_OUT=$(node "$REPO/scripts/check-shell-compat.mjs" "$dir" 2>&1)
+    status=$?
+
+    if [ "$status" = "$want" ]; then
+      pass=$((pass + 1))
+      printf 'ok   [%s] %s\n' "$status" "$desc"
+    else
+      fail=$((fail + 1))
+      printf 'FAIL [want %s got %s] %s\n     out: %s\n' "$want" "$status" "$desc" "$LAST_OUT"
+    fi
+  }
+
+  echo
+  echo '=== check-shell-compat: bash 3.2 で落ちる書き方の検出 ==='
+  run_compat 1 '置換の中の素の case を検出する' "$COMPAT_BAD"
+  run_compat 0 'パターンを ( で開いていれば通す（空白を含むパスでも動く）' "$COMPAT_OK"
+  run_compat 0 'フック本体は通る' "$REPO/.claude/hooks"
+else
+  echo 'node が無いため check-shell-compat の検証をスキップします'
+fi
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]
