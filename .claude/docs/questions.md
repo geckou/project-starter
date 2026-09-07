@@ -34,8 +34,9 @@
 
 - 発生: 2026-09-07 / Issue #286 の対応中
 - 種別: その他（テンプレートの設計）
-- 状況: `layers.json` に現れる `.github/` は functions 層の `blocks` にある `deploy.yml` の
-  1 件だけで、`.github/workflows/*` の本体も `.github/rulesets/*` もどの層の `files` にも
+- 状況: `layers.json` に現れる `.github/` は `.github/workflows/deploy.yml` の 1 ファイルだけで、
+  それも firebase / functions / mobile の 3 層の `blocks`（層マーカーを持つファイルの一覧）に
+  出てくるだけ。ファイル本体も、他の workflow も `.github/rulesets/*` も、どの層の `files` にも
   入っていない。CLAUDE.md は「ファイルを追加・移動・削除したら `layers.json` も更新する」と
   書いているため、レビューのたびに「登録すべきでは」という指摘が出る（#285 で実際に出た）。
   `check-layers.mjs` は「登録したパスが実在するか」しか見ないので、この乖離は検出されない。
@@ -43,9 +44,11 @@
   - A) **層に属さないものとして明示する**（推奨）— `.github/` は層構成（firebase / functions /
     mobile / billing の有無）と無関係にどの派生でも要る、という扱いを `.claude/docs/layers.md`
     に書く。`deploy.yml` のマーカーだけが例外。`layers.json` は変更なし
-  - B) **core の `files` に登録する** — `.github/workflows/` と `.github/rulesets/` を core へ
-    入れる。core は `removable: false` なので削除には使われず、意味は「どの構成でも残る」の
-    明示に留まる（動作は変わらない）
+  - B) **core の `files` に登録する** — `.github/` 配下を core へ入れる。ここで「どこまでを
+    登録するか」も併せて決める必要がある（workflows と rulesets だけか、ISSUE_TEMPLATE /
+    pull_request_template.md / copilot-instructions.md も含めるか）。core は
+    `removable: false` なので削除には使われず、意味は「どの構成でも残る」の明示に留まる
+    （動作は変わらない）
 - ブロック: Issue #286（`.claude/docs/layers.md`「マニフェストの書き方」への線引きの追記）
 - 進めた範囲: 現状の確認まで（未登録なのは workflows 11 本・rulesets 2 件・ISSUE_TEMPLATE・
   pull_request_template.md・copilot-instructions.md）
