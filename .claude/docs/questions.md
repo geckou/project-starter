@@ -39,18 +39,21 @@
   出てくるだけ。ファイル本体も、他の workflow も `.github/rulesets/*` も、どの層の `files` にも
   入っていない。CLAUDE.md は「ファイルを追加・移動・削除したら `layers.json` も更新する」と
   書いているため、レビューのたびに「登録すべきでは」という指摘が出る（#285 で実際に出た）。
-  `check-layers.mjs` は「登録したパスが実在するか」しか見ないので、この乖離は検出されない。
+  `check-layers.mjs` は登録した内容（`files` の実在、マーカーと `blocks` の一致、`deps` /
+  `scripts` / `json` / `replace` / `env` の実在）を検査するが、**`files` の網羅性**は見ないため、
+  この乖離は検出されない。
 - 選択肢:
   - A) **層に属さないものとして明示する**（推奨）— `.github/` は層構成（firebase / functions /
     mobile / billing の有無）と無関係にどの派生でも要る、という扱いを `.claude/docs/layers.md`
     に書く。`deploy.yml` のマーカーだけが例外。`layers.json` は変更なし
-  - B) **core の `files` に登録する** — `.github/` 配下を core へ入れる。ここで「どこまでを
-    登録するか」も併せて決める必要がある（workflows と rulesets だけか、ISSUE_TEMPLATE /
-    pull_request_template.md / copilot-instructions.md も含めるか）。core は
+  - B) **core の `files` に `.github/` 配下をまとめて登録する** — workflows・rulesets・
+    ISSUE_TEMPLATE・pull_request_template.md・copilot-instructions.md の全部を入れる
+    （範囲をここで確定させる。半端に入れると同じ指摘がまた出る）。core は
     `removable: false` なので削除には使われず、意味は「どの構成でも残る」の明示に留まる
     （動作は変わらない）
 - ブロック: Issue #286（`.claude/docs/layers.md`「マニフェストの書き方」への線引きの追記）
-- 進めた範囲: 現状の確認まで（未登録なのは workflows 11 本・rulesets 2 件・ISSUE_TEMPLATE・
+- 進めた範囲: 現状の確認まで（未登録なのは workflows 11 本・rulesets 3 件
+  （`production.json` / `release.json` / `copilot-review.json`）・ISSUE_TEMPLATE・
   pull_request_template.md・copilot-instructions.md）
 
 ### Q-005 「管理下にあるリポジトリへの PR」は自律性の境界の 3 段目か
