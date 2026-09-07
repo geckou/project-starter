@@ -15,9 +15,10 @@ CLAUDE.md にはフックの一覧だけを置き、各フックが何を見る�
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
 | Stop | `stop-roadmap-reminder.sh` | 作業があるのに `roadmap.md` 未更新ならリマインド |
 | Stop | `stop-questions-reminder.sh` | この作業で確認事項を積んだのに提示していなければ、終了前に一覧を出させる |
+| Stop | `stop-pr-reminder.sh` | 作業ブランチが push 済みで、`origin/production` へ未マージのコミットがあるのに open な PR が無ければ終了をブロック（CLAUDE.md「PR は出す、マージは人が決める」）。PR の有無は `gh` に聞くため、`gh` が無い / 未認証 / API が失敗したときは何もしない。`production` と `release/*` は対象外（`release/*` への push はデプロイであって、`production` への PR は後から出す） |
 
-Stop フックは 3 つとも同じ `stop_hook_active` を受け取る。DoD がブロックした後の継続でも
-残り 2 つの判定が走るように、**フックごとに「1 セッションで 1 回だけブロックする」**形にしてある
+Stop フックは 4 つとも同じ `stop_hook_active` を受け取る。DoD がブロックした後の継続でも
+残りの判定が走るように、**フックごとに「1 セッションで 1 回だけブロックする」**形にしてある
 （DoD は実行コストが高いため、継続中はこれまでどおり実行しない）。
 
 ## スタック依存の値は `config.sh` に置く
@@ -33,6 +34,8 @@ Stop フックは 3 つとも同じ `stop_hook_active` を受け取る。DoD が
 | `HOOK_WATCH_PATHS` | 変更時にリマインドするパスと文言 |
 | `HOOK_QUESTIONS_FILE` | 確認事項キューの場所 |
 | `HOOK_ROADMAP_FILE` | ロードマップ（機能ステータス表）の場所 |
+| `HOOK_PR_REMOTE` | PR の有無を見るときのリモート名 |
+| `HOOK_PR_BASE_BRANCH` | PR のマージ先（既定ブランチ） |
 
 `config.sh` は `.templatesyncignore` に登録してあり、テンプレート更新で上書きされない。
 逆にテンプレート側で設定項目が増えても自動では流れてこないため、**フック本体は

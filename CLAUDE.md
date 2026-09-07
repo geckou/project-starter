@@ -244,6 +244,7 @@ PR・マージしてよい。以下は派生プロジェクトに適用する。
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD を自動実行し、失敗なら終了をブロック |
 | Stop | `stop-roadmap-reminder.sh` | 作業があるのに `roadmap.md` 未更新ならリマインド |
 | Stop | `stop-questions-reminder.sh` | 積んだ確認事項を提示していなければ、終了前に一覧を出させる |
+| Stop | `stop-pr-reminder.sh` | push 済みのブランチに open な PR が無ければ終了をブロック（`gh` が使えないときは何もしない） |
 
 **フックを追加・変更したらテストも足す**（`yarn test:hooks`）。外す・弱めるのはユーザーに理由を説明して
 確認を取ってから。ブロックされたら、迂回ではなく指摘された内容を直す。「また同じことを言っている」と
