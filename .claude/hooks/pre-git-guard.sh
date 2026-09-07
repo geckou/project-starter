@@ -84,12 +84,30 @@ cmd=$(printf '%s' "$cmd" | awk '
   # heredoc を受け取るコマンド部分（`<<` の直前の区切りから後ろ）を返す。
   # `git commit -m x; eval "$(cat <<EOF …)"` の本文をコミットメッセージと
   # 取り違えないための絞り込み
-  function heredoc_owner(line,   p, seg) {
+  # 区切りは「引用の外」のものだけを見る。引用の中の ; まで区切りとして扱うと、
+  # `git commit -m '"'"'fix: a; b'"'"' -F - <<EOF` の owner から git commit が消え、
+  # 本文がまたコマンドとして検査されてしまう
+  function heredoc_owner(line,   i, ch, state, bs, cut, n) {
+    bs = sprintf("%c", 92)
+    state = ""
+    cut = 0
+    n = length(line)
+    for (i = 1; i <= n; i++) {
+      ch = substr(line, i, 1)
+      if (ch == bs && state != SQ) { i++; continue }
+      if (state != "") { if (ch == state) state = ""; continue }
+      if (ch == SQ || ch == DQ) { state = ch; continue }
+      if (ch == ";" || ch == "&" || ch == "|") { cut = i; continue }
+      if (ch == "<" && substr(line, i + 1, 1) == "<")
+        return substr(line, cut + 1, i - cut - 1)
+    }
+    return substr(line, cut + 1)
+  }
+
+  # heredoc の `<<` より後ろ（パイプでシェルへ流す形を見るため）
+  function heredoc_tail(line,   p) {
     p = index(line, "<<")
-    if (p == 0) return line
-    seg = substr(line, 1, p - 1)
-    sub(/^.*[;&|]/, "", seg)
-    return seg
+    return (p == 0) ? "" : substr(line, p)
   }
 
   # 終了マーカー行が実在するときだけ heredoc として扱う。終端の無い heredoc は
@@ -138,17 +156,20 @@ cmd=$(printf '%s' "$cmd" | awk '
       #   - commit -m "$(cat <<EOF ...)" -> 本文はコミットメッセージなので検査する
       #   - sh / bash <<EOF ...          -> 本文は実際に実行されるので検査する
       #
-      # シェルへ渡る heredoc を先に見る。`echo '"'"'git commit'"'"'; sh <<EOF` のように
-      # 1 行に両方が現れると、後ろのシェル本文がメッセージ扱いになって
-      # 検査から落ちる（実行される本文をデータとして扱ってはいけない）
-      if (lines[i] ~ /(^|[[:space:]|;&(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) continue
-      # eval / source / . も本文をそのまま実行する（`eval "$(cat <<EOF …)"`）
-      if (lines[i] ~ /(^|[[:space:]|;&(])(eval|source|\.)([[:space:]]|$)/) continue
-
-      # heredoc を受け取るコマンドが commit かどうかは、`<<` の直前の区切りから
-      # 後ろだけを見て決める。行のどこかに git commit があるだけで本文をメッセージ
-      # 扱いにすると、同じ行の別のコマンドへ渡る本文まで検査から落ちる
+      # heredoc の受け手（`<<` の直前の引用外の区切りから後ろ）だけを見て決める。
+      # 行のどこかに現れた語で判定すると、`echo '"'"'git commit'"'"'; sh <<EOF` の
+      # シェル本文がメッセージ扱いになったり、逆に `git commit -F - <<EOF # bash` の
+      # コメントの語でメッセージが本文扱いを外れたりする
       owner = heredoc_owner(lines[i])
+      tail = heredoc_tail(lines[i])
+
+      # シェルへ渡る heredoc を先に見る（実行される本文をデータとして扱わない）。
+      # `cat <<EOF | sh` のように後ろでシェルへ流す形も実行される
+      if (owner ~ /(^|[[:space:]|;&(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)([[:space:]]|$)/ ||
+          tail ~ /\|[[:space:]]*[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) continue
+      # eval / source / . も本文をそのまま実行する（`eval "$(cat <<EOF …)"`）
+      if (owner ~ /(^|[[:space:]|;&(])(eval|source|\.)([[:space:]]|$)/) continue
+
       if (owner ~ /git[[:space:]]+commit/ &&
           owner ~ /(^|[[:space:]])(-[A-Za-z]*[mF]|--m[a-z]*|--fil[a-z]*)([[:space:]]|=|$)/) {
         # マーカーを引用した heredoc（<<'"'"'EOF'"'"'）の本文はシェルが展開しない。
