@@ -1436,7 +1436,12 @@ if command -v node >/dev/null 2>&1; then
   printf 'x=$(case $y in a) echo 1 ;; esac)\n' > "$COMPAT_BARE/bare.sh"
   # 二重引用符の中の置換も見る（$( ) は引用の中でも評価される）
   printf 'x="$(case $y in b) echo 1 ;; esac)"\n' > "$COMPAT_QUOTED/in-quotes.sh"
+  # ヘッダーを改行で折る形（case "$y" / in）も POSIX で有効な case
+  COMPAT_MULTILINE="$SANDBOX/compat multiline"
+  mkdir -p "$COMPAT_MULTILINE"
+  printf 'x=$(case "$y"\nin\n  a) echo 1 ;;\nesac)\n' > "$COMPAT_MULTILINE/multiline.sh"
   printf 'x=$(case $y in (a) echo 1 ;; esac)\n' > "$COMPAT_OK/ok.sh"
+  printf 'w=$(case "$y"\nin\n  (a) echo 1 ;;\nesac)\n' >> "$COMPAT_OK/ok.sh"
   # 単一引用符の中は展開されないので、置換としては読まない
   printf "awk 'case) { }'\n" >> "$COMPAT_OK/ok.sh"
   # 引数として渡すだけの case / esac は予約語ではない（sh -n が通る形）
@@ -1464,6 +1469,7 @@ if command -v node >/dev/null 2>&1; then
   echo '=== check-shell-compat: bash 3.2 で落ちる書き方の検出 ==='
   run_compat 1 '置換の中の素の case を検出する' "$COMPAT_BARE"
   run_compat 1 '二重引用符の中の置換でも検出する' "$COMPAT_QUOTED"
+  run_compat 1 'ヘッダーを改行で折った case も見る' "$COMPAT_MULTILINE"
   run_compat 0 'パターンを ( で開いていれば通す（空白を含むパスでも動く）' "$COMPAT_OK"
   # 検査が厳しすぎると、正しいスクリプトで CI が落ちる
   run_compat 0 '引数の case / esac では誤検出しない' "$COMPAT_OK"
