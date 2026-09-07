@@ -15,7 +15,7 @@ CLAUDE.md にはフックの一覧だけを置き、各フックが何を見る�
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
 | Stop | `stop-roadmap-reminder.sh` | 作業があるのに `roadmap.md` 未更新ならリマインド |
 | Stop | `stop-questions-reminder.sh` | この作業で確認事項を積んだのに提示していなければ、終了前に一覧を出させる |
-| Stop | `stop-pr-reminder.sh` | 作業ブランチが push 済みで、`origin/production` へ未マージのコミットがあるのに open な PR が無ければ終了をブロック（CLAUDE.md「PR は出す、マージは人が決める」）。PR の有無は `gh` に聞くため、`gh` が無い / 未認証 / API が失敗したときは何もしない。`production` と `release/*` は対象外（`release/*` への push はデプロイであって、`production` への PR は後から出す） |
+| Stop | `stop-pr-reminder.sh` | 作業ブランチが push 済みで、`origin/production` へ未マージのコミットがあるのに open な PR が無ければ終了をブロック（CLAUDE.md「PR は出す、マージは人が決める」）。PR の有無は `gh` に聞くため、`gh` が無い / 未認証 / API が失敗したときは何もしない。探す先は remote の URL から決めた `owner/repo`（`gh` の既定リポジトリに任せると、比べた remote と別のリポジトリの PR を数えてしまう）。URL から `owner/repo` を作れないときも何もしない。`production` と `release/*` は対象外（`release/*` への push はデプロイであって、`production` への PR は後から出す） |
 
 Stop フックは 4 つとも同じ `stop_hook_active` を受け取る。DoD がブロックした後の継続でも
 残りの判定が走るように、**フックごとに「1 セッションで 1 回だけブロックする」**形にしてある

@@ -61,7 +61,23 @@ ahead=$(git rev-list --count "$remote/$base..$remote/$branch" 2>/dev/null) || pa
 
 command -v gh >/dev/null 2>&1 || pass
 
-open_prs=$(gh pr list --head "$branch" --state open --json number --jq 'length' 2>/dev/null) || pass
+# PR を探すリポジトリは、上で比べた remote の URL から決める。gh に任せると
+# gh repo set-default の設定先（別のリポジトリでもありうる）を見に行き、
+# 「比べた先と PR を探した先が違う」状態で通過 / ブロックしてしまう
+remote_url=$(git remote get-url "$remote" 2>/dev/null) || pass
+repo=$(printf '%s' "$remote_url" |
+  sed -e 's#^git@[^:]*:#/#' -e 's#^ssh://[^/]*/#/#' -e 's#^[a-z]*://[^/]*/#/#' \
+    -e 's#\.git$##' -e 's#^/##')
+
+# owner/repo の形にならないもの（ローカルのパス等）は判定できないので何もしない
+case $repo in
+  (*/*/*) pass ;;
+  (*/*) ;;
+  (*) pass ;;
+esac
+
+open_prs=$(gh pr list --repo "$repo" --head "$branch" --state open \
+  --json number --jq 'length' 2>/dev/null) || pass
 [ -n "$open_prs" ] || pass
 [ "$open_prs" -gt 0 ] 2>/dev/null && pass
 

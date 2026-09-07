@@ -1388,6 +1388,20 @@ git -C "$PR_WORK" -c user.email=test@example.com -c user.name=test \
 git -C "$PR_WORK" remote add origin "$PR_REMOTE"
 git -C "$PR_WORK" push -q -u origin production
 
+# push は先に全部済ませてから、origin の URL を GitHub の形へ差し替える。
+# フックは remote の URL から PR を探すリポジトリを決めるため、ローカルのパスの
+# ままだと owner/repo を作れず、何も判定しないまま通ってしまう
+git -C "$PR_WORK" checkout -q -b feat/thing
+echo work > "$PR_WORK/work.txt"
+git -C "$PR_WORK" add work.txt
+git -C "$PR_WORK" -c user.email=test@example.com -c user.name=test \
+  commit -q -m 'feat: work'
+git -C "$PR_WORK" push -q -u origin feat/thing
+git -C "$PR_WORK" checkout -q -b release/1.0
+git -C "$PR_WORK" push -q -u origin release/1.0
+git -C "$PR_WORK" checkout -q -b feat/unpushed feat/thing
+git -C "$PR_WORK" checkout -q feat/thing
+
 # run_pr <期待する終了コード> <説明> <入力 JSON> [フック本体のパス]
 run_pr() {
   want=$1
@@ -1410,16 +1424,17 @@ run_pr() {
 
 echo
 echo '=== stop-pr-reminder: PR の無い push の検出 ==='
+git -C "$PR_WORK" checkout -q production
 run_pr 0 '既定ブランチでは何も言わない' '{}'
 
-git -C "$PR_WORK" checkout -q -b feat/thing
-echo work > "$PR_WORK/work.txt"
-git -C "$PR_WORK" add work.txt
-git -C "$PR_WORK" -c user.email=test@example.com -c user.name=test \
-  commit -q -m 'feat: work'
+git -C "$PR_WORK" checkout -q feat/unpushed
 run_pr 0 'push 前（手元のコミットだけ）ならブロックしない' '{}'
 
-git -C "$PR_WORK" push -q -u origin feat/thing
+# GitHub 以外（ローカルのパス等）の remote は owner/repo を決められない
+git -C "$PR_WORK" checkout -q feat/thing
+run_pr 0 'remote の URL から owner/repo を決められなければ何もしない' '{}'
+
+git -C "$PR_WORK" remote set-url origin https://github.com/example/repo.git
 run_pr 2 'push 済みで open な PR が無ければブロックする' '{}'
 
 FAKE_GH_PR_COUNT=1
@@ -1444,8 +1459,7 @@ rm -f "${TMPDIR:-/tmp}/claude-stop-pr-s-pr"
 
 echo
 echo '=== stop-pr-reminder: 対象外のブランチ ==='
-git -C "$PR_WORK" checkout -q -b release/1.0
-git -C "$PR_WORK" push -q -u origin release/1.0
+git -C "$PR_WORK" checkout -q release/1.0
 run_pr 0 'release/* は PR の流れが別なので見ない' '{}'
 git -C "$PR_WORK" checkout -q feat/thing
 
@@ -1459,6 +1473,59 @@ HOOK_PR_BASE_BRANCH=feat/thing
 export HOOK_PR_BASE_BRANCH
 run_pr 0 '差し替えた既定ブランチと同じなら見ない' '{}'
 unset HOOK_PR_BASE_BRANCH
+# ---- scripts/check-shell-compat.mjs ----
+#
+# bash 3.2（macOS の /bin/sh）で構文解析できない書き方の検出そのものを検証する。
+# 検出できないと、フックが手元だけで丸ごと動かなくなる壊れ方が CI をすり抜ける。
+
+if command -v node >/dev/null 2>&1; then
+  # 経路ごとに別ディレクトリへ置く。1 つのディレクトリにまとめると、
+  # 片方の検出が壊れてももう片方で終了コードが 1 になり、テストが通ってしまう。
+  # ディレクトリ名に空白を入れるのは、URL.pathname のままだと開けないため
+  COMPAT_BARE="$SANDBOX/compat bare"
+  COMPAT_QUOTED="$SANDBOX/compat quoted"
+  COMPAT_OK="$SANDBOX/compat ok"
+  mkdir -p "$COMPAT_BARE" "$COMPAT_QUOTED" "$COMPAT_OK"
+
+  # 素の case（パターンが ( で開かれていない）を置換の中に置く
+  printf 'x=$(case $y in a) echo 1 ;; esac)\n' > "$COMPAT_BARE/bare.sh"
+  # 二重引用符の中の置換も見る（$( ) は引用の中でも評価される）
+  printf 'x="$(case $y in b) echo 1 ;; esac)"\n' > "$COMPAT_QUOTED/in-quotes.sh"
+  printf 'x=$(case $y in (a) echo 1 ;; esac)\n' > "$COMPAT_OK/ok.sh"
+  # 単一引用符の中は展開されないので、置換としては読まない
+  printf "awk 'case) { }'\n" >> "$COMPAT_OK/ok.sh"
+  # 引数として渡すだけの case / esac は予約語ではない（sh -n が通る形）
+  printf "value=\$(printf '%%s' case)\nz=\$(printf '%%s' esac)\n" >> "$COMPAT_OK/ok.sh"
+
+  # run_compat <期待する終了コード> <説明> <検査対象のディレクトリ>
+  run_compat() {
+    want=$1
+    desc=$2
+    dir=$3
+
+    LAST_OUT=$(node "$REPO/scripts/check-shell-compat.mjs" "$dir" 2>&1)
+    status=$?
+
+    if [ "$status" = "$want" ]; then
+      pass=$((pass + 1))
+      printf 'ok   [%s] %s\n' "$status" "$desc"
+    else
+      fail=$((fail + 1))
+      printf 'FAIL [want %s got %s] %s\n     out: %s\n' "$want" "$status" "$desc" "$LAST_OUT"
+    fi
+  }
+
+  echo
+  echo '=== check-shell-compat: bash 3.2 で落ちる書き方の検出 ==='
+  run_compat 1 '置換の中の素の case を検出する' "$COMPAT_BARE"
+  run_compat 1 '二重引用符の中の置換でも検出する' "$COMPAT_QUOTED"
+  run_compat 0 'パターンを ( で開いていれば通す（空白を含むパスでも動く）' "$COMPAT_OK"
+  # 検査が厳しすぎると、正しいスクリプトで CI が落ちる
+  run_compat 0 '引数の case / esac では誤検出しない' "$COMPAT_OK"
+  run_compat 0 'フック本体は通る' "$REPO/.claude/hooks"
+else
+  echo 'node が無いため check-shell-compat の検証をスキップします'
+fi
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" = 0 ]
