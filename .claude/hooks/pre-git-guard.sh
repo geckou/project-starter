@@ -81,6 +81,17 @@ cmd=$(printf '%s' "$cmd" | awk '
     return ""
   }
 
+  # heredoc を受け取るコマンド部分（`<<` の直前の区切りから後ろ）を返す。
+  # `git commit -m x; eval "$(cat <<EOF …)"` の本文をコミットメッセージと
+  # 取り違えないための絞り込み
+  function heredoc_owner(line,   p, seg) {
+    p = index(line, "<<")
+    if (p == 0) return line
+    seg = substr(line, 1, p - 1)
+    sub(/^.*[;&|]/, "", seg)
+    return seg
+  }
+
   # 終了マーカー行が実在するときだけ heredoc として扱う。終端の無い heredoc は
   # シェルでも構文エラーなので、実在しなければそれは heredoc ではない
   function has_terminator(from, mark, tabok,   j, l) {
@@ -131,11 +142,15 @@ cmd=$(printf '%s' "$cmd" | awk '
       # 1 行に両方が現れると、後ろのシェル本文がメッセージ扱いになって
       # 検査から落ちる（実行される本文をデータとして扱ってはいけない）
       if (lines[i] ~ /(^|[[:space:]|;&(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) continue
+      # eval / source / . も本文をそのまま実行する（`eval "$(cat <<EOF …)"`）
+      if (lines[i] ~ /(^|[[:space:]|;&(])(eval|source|\.)([[:space:]]|$)/) continue
 
-      # メッセージの受け取り方（-F / --file / -m / --message）が同じ行に無ければ、
-      # その heredoc はコミットメッセージではない
-      if (lines[i] ~ /git[[:space:]]+commit/ &&
-          lines[i] ~ /(^|[[:space:]])(-[A-Za-z]*[mF]|--m[a-z]*|--fil[a-z]*)([[:space:]]|=|$)/) {
+      # heredoc を受け取るコマンドが commit かどうかは、`<<` の直前の区切りから
+      # 後ろだけを見て決める。行のどこかに git commit があるだけで本文をメッセージ
+      # 扱いにすると、同じ行の別のコマンドへ渡る本文まで検査から落ちる
+      owner = heredoc_owner(lines[i])
+      if (owner ~ /git[[:space:]]+commit/ &&
+          owner ~ /(^|[[:space:]])(-[A-Za-z]*[mF]|--m[a-z]*|--fil[a-z]*)([[:space:]]|=|$)/) {
         # マーカーを引用した heredoc（<<'"'"'EOF'"'"'）の本文はシェルが展開しない。
         # メッセージとして残しつつ、コマンドとしては読まないよう印を付ける。
         # 無クォートの本文は実際に展開・実行されるので今までどおり素のまま残す
@@ -762,6 +777,13 @@ cmd=$(printf '%s\n' "$segments" | {
           [ "$(printf '%s' "$seg" | awk '{ print NF; exit }')" = "1" ] &&
             printf '%s\n' "$MARK_INDIRECT"
           ;;
+        # eval / source は文字列をそのまま実行する。リテラルなら上の
+        # unwrap_pass で展開済みなので、ここへ来るのは中身を静的に読めない形
+        # （eval "$(cat <<EOF …)" など）だけ
+        (eval | source | .)
+          printf '%s' "$seg" | grep -Eq '(^|[[:space:]])git([[:space:]]|$)' &&
+            printf '%s\n' "$MARK_INDIRECT"
+          ;;
       esac
       continue
     fi
@@ -1264,7 +1286,7 @@ if [ "${undecidable:-0}" -gt 0 ]; then
 fi
 
 if [ "${indirect:-0}" -gt 0 ]; then
-  ask 'git コマンドを間接的に実行しようとしています（xargs へ渡す / パイプでシェルへ流す）。中身を検査できないため、実行してよいかユーザーに確認してください。'
+  ask 'git コマンドを間接的に実行しようとしています（xargs へ渡す / パイプでシェルへ流す / eval・source で実行する）。中身を検査できないため、実行してよいかユーザーに確認してください。'
 fi
 
 # --- コミット -----------------------------------------------------------

@@ -533,6 +533,15 @@ run 2 'git commit と同じ行のシェル heredoc は実行本文として検�
   "echo 'git commit'; sh <<'EOF'
 git push origin production
 EOF" feat/existing
+# heredoc の受け手は `<<` の直前の区切りから後ろで決める。行のどこかに
+# git commit -m があるだけでメッセージ扱いにすると、同じ行の eval へ渡る本文が
+# 検査から落ちる（eval は中身を静的に読めないので確認を求める形になる）
+run 0 'commit と同じ行の eval の heredoc 本文はメッセージ扱いしない' \
+  "git commit -m 'fix: ok'; eval \"\$(cat <<'EOF'
+git push origin production
+EOF
+)\"" feat/existing
+expect 'permissionDecision' '中身を読めない eval は確認を求める'
 run 2 'メッセージを受け取らない commit と同じ行の heredoc 本文も検査する' \
   "git commit --amend --no-edit; sh <<'EOF'
 git push origin production
