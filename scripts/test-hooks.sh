@@ -493,6 +493,42 @@ run 2 'git commit -F - の heredoc（規約違反）' \
 wip
 EOF" feat/existing
 
+# #284: 本文に書いたコマンド例（バッククォート付き）を実行として読まない。
+# フックの修正を説明するコミットは必ずこの形になる
+run 0 'commit -F - の本文のバッククォート内のコマンド例は通す' \
+  "git commit -F - <<'EOF'
+fix: x
+
+- \`git commit -n\` が素通りしていた
+EOF" feat/existing
+run 0 'commit -m の本文のバッククォート内のコマンド例は通す' \
+  "git commit -m \"\$(cat <<'EOF'
+fix: x
+
+- \`git commit -n\` が素通りしていた
+EOF
+)\"" feat/existing
+run 0 '本文の行頭のバッククォートを置換で書いた git と読まない' \
+  "git commit -F - <<'EOF'
+fix: x
+
+\`git commit -n\` は素通りしていた
+EOF" feat/existing
+run 0 'commit -F - の本文の \$( ) のコマンド例は通す' \
+  "git commit -F - <<'EOF'
+fix: x
+
+- \$(git push production) を止めた
+EOF" feat/existing
+# 本文がデータになるのはマーカーを引用した heredoc だけ。無クォートなら
+# シェルが展開・実行するので、今までどおり検査する
+run 2 '無クォートの commit heredoc 本文の置換は検査する' \
+  "git commit -F - <<EOF
+fix: x
+
+\$(git commit -n)
+EOF" feat/existing
+
 # 引用符付きの環境変数を前置きしてもコマンド語を取り違えない
 run 2 '引用符に空白を含む環境変数を前置きしても git を検査する' \
   "FOO='a b' git commit -n -m wip" feat/existing
