@@ -30,8 +30,29 @@ function commandSubstitutions(src) {
   // 置換の開始。二重引用符の中でも $( … ) はシェルが評価するため、
   // 引用の状態を退避して置換の中を「引用の外」として読み直す
   const openSubstitution = (i) => {
-    stack.push({ start: i + 2, depth: 0, savedQuote: quote })
+    stack.push({
+      start: i + 2,
+      depth: 0,
+      savedQuote: quote,
+      opens: 0,
+      closes: 0,
+    })
     quote = ''
+  }
+
+  // 語の区切りで始まっているか（`lowercase` の中の `case` を拾わないため）
+  const wordStart = (i) => i === 0 || !/[A-Za-z0-9_]/.test(src[i - 1])
+
+  // コマンドの位置にあるか。`printf '%s' case` の引数の case を数えないための判定。
+  // 直前の非空白が「コマンドの終わり」を表す記号か、複合コマンドの予約語なら
+  // そこは新しいコマンドの位置
+  const atCommandPosition = (i) => {
+    let j = i - 1
+    while (j >= 0 && (src[j] === ' ' || src[j] === '\t')) j--
+    if (j < 0) return true
+    if ('\n;&|(){'.includes(src[j])) return true
+    const before = src.slice(0, j + 1)
+    return /(^|[\s;&|(){])(then|do|else|elif|!)$/.test(before)
   }
 
   for (let i = 0; i < src.length; i++) {
@@ -84,13 +105,34 @@ function commandSubstitutions(src) {
     if (stack.length === 0) continue
 
     const top = stack[stack.length - 1]
+
+    // case / esac は「コマンドの位置にある予約語」だけを数える。
+    // case はさらに `case <語> in` の形であることまで見る
+    if ((c === 'c' || c === 'e') && wordStart(i) && atCommandPosition(i)) {
+      const rest = src.slice(
+        i,
+        src.indexOf('\n', i) === -1 ? undefined : src.indexOf('\n', i)
+      )
+      if (/^case[ \t]+.*[ \t]in([ \t]|$)/.test(rest)) {
+        top.opens++
+        i += 3
+        continue
+      }
+      if (/^esac([ \t;&|)]|$)/.test(rest)) {
+        top.closes++
+        i += 3
+        continue
+      }
+    }
+
     if (c === '(') top.depth++
     else if (c === ')') {
       if (top.depth === 0) {
         regions.push({
           start: top.start,
           end: i,
-          body: src.slice(top.start, i),
+          opens: top.opens,
+          closes: top.closes,
         })
         quote = top.savedQuote
         stack.pop()
@@ -116,10 +158,7 @@ for (const name of readdirSync(HOOK_DIR).sort()) {
   const src = readFileSync(path, 'utf8')
 
   for (const region of commandSubstitutions(src)) {
-    const opens = (region.body.match(/(^|[\s;&|(])case[\s]/g) || []).length
-    const closes = (region.body.match(/(^|[\s;&|(])esac([\s;&|)]|$)/g) || [])
-      .length
-    if (opens > closes) {
+    if (region.opens > region.closes) {
       failures.push(
         `${name}:${lineOf(src, region.start)} コマンド置換の中の case が閉じていません` +
           '（bash 3.2 がパターンの ) を置換の終わりと読んでいます）。' +
