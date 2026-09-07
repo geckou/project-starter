@@ -30,6 +30,26 @@
 - 進めた範囲: 保留の手前までに済ませたこと（あれば）
 -->
 
+### Q-006 `.github/` 配下を層マニフェストに登録するか
+
+- 発生: 2026-09-07 / Issue #286 の対応中
+- 種別: その他（テンプレートの設計）
+- 状況: `layers.json` に現れる `.github/` は functions 層の `blocks` にある `deploy.yml` の
+  1 件だけで、`.github/workflows/*` の本体も `.github/rulesets/*` もどの層の `files` にも
+  入っていない。CLAUDE.md は「ファイルを追加・移動・削除したら `layers.json` も更新する」と
+  書いているため、レビューのたびに「登録すべきでは」という指摘が出る（#285 で実際に出た）。
+  `check-layers.mjs` は「登録したパスが実在するか」しか見ないので、この乖離は検出されない。
+- 選択肢:
+  - A) **層に属さないものとして明示する**（推奨）— `.github/` は層構成（firebase / functions /
+    mobile / billing の有無）と無関係にどの派生でも要る、という扱いを `.claude/docs/layers.md`
+    に書く。`deploy.yml` のマーカーだけが例外。`layers.json` は変更なし
+  - B) **core の `files` に登録する** — `.github/workflows/` と `.github/rulesets/` を core へ
+    入れる。core は `removable: false` なので削除には使われず、意味は「どの構成でも残る」の
+    明示に留まる（動作は変わらない）
+- ブロック: Issue #286（`.claude/docs/layers.md`「マニフェストの書き方」への線引きの追記）
+- 進めた範囲: 現状の確認まで（未登録なのは workflows 11 本・rulesets 2 件・ISSUE_TEMPLATE・
+  pull_request_template.md・copilot-instructions.md）
+
 ### Q-005 「管理下にあるリポジトリへの PR」は自律性の境界の 3 段目か
 
 - 発生: 2026-09-06 / Issue #278（memory/ の廃止）の反映中
