@@ -38,3 +38,12 @@ HOOK_QUESTIONS_FILE=${HOOK_QUESTIONS_FILE:-'.claude/docs/questions.md'}
 # ロードマップ（機能ステータス表）の場所。stop-roadmap-reminder.sh が更新の有無を見る。
 # 確認事項キューと同じく、ドキュメントを外部サービスで持つ派生でもここだけはリポジトリ内に置く前提
 HOOK_ROADMAP_FILE=${HOOK_ROADMAP_FILE:-'.claude/docs/roadmap.md'}
+
+# PR の有無を見る stop-pr-reminder.sh が使うリモート名と、マージ先のブランチ。
+# 派生プロジェクトが既定ブランチを main にしている場合はここを変える
+HOOK_PR_REMOTE=${HOOK_PR_REMOTE:-'origin'}
+HOOK_PR_BASE_BRANCH=${HOOK_PR_BASE_BRANCH:-'production'}
+
+# GitHub Enterprise を使う場合のホスト名（例: ghe.example.com）。
+# 未設定なら github.com の remote だけを見る
+HOOK_PR_GITHUB_HOST=${HOOK_PR_GITHUB_HOST:-''}

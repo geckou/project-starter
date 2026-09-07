@@ -13,6 +13,7 @@ set -u
 #   stop-dod-check.sh     Stop               DoD の自動実行
 #   session-start-questions.sh  SessionStart   未回答の確認事項の抽出
 #   stop-questions-reminder.sh  Stop           確認事項の提示忘れの検出
+#   stop-pr-reminder.sh         Stop           push 済みなのに PR が無い状態の検出
 #
 # node_modules に依存しないので yarn install なしで実行できる。
 # 実体を package.json ではなくこのスクリプトに置いている理由は
@@ -1439,6 +1440,135 @@ run_roadmap 2 '既定のパスで判定する' '{}' "$NOCONFIG/stop-roadmap-remi
 rm -f "$SESSION/work.txt"
 
 
+# ---- stop-pr-reminder.sh ----
+#
+# push 済みなのに PR が無いまま終わるのを止める（#287）。PR の有無は gh に聞くので、
+# 偽の gh を PATH の先頭へ置いて応答を制御する。
+
+PR_HOOK=$REPO/.claude/hooks/stop-pr-reminder.sh
+cp "$PR_HOOK" "$NOCONFIG/"
+
+PR_REMOTE=$SANDBOX/pr-remote.git
+PR_WORK=$SANDBOX/pr-work
+FAKE_BIN=$SANDBOX/fake-bin
+mkdir -p "$FAKE_BIN"
+
+cat > "$FAKE_BIN/gh" <<'FAKEGH'
+#!/bin/sh
+# gh pr list --head <branch> --state open --json number --jq length の代役
+[ -n "$FAKE_GH_FAIL" ] && exit 1
+printf '%s\n' "${FAKE_GH_PR_COUNT:-0}"
+FAKEGH
+chmod +x "$FAKE_BIN/gh"
+
+git init -q --bare "$PR_REMOTE"
+git init -q "$PR_WORK"
+git -C "$PR_WORK" checkout -q -b production
+echo base > "$PR_WORK/base.txt"
+git -C "$PR_WORK" add base.txt
+git -C "$PR_WORK" -c user.email=test@example.com -c user.name=test \
+  commit -q -m 'chore: base'
+git -C "$PR_WORK" remote add origin "$PR_REMOTE"
+git -C "$PR_WORK" push -q -u origin production
+
+# push は先に全部済ませてから、origin の URL を GitHub の形へ差し替える。
+# フックは remote の URL から PR を探すリポジトリを決めるため、ローカルのパスの
+# ままだと owner/repo を作れず、何も判定しないまま通ってしまう
+git -C "$PR_WORK" checkout -q -b feat/thing
+echo work > "$PR_WORK/work.txt"
+git -C "$PR_WORK" add work.txt
+git -C "$PR_WORK" -c user.email=test@example.com -c user.name=test \
+  commit -q -m 'feat: work'
+git -C "$PR_WORK" push -q -u origin feat/thing
+git -C "$PR_WORK" checkout -q -b release/1.0
+git -C "$PR_WORK" push -q -u origin release/1.0
+git -C "$PR_WORK" checkout -q -b feat/unpushed feat/thing
+git -C "$PR_WORK" checkout -q feat/thing
+
+# run_pr <期待する終了コード> <説明> <入力 JSON> [フック本体のパス]
+run_pr() {
+  want=$1
+  desc=$2
+  input=$3
+  hook=${4:-$PR_HOOK}
+
+  LAST_OUT=$(cd "$PR_WORK" && printf '%s' "$input" |
+    PATH="$FAKE_BIN:$PATH" sh "$hook" 2>&1)
+  status=$?
+
+  if [ "$status" = "$want" ]; then
+    pass=$((pass + 1))
+    printf 'ok   [%s] %s\n' "$status" "$desc"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL [want %s got %s] %s\n     out: %s\n' "$want" "$status" "$desc" "$LAST_OUT"
+  fi
+}
+
+echo
+echo '=== stop-pr-reminder: PR の無い push の検出 ==='
+git -C "$PR_WORK" checkout -q production
+run_pr 0 '既定ブランチでは何も言わない' '{}'
+
+git -C "$PR_WORK" checkout -q feat/unpushed
+run_pr 0 'push 前（手元のコミットだけ）ならブロックしない' '{}'
+
+# GitHub 以外（ローカルのパス等）の remote は owner/repo を決められない
+git -C "$PR_WORK" checkout -q feat/thing
+run_pr 0 'remote の URL から owner/repo を決められなければ何もしない' '{}'
+
+# GitHub 以外のホストは gh では検索できない（同名の GitHub リポジトリを
+# 見に行かないこと）
+git -C "$PR_WORK" remote set-url origin https://gitlab.com/example/repo.git
+run_pr 0 'GitHub 以外のホストの remote では何もしない' '{}'
+
+# GitHub Enterprise は設定したホストだけ HOST/OWNER/REPO で渡す
+git -C "$PR_WORK" remote set-url origin https://ghe.example.com/example/repo.git
+run_pr 0 '未設定の GitHub Enterprise ホストでは何もしない' '{}'
+HOOK_PR_GITHUB_HOST=ghe.example.com
+export HOOK_PR_GITHUB_HOST
+run_pr 2 '設定した GitHub Enterprise ホストなら判定する' '{}'
+unset HOOK_PR_GITHUB_HOST
+
+git -C "$PR_WORK" remote set-url origin https://github.com/example/repo.git
+run_pr 2 'push 済みで open な PR が無ければブロックする' '{}'
+
+FAKE_GH_PR_COUNT=1
+export FAKE_GH_PR_COUNT
+run_pr 0 'open な PR があればブロックしない' '{}'
+unset FAKE_GH_PR_COUNT
+
+FAKE_GH_FAIL=1
+export FAKE_GH_FAIL
+run_pr 0 'gh が失敗したら何もしない（ネットワーク依存の安全側）' '{}'
+unset FAKE_GH_FAIL
+
+echo
+echo '=== stop-pr-reminder: 1 セッションで 1 回だけブロックする ==='
+run_pr 0 'フック起因の継続中は再度ブロックしない（session_id 無し）' \
+  '{"stop_hook_active":true}'
+run_pr 2 '他のフックが先にブロックした継続でも判定は走る' \
+  '{"stop_hook_active":true,"session_id":"s-pr"}'
+run_pr 0 '同じセッションで 2 回目はブロックしない（無限ループ防止）' \
+  '{"stop_hook_active":true,"session_id":"s-pr"}'
+rm -f "${TMPDIR:-/tmp}/claude-stop-pr-s-pr"
+
+echo
+echo '=== stop-pr-reminder: 対象外のブランチ ==='
+git -C "$PR_WORK" checkout -q release/1.0
+run_pr 0 'release/* は PR の流れが別なので見ない' '{}'
+git -C "$PR_WORK" checkout -q feat/thing
+
+echo
+echo '=== stop-pr-reminder: config.sh が無くても既定値で動く ==='
+run_pr 2 '既定の remote / ブランチで判定する' '{}' "$NOCONFIG/stop-pr-reminder.sh"
+
+echo
+echo '=== stop-pr-reminder: 設定で既定ブランチを差し替えられる ==='
+HOOK_PR_BASE_BRANCH=feat/thing
+export HOOK_PR_BASE_BRANCH
+run_pr 0 '差し替えた既定ブランチと同じなら見ない' '{}'
+unset HOOK_PR_BASE_BRANCH
 # ---- scripts/check-shell-compat.mjs ----
 #
 # bash 3.2（macOS の /bin/sh）で構文解析できない書き方の検出そのものを検証する。
