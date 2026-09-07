@@ -520,6 +520,23 @@ fix: x
 
 - \$(git push production) を止めた
 EOF" feat/existing
+run 0 'commit -F - の本文は <<\EOF（バックスラッシュ引用）でも通す' \
+  "git commit -F - <<\\EOF
+fix: x
+
+- \`git commit -n\` が素通りしていた
+EOF" feat/existing
+# メッセージ本文として扱うのは、その行が実際にメッセージを受け取るときだけ。
+# 行のどこかに git commit があるだけで本文をデータ扱いすると、同じ行に書いた
+# シェルの heredoc（実行される本文）が検査から丸ごと落ちる
+run 2 'git commit と同じ行のシェル heredoc は実行本文として検査する' \
+  "echo 'git commit'; sh <<'EOF'
+git push origin production
+EOF" feat/existing
+run 2 'メッセージを受け取らない commit と同じ行の heredoc 本文も検査する' \
+  "git commit --amend --no-edit; sh <<'EOF'
+git push origin production
+EOF" feat/existing
 # 本文がデータになるのはマーカーを引用した heredoc だけ。無クォートなら
 # シェルが展開・実行するので、今までどおり検査する
 run 2 '無クォートの commit heredoc 本文の置換は検査する' \
