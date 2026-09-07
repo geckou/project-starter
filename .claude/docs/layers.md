@@ -132,6 +132,21 @@ import { AuthProvider } from '@/components/auth/AuthProvider'
 層の境界は痩せて安定する（`@geckou/billing` を切り出した結果、billing 層に残るのは
 配線と権利変化フックだけになった）。ファイルを足す・動かすときは `layers.json` も合わせて更新すること。
 
+### 何を登録し、何を登録しないか
+
+`files` は「**その層と一緒に消えるもの**」の一覧であって、リポジトリのファイル一覧ではない。
+**層構成（firebase / functions / mobile / billing の有無）で要否が変わるものだけ**を書く。
+
+登録しないものの代表が `.github/` 配下（ワークフロー・ルールセット・Issue / PR テンプレート・
+`copilot-instructions.md`）。CI・デプロイ・ブランチ保護・テンプレート同期は、
+どの層を選んだ派生プロジェクトでも同じように要る。例外は `deploy.yml` の中の
+**層マーカーで囲んだ範囲**（firebase / functions / mobile のデプロイ手順）で、
+これはファイルごと消すのではなく中身が削られるため、各層の `blocks` に登録してある。
+
+同じ理由で、`.claude/hooks/` や `CLAUDE.md` のような第0層（制約層）も `files` には登録しない
+（→ CLAUDE.md「プロジェクト概要」の 2 層構成）。迷ったら
+**「その層を外したときに、このファイルは消えるべきか」**で判断する。消えないなら書かない。
+
 ## 検証
 
 ```bash
