@@ -107,13 +107,15 @@ function commandSubstitutions(src) {
     const top = stack[stack.length - 1]
 
     // case / esac は「コマンドの位置にある予約語」だけを数える。
-    // case はさらに `case <語> in` の形であることまで見る
+    // case はさらに `case <語> in` の形であることまで見る。ヘッダーは
+    // `case "$y"` の次の行に `in` を書く形も POSIX で有効なので、改行を跨いで探す
     if ((c === 'c' || c === 'e') && wordStart(i) && atCommandPosition(i)) {
       const rest = src.slice(
         i,
         src.indexOf('\n', i) === -1 ? undefined : src.indexOf('\n', i)
       )
-      if (/^case[ \t]+.*[ \t]in([ \t]|$)/.test(rest)) {
+      // 語と `in` の間に別のコマンドの区切りが挟まる形は case のヘッダーではない
+      if (/^case[\s]+[^;()]*?\sin([\s;]|$)/.test(src.slice(i, i + 500))) {
         top.opens++
         i += 3
         continue
