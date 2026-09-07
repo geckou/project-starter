@@ -36,14 +36,16 @@ $DOC" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",
 #   - commit -m "$(cat <<'EOF' ...)" -> 本文はコミットメッセージそのものなので検査する
 #   - sh / bash <<'EOF' ...          -> 本文は実際に実行されるので検査する
 cmd=$(printf '%s' "$cmd" | awk '
-  BEGIN { SQ = sprintf("%c", 39); DQ = sprintf("%c", 34) }
+  BEGIN { SQ = sprintf("%c", 39); DQ = sprintf("%c", 34); MSG = sprintf("%c", 2) }
 
   # 行の中から heredoc の開始を探し、マーカー名を返す（無ければ空）。
   # クォートの中・コメントの中の << は開始ではない。ここを見分けないと、
   # `echo "see <<EOF"` の 1 行で以降のコマンドが丸ごと検査から落ちる
-  function heredoc_marker(line,   i, ch, state, rest, m, re, bs) {
-    re = "^<<-?[[:space:]]*[" DQ SQ "]?[A-Za-z_][A-Za-z_0-9]*[" DQ SQ "]?"
+  function heredoc_marker(line,   i, ch, state, rest, m, re, re_bs, bs) {
     bs = sprintf("%c", 92)
+    re = "^<<-?[[:space:]]*[" DQ SQ "]?[A-Za-z_][A-Za-z_0-9]*[" DQ SQ "]?"
+    # <<\EOF もシェルは「引用したマーカー」として扱う（本文を展開しない）
+    re_bs = "^<<-?[[:space:]]*" bs bs "[A-Za-z_][A-Za-z_0-9]*"
     state = ""
     for (i = 1; i <= length(line); i++) {
       ch = substr(line, i, 1)
@@ -58,6 +60,13 @@ cmd=$(printf '%s' "$cmd" | awk '
       # <<<"x"（here-string）は heredoc ではない
       if (substr(line, i + 2, 1) == "<") { i += 2; continue }
       rest = substr(line, i)
+      if (match(rest, re_bs)) {
+        m = substr(rest, RSTART, RLENGTH)
+        tab_ok = (substr(m, 1, 3) == "<<-")
+        sub(/^<<-?[[:space:]]*/, "", m)
+        last_marker_quoted = 1
+        return substr(m, 2)
+      }
       if (match(rest, re)) {
         m = substr(rest, RSTART, RLENGTH)
         tab_ok = (substr(m, 1, 3) == "<<-")
@@ -70,6 +79,35 @@ cmd=$(printf '%s' "$cmd" | awk '
       i++
     }
     return ""
+  }
+
+  # heredoc を受け取るコマンド部分（`<<` の直前の区切りから後ろ）を返す。
+  # `git commit -m x; eval "$(cat <<EOF …)"` の本文をコミットメッセージと
+  # 取り違えないための絞り込み
+  # 区切りは「引用の外」のものだけを見る。引用の中の ; まで区切りとして扱うと、
+  # `git commit -m '"'"'fix: a; b'"'"' -F - <<EOF` の owner から git commit が消え、
+  # 本文がまたコマンドとして検査されてしまう
+  function heredoc_owner(line,   i, ch, state, bs, cut, n) {
+    bs = sprintf("%c", 92)
+    state = ""
+    cut = 0
+    n = length(line)
+    for (i = 1; i <= n; i++) {
+      ch = substr(line, i, 1)
+      if (ch == bs && state != SQ) { i++; continue }
+      if (state != "") { if (ch == state) state = ""; continue }
+      if (ch == SQ || ch == DQ) { state = ch; continue }
+      if (ch == ";" || ch == "&" || ch == "|") { cut = i; continue }
+      if (ch == "<" && substr(line, i + 1, 1) == "<")
+        return substr(line, cut + 1, i - cut - 1)
+    }
+    return substr(line, cut + 1)
+  }
+
+  # heredoc の `<<` より後ろ（パイプでシェルへ流す形を見るため）
+  function heredoc_tail(line,   p) {
+    p = index(line, "<<")
+    return (p == 0) ? "" : substr(line, p)
   }
 
   # 終了マーカー行が実在するときだけ heredoc として扱う。終端の無い heredoc は
@@ -92,7 +130,19 @@ cmd=$(printf '%s' "$cmd" | awk '
         line = lines[i]
         # <<- 形式は終了マーカー行の先頭タブを許容する
         if (tab_ok) sub(/^\t+/, "", line)
-        if (line == marker) { in_body = 0; continue }
+        if (line == marker) {
+          in_body = 0
+          # メッセージ本文の終端は、値の閉じ（EOF に続く )" ）まで含めて
+          # 後段が読むため残す
+          if (msg_body) print lines[i]
+          msg_body = 0
+          continue
+        }
+        # コミットメッセージの本文は「メッセージとして」検査する。ここに残す行は
+        # データであってコマンドではないので、印を付けてセグメント分割から外す。
+        # 付けないと本文に書いた `git commit -n` のようなコマンド例が実行として
+        # 読まれ、フックの修正を説明するコミットが自分自身に弾かれる
+        if (msg_body) { print MSG line; continue }
         # マーカーが無クォートなら本文の $( ) / ` ` はシェルが実行する。
         # 実行される行は検査対象に残す（データとして渡る他の行は落とす）
         if (!marker_quoted && (index(line, "$(") > 0 || index(line, "`") > 0))
@@ -105,9 +155,44 @@ cmd=$(printf '%s' "$cmd" | awk '
       # 例外は 2 つ:
       #   - commit -m "$(cat <<EOF ...)" -> 本文はコミットメッセージなので検査する
       #   - sh / bash <<EOF ...          -> 本文は実際に実行されるので検査する
+      #
+      # heredoc の受け手（`<<` の直前の引用外の区切りから後ろ）だけを見て決める。
+      # 行のどこかに現れた語で判定すると、`echo '"'"'git commit'"'"'; sh <<EOF` の
+      # シェル本文がメッセージ扱いになったり、逆に `git commit -F - <<EOF # bash` の
+      # コメントの語でメッセージが本文扱いを外れたりする
+      owner = heredoc_owner(lines[i])
+      tail = heredoc_tail(lines[i])
+
+      # シェルへ渡る heredoc を先に見る（実行される本文をデータとして扱わない）。
+      # `cat <<EOF | sh` のように後ろでシェルへ流す形も実行される
+      if (owner ~ /(^|[[:space:]|;&(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)([[:space:]]|$)/ ||
+          tail ~ /\|[[:space:]]*[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) continue
+      # eval / source / . も本文をそのまま実行する（`eval "$(cat <<EOF …)"`）
+      if (owner ~ /(^|[[:space:]|;&(])(eval|source|\.)([[:space:]]|$)/) continue
+
+      if (owner ~ /git[[:space:]]+commit/ &&
+          owner ~ /(^|[[:space:]])(-[A-Za-z]*[mF]|--m[a-z]*|--fil[a-z]*)([[:space:]]|=|$)/) {
+        # マーカーを引用した heredoc（<<'"'"'EOF'"'"'）の本文はシェルが展開しない。
+        # メッセージとして残しつつ、コマンドとしては読まないよう印を付ける。
+        # 無クォートの本文は実際に展開・実行されるので今までどおり素のまま残す
+        candidate = heredoc_marker(lines[i])
+        # -m "$(cat <<EOF …)" の << は二重引用符の中にあるが、置換の中なので
+        # heredoc として効く。引用の中を飛ばす heredoc_marker では拾えないため、
+        # 置換の開始から先を改めて見る
+        if (candidate == "" && index(lines[i], "$(") > 0)
+          candidate = heredoc_marker(substr(lines[i], index(lines[i], "$(") + 2))
+        if (candidate != "" && last_marker_quoted &&
+            has_terminator(i + 1, candidate, tab_ok)) {
+          marker = candidate
+          marker_quoted = 1
+          msg_body = 1
+          in_body = 1
+        }
+        continue
+      }
+      # メッセージの受け取り方が無い commit（`git commit` を含むだけの行を含む）は、
+      # heredoc の本文をデータとしては扱わない。今までどおり素のまま残して検査する
       if (lines[i] ~ /git[[:space:]]+commit/) continue
-      # /bin/sh のようなパス付きの呼び出しも同じ扱いにする
-      if (lines[i] ~ /(^|[[:space:]|;&(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)([[:space:]]|$)/) continue
 
       candidate = heredoc_marker(lines[i])
       if (candidate != "" && has_terminator(i + 1, candidate, tab_ok)) {
@@ -336,6 +421,9 @@ SEP_SEQ=$(printf '\001sep')
 # 上を絞り込みループから親へ渡す印（順序が意味を持つので $cmd に残す）
 MARK_SEQ=$(printf '\001seqbreak')
 
+# 上流の awk がコミットメッセージの本文の行頭に付ける印
+MSG_LINE=$(printf '\002')
+
 # このフックが検査しているサブコマンド。コマンド名が置換で書かれていて
 # 判定できないとき、これが後ろに続くかどうかで「git かもしれない」を判断する
 GUARDED_SUBCOMMAND_RE='(^|[[:space:]])(commit|push|merge|rebase|pull|cherry-pick|checkout|switch|branch|config|worktree|tag)([[:space:]]|$)'
@@ -349,6 +437,9 @@ segments=$(printf '%s' "$cmd" | awk '
   BEGIN {
     sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92)
     bt = sprintf("%c", 96)
+    # 上流の awk がコミットメッセージの本文に付ける印。この行はデータであって
+    # コマンドではないので、区切り・引用・置換のどれとしても読まない
+    msg = sprintf("%c", 2)
     sub_open = sprintf("%c(", 1); sub_close = sprintf("%c)", 1)
     seg_end = sprintf("%c.", 1)
     subst_cmd_end = sprintf("%csubstend", 1)
@@ -389,6 +480,17 @@ segments=$(printf '%s' "$cmd" | awk '
     q = ""; seg = ""; n = length(all)
     for (i = 1; i <= n; i++) {
       c = substr(all, i, 1)
+      # メッセージ本文の行は行末まで素通しでセグメントへ足す。引用の状態も
+      # 変えない（-m "$(cat <<EOF …)" の値の途中に現れるため）
+      if (c == msg) {
+        # 印は落とさずに残す。行単位で見る後段（commit -n の検出）も
+        # 「この行はメッセージ」と分かる必要がある
+        seg = seg c
+        j = i + 1
+        while (j <= n && substr(all, j, 1) != "\n") { seg = seg substr(all, j, 1); j++ }
+        i = j - 1
+        continue
+      }
       if (q == sq) { seg = seg c; if (c == sq) q = ""; continue }
       if (q == dq) {
         if (c == bs) { if (cont(i)) { i++; continue }
@@ -539,6 +641,13 @@ cmd=$(printf '%s\n' "$segments" | {
     seg=${seg%"${seg##*[![:space:]]}"}
     [ -z "$seg" ] && continue
 
+    # 印だけで始まるセグメントはコミットメッセージの本文（データ）。
+    # コマンドとして読むと、本文に書いた `git commit -n` のような例が
+    # 「置換で書かれた git」に見えてしまう。件名の検証は $raw_cmd 側で行う
+    case $seg in
+      ("$MSG_LINE"*) continue ;;
+    esac
+
     # コマンド位置の置換の直後は「何か分からないコマンドの引数」。
     # `which git` commit -n -m wip の commit … がここに来る。
     # 置換というだけで止めると `which node` script.js のような git と無関係な
@@ -687,6 +796,13 @@ cmd=$(printf '%s\n' "$segments" | {
           ;;
         (sh | bash | zsh | dash | ksh)
           [ "$(printf '%s' "$seg" | awk '{ print NF; exit }')" = "1" ] &&
+            printf '%s\n' "$MARK_INDIRECT"
+          ;;
+        # eval / source は文字列をそのまま実行する。リテラルなら上の
+        # unwrap_pass で展開済みなので、ここへ来るのは中身を静的に読めない形
+        # （eval "$(cat <<EOF …)" など）だけ
+        (eval | source | .)
+          printf '%s' "$seg" | grep -Eq '(^|[[:space:]])git([[:space:]]|$)' &&
             printf '%s\n' "$MARK_INDIRECT"
           ;;
       esac
@@ -1025,6 +1141,9 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
 
   {
     line = $0
+    # 印の付いた行はコミットメッセージの本文。フラグとしては読まない
+    # （本文に書いた `git commit -n` のようなコマンド例で止めないため）
+    if (substr(line, 1, 1) == sprintf("%c", 2)) { print line; next }
     if (line !~ /git[ \t]+(commit|push)([ \t]|$)/) { print line; next }
 
     is_commit = (line ~ /git[ \t]+commit([ \t]|$)/)
@@ -1058,7 +1177,9 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
 ')
 
 commit_n_bundle=$(printf '%s\n' "$cmd" | grep -c "^$MARK_COMMIT_N$")
-cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_COMMIT_N$")
+# メッセージ本文の印はここまでで役目を終える。以降はメッセージの値そのものを
+# 見る判定（規約の検証・-F のパス）が続くので、印を落として素の本文へ戻す
+cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_COMMIT_N$" | tr -d '\002')
 
 # 印だけが立っている（検査対象のコマンドが残っていない）場合も、下の判定へ進む。
 # ここで抜けると、判定不能・alias・間接実行の検出が黙って捨てられる
@@ -1186,7 +1307,7 @@ if [ "${undecidable:-0}" -gt 0 ]; then
 fi
 
 if [ "${indirect:-0}" -gt 0 ]; then
-  ask 'git コマンドを間接的に実行しようとしています（xargs へ渡す / パイプでシェルへ流す）。中身を検査できないため、実行してよいかユーザーに確認してください。'
+  ask 'git コマンドを間接的に実行しようとしています（xargs へ渡す / パイプでシェルへ流す / eval・source で実行する）。中身を検査できないため、実行してよいかユーザーに確認してください。'
 fi
 
 # --- コミット -----------------------------------------------------------
@@ -1363,7 +1484,7 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
         # 落とすため）だけを検証する。どの行でもよいことにすると、件名が規約違反
         # でも本文に type らしい行を置くだけで通ってしまう
         subject=$(printf '%s\n' "$msg_val" | awk '
-          NR == 1 && /<<-?[[:space:]]*["'"'"']?[A-Za-z_][A-Za-z_0-9]*/ { body = 1; next }
+          NR == 1 && /<<-?[[:space:]]*[\\"'"'"']?[A-Za-z_][A-Za-z_0-9]*/ { body = 1; next }
           body && $0 !~ /^[[:space:]]*$/ { print; exit }
         ')
 
@@ -1413,7 +1534,7 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
           # 最初の heredoc を無条件に選ぶと、先行する別の heredoc（`cat <<X` 等）の
           # 本文を件名として検証してしまい、規約違反の件名が素通りする
           !body && /git[[:space:]]+commit/ && /(-F|--fil)/ &&
-            /<<-?[[:space:]]*["'"'"'"'"'"']?[A-Za-z_][A-Za-z_0-9]*/ { body = 1; next }
+            /<<-?[[:space:]]*[\\"'"'"'"'"'"']?[A-Za-z_][A-Za-z_0-9]*/ { body = 1; next }
           body && $0 !~ /^[[:space:]]*$/ { print; exit }
         ')
 

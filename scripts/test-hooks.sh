@@ -493,6 +493,89 @@ run 2 'git commit -F - の heredoc（規約違反）' \
 wip
 EOF" feat/existing
 
+# #284: 本文に書いたコマンド例（バッククォート付き）を実行として読まない。
+# フックの修正を説明するコミットは必ずこの形になる
+run 0 'commit -F - の本文のバッククォート内のコマンド例は通す' \
+  "git commit -F - <<'EOF'
+fix: x
+
+- \`git commit -n\` が素通りしていた
+EOF" feat/existing
+run 0 'commit -m の本文のバッククォート内のコマンド例は通す' \
+  "git commit -m \"\$(cat <<'EOF'
+fix: x
+
+- \`git commit -n\` が素通りしていた
+EOF
+)\"" feat/existing
+# 受け手の判定は引用の外の区切りで切る。引用の中の ; まで区切りにすると
+# owner から git commit が消え、本文がまたコマンドとして読まれる
+run 0 'メッセージの中に ; があっても受け手を見失わない' \
+  "git commit -m 'fix: a; b' -F - <<'EOF'
+fix: a; b
+
+- \`git commit -n\` が素通りしていた
+EOF" feat/existing
+# 行のどこかに sh 系の語があるだけで実行本文扱いにすると、コメントでも外れる
+run 0 'heredoc の後ろのコメントの bash では実行本文扱いしない' \
+  "git commit -F - <<'EOF' # bash
+fix: x
+
+- \`git commit -n\` が素通りしていた
+EOF" feat/existing
+# パイプでシェルへ流す形は本文が実行される（間接実行として確認を求める）
+run 0 'heredoc をパイプでシェルへ流す形は確認を求める' \
+  "cat <<'EOF' | sh
+git push origin production
+EOF" feat/existing
+expect 'permissionDecision' 'パイプ経由のシェル実行は ask'
+run 0 '本文の行頭のバッククォートを置換で書いた git と読まない' \
+  "git commit -F - <<'EOF'
+fix: x
+
+\`git commit -n\` は素通りしていた
+EOF" feat/existing
+run 0 'commit -F - の本文の \$( ) のコマンド例は通す' \
+  "git commit -F - <<'EOF'
+fix: x
+
+- \$(git push production) を止めた
+EOF" feat/existing
+run 0 'commit -F - の本文は <<\EOF（バックスラッシュ引用）でも通す' \
+  "git commit -F - <<\\EOF
+fix: x
+
+- \`git commit -n\` が素通りしていた
+EOF" feat/existing
+# メッセージ本文として扱うのは、その行が実際にメッセージを受け取るときだけ。
+# 行のどこかに git commit があるだけで本文をデータ扱いすると、同じ行に書いた
+# シェルの heredoc（実行される本文）が検査から丸ごと落ちる
+run 2 'git commit と同じ行のシェル heredoc は実行本文として検査する' \
+  "echo 'git commit'; sh <<'EOF'
+git push origin production
+EOF" feat/existing
+# heredoc の受け手は `<<` の直前の区切りから後ろで決める。行のどこかに
+# git commit -m があるだけでメッセージ扱いにすると、同じ行の eval へ渡る本文が
+# 検査から落ちる（eval は中身を静的に読めないので確認を求める形になる）
+run 0 'commit と同じ行の eval の heredoc 本文はメッセージ扱いしない' \
+  "git commit -m 'fix: ok'; eval \"\$(cat <<'EOF'
+git push origin production
+EOF
+)\"" feat/existing
+expect 'permissionDecision' '中身を読めない eval は確認を求める'
+run 2 'メッセージを受け取らない commit と同じ行の heredoc 本文も検査する' \
+  "git commit --amend --no-edit; sh <<'EOF'
+git push origin production
+EOF" feat/existing
+# 本文がデータになるのはマーカーを引用した heredoc だけ。無クォートなら
+# シェルが展開・実行するので、今までどおり検査する
+run 2 '無クォートの commit heredoc 本文の置換は検査する' \
+  "git commit -F - <<EOF
+fix: x
+
+\$(git commit -n)
+EOF" feat/existing
+
 # 引用符付きの環境変数を前置きしてもコマンド語を取り違えない
 run 2 '引用符に空白を含む環境変数を前置きしても git を検査する' \
   "FOO='a b' git commit -n -m wip" feat/existing
