@@ -22,6 +22,22 @@ cd "$(dirname "$0")/.."
 REPO=$(pwd -P)
 HOOK=$REPO/.claude/hooks/pre-git-guard.sh
 
+# 構文が bash 3.2（macOS の /bin/sh）で通ることを先に見る。ここが壊れると
+# フックが丸ごと動かず、Bash ツールの呼び出しが全て失敗する
+for hook in "$REPO"/.claude/hooks/*.sh; do
+  if ! sh -n "$hook" 2>/dev/null; then
+    echo "構文エラー: $hook" >&2
+    sh -n "$hook"
+    exit 1
+  fi
+done
+
+if command -v node >/dev/null 2>&1; then
+  node "$REPO/scripts/check-shell-compat.mjs" || exit 1
+else
+  echo 'node が無いため bash 3.2 互換の検査をスキップします'
+fi
+
 if ! command -v jq >/dev/null 2>&1; then
   echo 'jq が無いためフックのテストをスキップします（フック自体も jq 無しでは何もしません）'
   exit 0

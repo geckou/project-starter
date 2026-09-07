@@ -505,11 +505,11 @@ cmd=$(printf '%s\n' "$segments" | {
     buf=''
 
     case $seg in
-      "$SUB_OPEN")
+      ("$SUB_OPEN")
         dir_stack="$work_dir$NL$prev_dir$NL$dir_stack"
         continue
         ;;
-      "$SUB_CLOSE")
+      ("$SUB_CLOSE")
         if [ -n "$dir_stack" ]; then
           work_dir=${dir_stack%%"$NL"*}
           dir_stack=${dir_stack#*"$NL"}
@@ -518,15 +518,15 @@ cmd=$(printf '%s\n' "$segments" | {
         fi
         continue
         ;;
-      "$SUBST_CMD_END")
+      ("$SUBST_CMD_END")
         pending_subst=1
         continue
         ;;
-      "$SEP_AND")
+      ("$SEP_AND")
         pending_subst=''
         continue
         ;;
-      "$SEP_SEQ")
+      ("$SEP_SEQ")
         # && 以外の区切り。前のコマンドが失敗しても次が走るので、
         # 直前のブランチ切り替えを前提にできないことを後段へ伝える
         pending_subst=''
@@ -555,22 +555,22 @@ cmd=$(printf '%s\n' "$segments" | {
     fi
 
     case $seg in
-      cd | cd[[:space:]]*)
+      (cd | cd[[:space:]]*)
         target=${seg#cd}
         target=${target#"${target%%[![:space:]]*}"}
         # クォート付きのパスは閉じクォートまでを 1 引数として取る。
         # 空白までで切ると `cd "/path/with spaces"` が解決できず、
         # 別リポジトリなのに検査対象に残ってしまう
         case $target in
-          \'*) target=${target#\'}; target=${target%%\'*} ;;
-          \"*) target=${target#\"}; target=${target%%\"*} ;;
-          *) target=${target%%[[:space:]]*} ;;
+          (\'*) target=${target#\'}; target=${target%%\'*} ;;
+          (\"*) target=${target#\"}; target=${target%%\"*} ;;
+          (*) target=${target%%[[:space:]]*} ;;
         esac
         last_dir=$work_dir
         case $target in
-          '') work_dir=$HOME ;;
-          '-') work_dir=$prev_dir ;;
-          *) work_dir=$(resolve_dir "$target" "$work_dir") || work_dir='' ;;
+          ('') work_dir=$HOME ;;
+          ('-') work_dir=$prev_dir ;;
+          (*) work_dir=$(resolve_dir "$target" "$work_dir") || work_dir='' ;;
         esac
         prev_dir=$last_dir
         continue
@@ -681,11 +681,11 @@ cmd=$(printf '%s\n' "$segments" | {
       # 間接実行は中身を検査できない。xargs へ git を渡す形と、パイプで
       # シェルへ流し込む形（引数の無い sh / bash）はユーザーに確認する
       case $seg_cmd in
-        xargs)
+        (xargs)
           printf '%s' "$seg" | grep -Eq '(^|[[:space:]])git([[:space:]]|$)' &&
             printf '%s\n' "$MARK_INDIRECT"
           ;;
-        sh | bash | zsh | dash | ksh)
+        (sh | bash | zsh | dash | ksh)
           [ "$(printf '%s' "$seg" | awk '{ print NF; exit }')" = "1" ] &&
             printf '%s\n' "$MARK_INDIRECT"
           ;;
@@ -950,7 +950,7 @@ cmd=$(printf '%s\n' "$segments" | {
     after_git=$(printf '%s' "$seg" |
       awk '{ for (i = 1; i <= NF; i++) if ($i == "git") { print $(i + 1); exit } exit }')
     case $after_git in
-      '' | '$'* | '`'*)
+      ('' | '$'* | '`'*)
         printf '%s\n' "$MARK_UNDECIDABLE"
         continue
         ;;
@@ -1240,7 +1240,7 @@ commit_targets=$(printf '%s\n' "$switch_info" | {
       name=${info#* }
       # HEAD / @ は「現在ブランチから切る」形。名前としては使えない
       case $name in
-        HEAD | @ | '') name='' ;;
+        (HEAD | @ | '') name='' ;;
       esac
 
       if [ -n "$name" ]; then
@@ -1544,24 +1544,24 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
       verdict=0
 
       case "$dst" in
-        @UNSAFE) verdict=13 ;;
+        (@UNSAFE) verdict=13 ;;
         # タグの force push。ブランチは更新しないので下の宛先別の判定には乗らない
-        @TAGS) verdict=15 ;;
-        production) verdict=10 ;;
+        (@TAGS) verdict=15 ;;
+        (production) verdict=10 ;;
       esac
 
       if [ "$verdict" -eq 0 ] && [ "$force" = "1" ]; then
         case "$dst" in
-          production | release/*) verdict=11 ;;
+          (production | release/*) verdict=11 ;;
           # 履歴の書き換えは「その場で止めて聞く」対象（CLAUDE.md「自律性の境界」）。
           # 作業ブランチでも、他人がチェックアウトしていれば取り返しがつかない
-          *) verdict=14 ;;
+          (*) verdict=14 ;;
         esac
       fi
 
       if [ "$verdict" -eq 0 ]; then
         case "$dst" in
-          release/* | hotfix/*) verdict=12 ;;
+          (release/* | hotfix/*) verdict=12 ;;
         esac
       fi
 
@@ -1569,13 +1569,13 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
       # 数の大小ではないので、順位表を引いて比べる
       rank() {
         case "$1" in
-          10) printf '6' ;;
-          11) printf '5' ;;
-          13) printf '4' ;;
-          12) printf '3' ;;
-          14) printf '2' ;;
-          15) printf '1' ;;
-          *) printf '0' ;;
+          (10) printf '6' ;;
+          (11) printf '5' ;;
+          (13) printf '4' ;;
+          (12) printf '3' ;;
+          (14) printf '2' ;;
+          (15) printf '1' ;;
+          (*) printf '0' ;;
         esac
       }
 
