@@ -127,6 +127,15 @@ else
     "$(grep -n 'branches' "$derived/.github/workflows/ci.yml" 2>&1)"
 fi
 
+# 回帰: 呼ぶ側の concurrency が呼ばれる側（reusable workflow）と同じ group 名になり、
+# run が自分自身を打ち切ってジョブ 0 件のまま failure になっていた（#321）
+if grep -qE '^\s*concurrency:' "$derived/.github/workflows/ci.yml"; then
+  fail "生成した ci.yml に concurrency がある（呼ばれる側と衝突して CI が起動しない）" \
+    "$(grep -n -A2 'concurrency' "$derived/.github/workflows/ci.yml" 2>&1)"
+else
+  pass "生成した ci.yml に concurrency が無い"
+fi
+
 if grep -q '^\.github/workflows/ci\.yml$' "$derived/.templatesyncignore"; then
   pass ".templatesyncignore に ci.yml が追加される"
 else

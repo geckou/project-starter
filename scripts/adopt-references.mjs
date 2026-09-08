@@ -66,11 +66,10 @@ on:
     # required status check が Pending のままマージできなくなるため。
     # 重いステップの省略は呼ばれる側（ci.yml）が差分を見て判断する
 
-# 同じ PR に連続 push したとき、古い実行を打ち切る
-concurrency:
-  group: ci-\${{ github.ref }}
-  cancel-in-progress: true
-
+# concurrency はここに置かない。reusable workflow の concurrency は呼び出し元の
+# コンテキストで評価されるため、呼ばれる側（テンプレートの ci.yml）と同じ group 名になり、
+# run が自分自身を打ち切ってジョブを 1 つも起こさないまま failure になる（#321）。
+# 連続 push の打ち切りは呼ばれる側が宣言済みなので、挙動は変わらない
 jobs:
   ci:
     uses: geckou/project-starter/.github/workflows/ci.yml@v1
