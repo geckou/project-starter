@@ -7,7 +7,7 @@ set -u
 # それらが検査する .claude/docs/*.md は
 #
 #   1. .templatesyncignore の template-only:start / :end（テンプレート本体だけが持つ
-#      スクリプト・ワークフロー）
+#      スクリプト・ワークフロー）。この一覧が実態と合っていることもここで検査する
 #   2. 採用していない層のファイル（apps/mobile/ など）
 #
 # を参照している。テンプレート本体では全ファイルが揃っているので CI は緑になり、
@@ -104,6 +104,27 @@ $TEMPLATE_ONLY
 EOF
 
   pass "テンプレート本体だけが持つファイルを ${removed} 件外した"
+
+  # 一覧を残したままファイルを消すと、check-docs.sh はそのパスへの言及を
+  # 「派生には無いだけ」とみなして見逃す。テンプレート本体には全て実在するはずなので、
+  # ここで実在を突き合わせる（消したなら一覧からも消す）
+  stale=$(
+    while IFS= read -r file; do
+      [ -n "$file" ] || continue
+      [ -e "$REPO/$file" ] || printf '%s\n' "$file"
+    done <<EOF
+$TEMPLATE_ONLY
+EOF
+  )
+
+  if [ -z "$stale" ]; then
+    pass "template-only に挙がっているファイルは全て実在する"
+  else
+    fail "template-only に、実在しないファイルが挙がっている" \
+      "$(printf '%s\n' "$stale")
+これらを指すドキュメントは、テンプレート本体でも参照切れとして検出されなくなります。
+.templatesyncignore の template-only の範囲から消してください。"
+  fi
 fi
 
 # 上の削除はマーカーの中身に従うだけなので、**マーカーへの入れ忘れは自力では気付けない**。

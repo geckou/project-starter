@@ -87,7 +87,7 @@ npm に載っていないパッケージを全部公開する。
 | --- | --- | --- |
 | `@geckou/commitlint-config` | `>=22.12.0` | `@commitlint/config-conventional@21` |
 | `@geckou/prettier-config` | `>=20.19.0` | `prettier-plugin-tailwindcss@0.8` |
-| `@geckou/eslint-config` | `>=20.9.0` | `typescript-eslint@8` ほか（`^18.18 \|\| ^20.9 \|\| >=21.1`） |
+| `@geckou/eslint-config` | `^20.9.0 \|\| >=21.1.0` | `typescript-eslint@8` ほか（`^18.18 \|\| ^20.9 \|\| >=21.1`） |
 
 #### タグを打って公開する（通常は不要）
 

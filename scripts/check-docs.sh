@@ -52,11 +52,15 @@ trap 'rm -f "$findings"' EXIT
 
 is_allowed() { printf '%s\n' "$ALLOW_MISSING" | grep -qxF "$1"; }
 
-# テンプレート本体に実在するなら検査する。実在しない（＝派生プロジェクト）ときだけ見逃す。
-# 「実在しないものは全部見逃す」にすると、テンプレート本体でパスを消したときに
-# 検出できなくなる
+# テンプレート本体に実在するなら見逃さない。実在しない（＝派生プロジェクト）ときだけ
+# 見逃す。存在を見ずに一覧だけで判定すると、コメントの言うことと実際の挙動がずれる。
+#
+# 「一覧に載っていて実在しない」がテンプレート本体で起きるのは、一覧を残したまま
+# ファイルを消した場合。それは scripts/test-docs-downstream.sh が
+# 「template-only の全てが実在すること」として別に検査する
 is_template_only() {
   [ -n "$TEMPLATE_ONLY" ] || return 1
+  [ -e "$1" ] && return 1
 
   printf '%s\n' "$TEMPLATE_ONLY" | grep -qxF "$1"
 }
