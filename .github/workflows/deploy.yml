@@ -193,13 +193,46 @@ jobs:
           ALL="functions,${ALL}"
           # layer:functions:end
 
+          # 「run が成功した」だけでは基準にできない。deploy=false（シークレット
+          # 未設定・対象外ブランチ）や targets が空の run も success になり、
+          # Deploy to Firebase は skipped で終わる。それを基準にすると、後から
+          # シークレットを足した場合などに一度もデプロイしていない変更が
+          # 差分から抜ける。Deploy to Firebase が success だった run に限る。
+          #
+          # 逆に「targets が空だったので skipped」の run を飛ばすのは安全側。
+          # 基準が古くなって差分が広がるだけで、取りこぼしにはならない
+          DEPLOY_STEP='Deploy to Firebase'
+          FOUND_SUCCESS_RUN=false
+          BASE=""
+
           # 実行中の run（自分自身）は success ではないので、ここには出てこない
-          BASE=$(gh run list --workflow deploy.yml --branch "$BRANCH" \
-            --status success --limit 1 --json headSha --jq '.[0].headSha' 2>/dev/null || true)
+          RUNS=$(gh run list --workflow deploy.yml --branch "$BRANCH" --status success \
+            --limit 20 --json databaseId,headSha \
+            --jq '.[] | "\(.databaseId) \(.headSha)"' 2>/dev/null || true)
+
+          while read -r RUN_ID SHA; do
+            [ -z "$RUN_ID" ] && continue
+            FOUND_SUCCESS_RUN=true
+            DEPLOYED=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" \
+              --jq "[.jobs[].steps[]? |
+                select(.name == \"${DEPLOY_STEP}\" and .conclusion == \"success\")] | length" \
+              2>/dev/null || echo 0)
+            if [ "${DEPLOYED:-0}" -gt 0 ]; then
+              BASE="$SHA"
+              break
+            fi
+          done <<EOF
+          $RUNS
+          EOF
 
           # 初回のデプロイ、履歴に無いコミット、API を引けなかった場合。
           # 判定できないときは絞らずに全部デプロイする（取りこぼしを作らないため）
           if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            if [ "$FOUND_SUCCESS_RUN" = true ] && [ -z "$BASE" ]; then
+              # ステップ名を変えると常にここへ落ちる（全部デプロイするので
+              # 壊れはしないが、差分判定が効かなくなるので気付けるようにする）
+              echo "::warning::成功した run はあるが '${DEPLOY_STEP}' が success の run が見つかりません"
+            fi
             echo "前回デプロイに成功したコミットが特定できないため、全ターゲットをデプロイします"
             echo "targets=$ALL" >> $GITHUB_OUTPUT
             exit 0
