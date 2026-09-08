@@ -21,18 +21,21 @@ description: マルチ環境（develop / staging / production）への Firebase 
 Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象外。
 
 ⚠️ **`yarn firebase:deploy` / `yarn firebase:deploy:hosting` は `deploy.sh` を通らない。**
-事前チェックも環境ごとの絞り込みもしないので、`firebase.json` に hosting ターゲットが
-複数ある構成では**全ターゲットに配る**（今アクティブな環境のビルドが別の環境のサイトにも出る）。
+事前チェックも環境ごとの絞り込みもせず、`apps/web/.env.local` の退避もしない。そのため
+`firebase.json` に hosting ターゲットが複数ある構成では**全ターゲットに配り**（今アクティブな
+環境のビルドが別の環境のサイトにも出る）、**サーバー秘密が SSR 関数へ同梱される**。
 デプロイは `yarn deploy:<環境名>` を使う。
 
 ## deploy.sh がやること
 
 1. `scripts/use-env.sh <env>` で `.env.local`（ルート + `apps/web/` + `apps/mobile/`）と Firebase プロジェクトを切り替え
-   - あわせて `apps/web/.env` を生成する。framework-backed hosting では
-     **このファイルの内容が SSR 関数の環境変数**になる。SSR で読むサーバー専用の変数を
-     足したら `WEB_SSR_ENV_KEYS` にも追記する（→ `.claude/docs/architecture.md`）
+   - あわせて `apps/web/.env` を生成する（`WEB_SSR_ENV_KEYS` + `NEXT_PUBLIC_*`）。
+     framework-backed hosting では**このファイルの内容が SSR 関数の環境変数**になる。
+     SSR で読むサーバー専用の変数を足したら `WEB_SSR_ENV_KEYS` にも追記する
+     （→ `.claude/docs/architecture.md`）
 2. `type-check` / `lint` / `test` / `build` の事前チェック（`SKIP_CHECKS=1` を渡したときのみ省略。CI 専用の抜け道で、ローカルでは使わない）
 3. workspace 依存（`@geckou/*`）を package.json から一時削除（Cloud Build が npm registry から取得しようとして失敗するため。終了時に自動復元）
+3.5. `apps/web/.env.local` を退避（framework-backed hosting は `apps/web/.env.*` を関数のソースへ同梱するため、全文コピーの `.env.local` が入るとサーバー秘密まで載る。終了時に自動復元）
 4. functions / firestore → storage → framework hosting の順にデプロイ
    - hosting は複数同梱だと next build がハングするため、ターゲットごとに個別デプロイする
    - **配る先は環境名と一致する hosting ターゲットだけ**（`firebase.json` に複数ある場合）。

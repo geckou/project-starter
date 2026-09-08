@@ -70,14 +70,44 @@ for workspace_package in "${WORKSPACE_PACKAGE_JSONS[@]}"; do
   cp "${workspace_package}" "$(backup_path "${workspace_package}")"
 done
 
-cleanup_workspace_deps() {
+# デプロイ中だけ退避する env ファイル。
+#
+# framework-backed hosting は apps/web/.env.* を **丸ごと関数のソースへ同梱**する
+# （firebase-tools 14 の lib/frameworks/index.js が glob('.env.*') でコピーし、
+# lib/deploy/functions/prepareFunctionsUpload.js の既定 ignore は dotfile を外さない）。
+# apps/web/.env.local は .env.<環境名> の全文コピーなので、そのままだと
+# FIREBASE_SERVICE_ACCOUNT_KEY のようなサーバー秘密まで関数に載る（#329）。
+#
+# 退避してよいのは、この間に必要な値を apps/web/.env が持っているため:
+#   - next build が読む NEXT_PUBLIC_*
+#   - SSR 実行時に読むサーバー専用の値（WEB_SSR_ENV_KEYS）
+# どちらも scripts/use-env.sh が生成する
+DEPLOY_STASHED_ENV_FILES=(apps/web/.env.local)
+
+stash_local_env() {
+  for env_file in "${DEPLOY_STASHED_ENV_FILES[@]}"; do
+    if [ -f "${env_file}" ]; then
+      mv "${env_file}" "$(backup_path "${env_file}")"
+      echo "[predeploy] ${env_file} を退避しました（関数へ同梱させないため）"
+    fi
+  done
+}
+
+cleanup_deploy_state() {
   echo "[cleanup] workspace 依存を復元中..."
   for workspace_package in "${WORKSPACE_PACKAGE_JSONS[@]}"; do
     cp "$(backup_path "${workspace_package}")" "${workspace_package}"
   done
+
+  for env_file in "${DEPLOY_STASHED_ENV_FILES[@]}"; do
+    if [ -f "$(backup_path "${env_file}")" ]; then
+      mv "$(backup_path "${env_file}")" "${env_file}"
+    fi
+  done
+
   rm -rf "${BACKUP_DIR}"
 }
-trap cleanup_workspace_deps EXIT
+trap cleanup_deploy_state EXIT
 
 echo "[predeploy] workspace 依存を一時削除..."
 # 削除するのは「このリポジトリのワークスペース」だけ。スコープ前置き（@geckou/）で
@@ -132,6 +162,8 @@ node -e "
     fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
   });
 " "${WORKSPACE_PACKAGE_JSONS[@]}"
+
+stash_local_env
 
 echo "[deploy] Firebase にデプロイ中..."
 

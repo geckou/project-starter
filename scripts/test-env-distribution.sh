@@ -9,11 +9,12 @@ set -u
 # のどちらかになる。どちらも型チェックにもテストにも引っかからないため、ここで固定する。
 #
 # 検証するもの（[n] は下のセクション番号）:
-#   [1] apps/web/.env が SSR で読むキーだけを持ち、秘密を持たない
+#   [1] apps/web/.env が SSR で読むキーと NEXT_PUBLIC_* を持ち、秘密を持たない
 #   [2] apps/functions/.env が許可リストのキーだけを持ち、秘密を持たない（functions 層のみ）
 #   [3] .env.local は全文コピーされる（ローカル開発と next build はこちらを読む）
 #   [4] 環境を切り替えると、前の環境の値が消えて新しい値が入る
 #   [5] 許可リストのキーが Cloud Functions の予約語に当たらない
+#   [6] デプロイ中は apps/web/.env.local が退避され、終わると戻る
 #
 # 「ファイルが無いので grep が空振りして緑」を避けるため、内容を見る前に
 # 必ず存在を主張する。層を持たない構成では、その層のセクションごと飛ばす。
@@ -69,6 +70,21 @@ sed -i.bak "s/^WEB_SSR_ENV_KEYS=($/${UNSET_KEY_PATCH}/" "$WORK/scripts/use-env.s
   sed -i '' "s/^WEB_SSR_ENV_KEYS=($/${UNSET_KEY_PATCH}/" "$WORK/scripts/use-env.sh"
 rm -f "$WORK/scripts/use-env.sh.bak"
 mkdir -p "$WORK/apps/web" "$WORK/apps/functions" "$WORK/apps/mobile"
+
+# [6] で deploy.sh を回すために要るもの（firebase.json / package.json / git）
+cat >"$WORK/firebase.json" <<'JSON'
+{ "hosting": { "source": "apps/web" } }
+JSON
+cat >"$WORK/package.json" <<'JSON'
+{ "name": "fixture", "private": true, "workspaces": ["apps/*"] }
+JSON
+cat >"$WORK/apps/web/package.json" <<'JSON'
+{ "name": "@fixture/web", "version": "0.0.0" }
+JSON
+cat >"$WORK/apps/functions/package.json" <<'JSON'
+{ "name": "@fixture/functions", "version": "0.0.0" }
+JSON
+git -C "$WORK" init -q .
 
 # use-env.sh の末尾は firebase use を呼ぶ。CLI もログインも無い環境で回すため
 # スタブを PATH の先頭に置く
@@ -134,12 +150,13 @@ if require_file "$WORK/apps/web/.env" "apps/web/.env が生成される"; then
     pass "apps/web/.env に秘密が載らない"
   fi
 
-  # NEXT_PUBLIC_* は next build がローカルで埋め込むので、関数の環境変数には要らない
-  if grep -q '^NEXT_PUBLIC_' "$WORK/apps/web/.env"; then
-    fail "apps/web/.env に NEXT_PUBLIC_* が載っている（ビルド時に埋め込まれるので不要）" \
-      "$(grep -n '^NEXT_PUBLIC_' "$WORK/apps/web/.env")"
+  # deploy.sh はデプロイ中 .env.local を退避するため、その間の next build は
+  # .env から NEXT_PUBLIC_* を読む。載っていないとビルド成果物から値が消える
+  if grep -qx 'NEXT_PUBLIC_GTM_ID=GTM-STAGING' "$WORK/apps/web/.env"; then
+    pass "apps/web/.env に NEXT_PUBLIC_* が載る（.env.local 退避中のビルド用）"
   else
-    pass "apps/web/.env に NEXT_PUBLIC_* を載せない"
+    fail "apps/web/.env に NEXT_PUBLIC_* が無い（退避中のビルドで値が消える）" \
+      "$(cat "$WORK/apps/web/.env")"
   fi
 
   # .env.<環境名> に無いキーは行を書かない（空の値で上書きしない）
@@ -272,6 +289,65 @@ EOF
     fail "許可リストに Cloud Functions の予約語がある（firebase deploy が失敗する）" \
       "$(printf '%s' "$reserved_hits")"
   fi
+fi
+
+echo ""
+echo "[6] デプロイ中は apps/web/.env.local を退避する（関数へ同梱させない）"
+
+# firebase をスタブに差し替え、deploy.sh が firebase deploy を呼んだ時点の
+# ファイルの状態を記録する。framework-backed hosting は apps/web/.env.* を
+# 関数のソースへ同梱するため、その瞬間に .env.local が在ってはいけない（#329）
+cat >"$WORK/bin/firebase" <<'STUB'
+#!/bin/sh
+# deploy のときだけ、その時点の apps/web/ の env ファイルを記録する
+case "$1" in
+  deploy)
+    ls -a apps/web 2>/dev/null | grep -E '^\.env' >>"$DEPLOY_SNAPSHOT"
+    ;;
+esac
+exit 0
+STUB
+chmod +x "$WORK/bin/firebase"
+
+DEPLOY_SNAPSHOT="$WORK/deploy-snapshot.txt"
+: >"$DEPLOY_SNAPSHOT"
+export DEPLOY_SNAPSHOT
+
+# 事前チェック（type-check / lint / test / build）は node_modules が要るので飛ばす。
+# 検証したいのは env ファイルの出し入れだけ
+if (cd "$WORK" && PATH="$WORK/bin:$PATH" SKIP_CHECKS=1 FORCE_DEPLOY=1 \
+  bash scripts/deploy.sh staging --only hosting >"$WORK/deploy.log" 2>&1); then
+  pass "deploy.sh が通る（firebase はスタブ）"
+else
+  fail "deploy.sh が失敗した" "$(tail -20 "$WORK/deploy.log")"
+fi
+
+if [ -s "$DEPLOY_SNAPSHOT" ]; then
+  pass "firebase deploy が呼ばれた"
+
+  if grep -qx '.env.local' "$DEPLOY_SNAPSHOT"; then
+    fail "デプロイ中に apps/web/.env.local が残っている（秘密が関数へ同梱される）" \
+      "$(cat "$DEPLOY_SNAPSHOT")"
+  else
+    pass "デプロイ中は apps/web/.env.local が無い"
+  fi
+
+  if grep -qx '.env' "$DEPLOY_SNAPSHOT"; then
+    pass "デプロイ中も apps/web/.env は在る（ビルドと SSR がこれを読む）"
+  else
+    fail "デプロイ中に apps/web/.env が無い（NEXT_PUBLIC_* とサーバー変数が届かない）" \
+      "$(cat "$DEPLOY_SNAPSHOT")"
+  fi
+else
+  fail "firebase deploy が呼ばれていない（検証が素通りしている）" "$(tail -20 "$WORK/deploy.log")"
+fi
+
+# 退避したものは必ず戻す。戻らないとローカル開発が壊れる
+if [ -f "$WORK/apps/web/.env.local" ]; then
+  pass "デプロイ後に apps/web/.env.local が戻る"
+else
+  fail "apps/web/.env.local が戻っていない（ローカル開発が壊れる）" \
+    "$(ls -a "$WORK/apps/web")"
 fi
 
 echo ""

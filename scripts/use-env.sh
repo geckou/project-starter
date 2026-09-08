@@ -12,24 +12,32 @@ if [ ! -f ".env.${ENV}" ]; then
   exit 1
 fi
 
-# apps/web/.env に配布する変数（SSR 実行時に読まれるサーバー専用の値）。
+# apps/web/.env に配布するサーバー専用の変数（SSR 実行時に読まれる値）。
 #
 # framework-backed hosting（firebase.json の frameworksBackend）では、SSR 用の関数を
-# firebase-tools が自動生成する。そのとき **hosting.source の .env だけ**が関数の .env に
-# 取り込まれる（firebase-tools 14 の lib/frameworks/index.js）。.env.local は
-# 同じディレクトリへコピーはされるが、関数の環境変数にはならない。
-# つまり use-env.sh が apps/web/.env.local を書くだけでは、サーバー専用の変数が
-# SSR 側で undefined になる（middleware の Basic 認証が dev/stg で効かない等）。
-#
-# NEXT_PUBLIC_* はここに要らない。next build がローカルで走り、ビルド時に値が
-# 埋め込まれるため（アダプタは .next の成果物をコピーしてデプロイする）。
+# firebase-tools が自動生成する。そのとき **hosting.source の .env** が関数の環境変数に
+# なる（firebase-tools 14 の lib/frameworks/index.js）。use-env.sh が
+# apps/web/.env.local を書くだけでは、サーバー専用の変数が SSR 側で undefined になる
+# （middleware の Basic 認証が dev/stg で効かない等）。
 #
 # 秘密はここに入れない。apps/functions/.env と同じ理由で、関数の環境変数は
 # 閲覧者ロールでも Cloud Console / gcloud functions describe から読める。
-# FIREBASE_SERVICE_ACCOUNT_KEY も入れない（Cloud Functions では ADC が自動で使われる）
+# FIREBASE_SERVICE_ACCOUNT_KEY も入れない（Cloud Functions では ADC が自動で使われる。
+# そもそも FIREBASE_ は予約プレフィックスなので、入れると firebase deploy が落ちる）
 WEB_SSR_ENV_KEYS=(
   BASIC_AUTH_CREDENTIALS
 )
+
+# apps/web/.env には NEXT_PUBLIC_* も入れる。
+# deploy.sh はデプロイ中だけ apps/web/.env.local を退避するため（全文コピーの
+# .env.local が関数へ同梱されると、サーバー秘密まで載る。#329）、そのあいだの
+# next build は .env から NEXT_PUBLIC_* を読む。プレフィックスで機械的に拾うので、
+# 変数を足しても許可リストの更新は要らない。
+# NEXT_PUBLIC_* はブラウザに露出する前提の値なので、関数の環境変数に載っても増える
+# リスクは無い
+web_public_env_keys() {
+  grep -oE '^NEXT_PUBLIC_[A-Z0-9_]+' ".env.${ENV}" | sort -u
+}
 
 # layer:functions:start
 # apps/functions/.env に配布する変数。
@@ -155,10 +163,11 @@ cp ".env.${ENV}" apps/web/.env.local
 echo "[done] .env.${ENV} → .env.local, apps/web/.env.local にコピーしました"
 
 # apps/web/.env を許可リストのキーだけで生成する
+# shellcheck disable=SC2046
 write_env_file apps/web/.env \
   "framework-backed hosting では、このファイルの内容が SSR 関数の環境変数になります。" \
-  "${WEB_SSR_ENV_KEYS[@]}"
-echo "[done] .env.${ENV} → apps/web/.env を生成しました（SSR で読むキーのみ）"
+  "${WEB_SSR_ENV_KEYS[@]}" $(web_public_env_keys)
+echo "[done] .env.${ENV} → apps/web/.env を生成しました（SSR で読むキーと NEXT_PUBLIC_*）"
 
 # layer:mobile:start
 # Expo (app.config.ts) は apps/mobile/ の .env.local を読む

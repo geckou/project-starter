@@ -112,6 +112,9 @@ CI でも実行される。
 - どのキーがどのファイルへ行くか（許可リストのキーが載り、無いキーの行は書かれない）
 - 生成ファイルにフィクスチャの秘密が載らないこと
 - 環境を切り替えると前の値が消え、新しい値が入ること
+- **デプロイ中に `apps/web/.env.local` が退避され、終了後に戻ること**
+  （`firebase` をスタブに差し替えて `deploy.sh` を実際に流し、`firebase deploy` が
+  呼ばれた時点のファイルの状態を記録して検証する）
 - **許可リストのキーが Cloud Functions の予約語に当たらないこと**
   （`FIREBASE_*` / `X_GOOGLE_*` / `EXT_*` や `PORT` 等。当たると `firebase deploy` が
   `Failed to validate key` で止まる）

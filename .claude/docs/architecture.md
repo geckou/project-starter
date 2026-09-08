@@ -198,7 +198,7 @@ firebase-tools 14 の `lib/frameworks/index.js` と `lib/functions/env.js` を�
 | --- | --- | --- |
 | ビルドに埋め込まれる | Next.js の規約どおり（`.env.local` → `.env.production` → `.env`） | `NEXT_PUBLIC_*` |
 | **関数の環境変数**になる | `.env` / `.env.<Firebase プロジェクト ID>` / `.env.<.firebaserc のエイリアス>` | SSR・middleware |
-| ファイルとして同梱され、実行時に Next が読む | `apps/web/.env.*` 全部（`.env.local` を含む） | SSR・middleware |
+| ファイルとして同梱され、実行時に Next が読む | `apps/web/.env.*` 全部（`deploy.sh` は `.env.local` を退避して同梱を防ぐ） | SSR・middleware |
 
 **`next build` はローカルで走る。** firebase-tools は手元でビルドし、`.next` の成果物を
 関数のソースへコピーする（Cloud Build 側でビルドし直さない）。そのため `NEXT_PUBLIC_*` は
@@ -216,15 +216,20 @@ firebase-tools 14 の `lib/frameworks/index.js` と `lib/functions/env.js` を�
 > `Failed to validate key` で止まる。`.env.<Firebase プロジェクト ID>` も同じ。
 > ビルド時の `NEXT_PUBLIC_*` は `.env.local` で届くので、この経路は要らない。
 
-> ⚠️ **`apps/web/.env.local` は `.env.<環境名>` の全文コピーで、SSR 関数に同梱される。**
-> つまり `FIREBASE_SERVICE_ACCOUNT_KEY` のようなサーバー秘密も関数のソースに入り、
-> 実行時の `process.env` に載る。`apps/web/.env` を許可リストにしても**そちらは塞がらない**。
-> Cloud Functions の環境変数（`gcloud functions describe` で読める）にはならないが、
-> 関数のソースを取得できる権限があれば読める。**`.env.<環境名>` に秘密を置くときは、
-> それが SSR 関数からも読めることを前提にする**（`geckou/project-starter#329`）。
+**`.env.local` はデプロイ中だけ退避する。** `apps/web/.env.local` は `.env.<環境名>` の
+全文コピーなので、そのまま同梱されると `FIREBASE_SERVICE_ACCOUNT_KEY` のようなサーバー秘密まで
+関数のソースに入る。`deploy.sh` は `firebase deploy` に入る直前に退避し、終了時に戻す
+（`DEPLOY_STASHED_ENV_FILES`）。そのあいだに必要な値は `apps/web/.env` が持つ:
+
+- `next build` が読む `NEXT_PUBLIC_*`（`.env.<環境名>` からプレフィックスで機械的に拾う）
+- SSR 実行時に読むサーバー専用の値（`WEB_SSR_ENV_KEYS` の許可リスト）
+
+**手で `firebase deploy` を叩くとこの退避は効かない。** `yarn deploy:<環境名>` を使うこと
+（`yarn firebase:deploy` も `deploy.sh` を通らない）。
 
 配布の内容は `scripts/test-env-distribution.sh` が固定している（どのキーがどのファイルへ行くか、
-秘密が載らないか、許可リストが Cloud Functions の予約語に当たらないか）。
+秘密が載らないか、許可リストが Cloud Functions の予約語に当たらないか、デプロイ中に
+`.env.local` が退避され終了後に戻るか）。
 
 ## 状態管理（Zustand）
 
