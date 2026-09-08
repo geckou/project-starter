@@ -32,6 +32,7 @@
         "scripts/deploy.sh",
         "scripts/lib/hosting-targets.mjs",
         "scripts/test-deploy-targets.sh",
+        "scripts/test-env-distribution.sh",
         "scripts/use-env.sh",
         "packages/eslint-config/index.js",
         "packages/eslint-config/next.js",

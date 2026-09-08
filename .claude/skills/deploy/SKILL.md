@@ -28,6 +28,9 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
 ## deploy.sh がやること
 
 1. `scripts/use-env.sh <env>` で `.env.local`（ルート + `apps/web/` + `apps/mobile/`）と Firebase プロジェクトを切り替え
+   - あわせて `apps/web/.env` を生成する。framework-backed hosting の SSR 関数には
+     **このファイルの内容だけ**が環境変数として取り込まれる（`.env.local` は取り込まれない）。
+     SSR で読むサーバー専用の変数を足したら `WEB_SSR_ENV_KEYS` にも追記する
 2. `type-check` / `lint` / `test` / `build` の事前チェック（`SKIP_CHECKS=1` を渡したときのみ省略。CI 専用の抜け道で、ローカルでは使わない）
 3. workspace 依存（`@geckou/*`）を package.json から一時削除（Cloud Build が npm registry から取得しようとして失敗するため。終了時に自動復元）
 4. functions / firestore → storage → framework hosting の順にデプロイ

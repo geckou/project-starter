@@ -22,6 +22,8 @@ ALLOW_MISSING='
 apps/functions/.env
 apps/functions/.secret.local
 apps/mobile/.env.local
+apps/web/.env
+apps/web/.env.local
 .claude/docs/roadmap-archive.md
 packages/shared/dist/
 '

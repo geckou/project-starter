@@ -97,6 +97,21 @@ CI でも実行される。
 無いと流せないため、**選び方だけを切り出してテスト可能にしている。** ターゲットの選び方を
 変えるときはこのテストも足す。CI では `ci.yml` の Deploy Target Test が実行する。
 
+## env の配布内容は回帰テストで固定する
+
+`scripts/use-env.sh` は `.env.<環境名>` を単一の正として各所へ配る。間違えると
+どちらかに倒れ、**どちらも型チェックにもテストにも引っかからない。**
+
+- **足りない**: SSR / Functions で `undefined` になる（本番に出て初めて分かる）
+- **多すぎる**: 秘密が関数の環境変数として載り、閲覧者ロールから読める
+
+とくに framework-backed hosting は、ビルド時（`apps/web/.env.local`）と SSR 実行時
+（`apps/web/.env`）で読まれるファイルが違う（→ `.claude/docs/architecture.md`）。
+`bash scripts/test-env-distribution.sh`（`yarn test:env-distribution`）が
+「どのキーがどのファイルへ行くか」と「秘密が載らないこと」を検証する。
+許可リスト（`WEB_SSR_ENV_KEYS` / `FUNCTIONS_ENV_KEYS`）を変えるときはこのテストも見る。
+CI では `ci.yml` の Env Distribution Test が実行する。
+
 ## 本体保守で使うスクリプト
 
 派生プロジェクトでは使わない（テンプレート本体の検証・公開まわり）。

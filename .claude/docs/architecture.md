@@ -151,6 +151,7 @@ app/<path>/
 | Web クライアント用 | `.env.local`（ルート） | `NEXT_PUBLIC_FIREBASE_*`               |
 | Mobile 用          | `apps/mobile/.env.local`（use-env.sh が配布） | `FIREBASE_*`（app.config.ts の extra 経由） |
 | サーバー専用       | `.env.local`（ルート） | `FIREBASE_SERVICE_ACCOUNT_KEY`         |
+| SSR 実行時         | `apps/web/.env`（use-env.sh が許可リストのキーのみ生成） | `BASIC_AUTH_CREDENTIALS` |
 | Functions 専用     | `apps/functions/.env`（use-env.sh が許可リストのキーのみ生成） | `ALLOWED_ORIGINS`, `STRIPE_PRICE_IDS` |
 | Functions の秘密   | Secret Manager（`firebase functions:secrets:set`）。エミュレーターは `apps/functions/.secret.local` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `REVENUECAT_WEBHOOK_AUTH` |
 
@@ -186,6 +187,33 @@ Firebase プロジェクトごとに別なので、環境の切り替えでキ�
 フォールバックするため、`.env.production` への書き忘れが「本番の全 API が Failed to fetch」
 として現れる。`api-client.ts` は `NODE_ENV === 'production'`（Expo は `__DEV__ === false`）で
 未設定なら `throw` する。Functions 側の `ALLOWED_ORIGINS` と同じ方針。
+
+### framework-backed hosting の env は 2 経路ある
+
+`hosting.frameworksBackend` を使う構成では、SSR 用の Cloud Functions を firebase-tools が
+自動生成する。このとき**ビルド時と実行時で読まれるファイルが違う**。
+
+| 経路 | 読まれるファイル | 使う値 |
+| --- | --- | --- |
+| ビルド時（`next build`） | `apps/web/.env.local`（Next.js の規約どおり） | `NEXT_PUBLIC_*` |
+| SSR 実行時（関数の環境変数） | **`apps/web/.env` だけ** | サーバー専用（`NEXT_PUBLIC_` でないもの） |
+
+**`next build` はローカルで走る。** firebase-tools は手元でビルドし、`.next` の成果物を
+関数のソースへコピーしてデプロイする（Cloud Build 側でビルドし直さない）。そのため
+`NEXT_PUBLIC_*` は `.env.local` で足りる。
+
+**関数の環境変数になるのは `apps/web/.env` の中身だけ。** `.env.local` は関数のディレクトリへ
+コピーはされるが、環境変数としては取り込まれない。`use-env.sh` が `WEB_SSR_ENV_KEYS` の
+許可リストで `apps/web/.env` を生成しているのはこのため。**SSR で読むサーバー専用の変数を
+足したら、`scripts/use-env.sh` の `WEB_SSR_ENV_KEYS` にも追記すること**（`apps/functions/.env` と同じ）。
+
+`apps/web/.env` にも秘密は置かない。理由は `apps/functions/.env` と同じで、関数の環境変数は
+閲覧者ロールでも読める。`FIREBASE_SERVICE_ACCOUNT_KEY` は Cloud Functions では不要
+（ADC が自動で使われる）。配布の内容は `scripts/test-env-distribution.sh` が固定している。
+
+> firebase-tools は `apps/web/.env.<Firebase プロジェクト ID>` も読む（環境名ではなく
+> プロジェクト ID）。テンプレートはこの経路を使っていないが、置くと `next build` に効くので、
+> 意図せず作らないこと。
 
 ## 状態管理（Zustand）
 

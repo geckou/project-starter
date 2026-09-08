@@ -12,6 +12,25 @@ if [ ! -f ".env.${ENV}" ]; then
   exit 1
 fi
 
+# apps/web/.env に配布する変数（SSR 実行時に読まれるサーバー専用の値）。
+#
+# framework-backed hosting（firebase.json の frameworksBackend）では、SSR 用の関数を
+# firebase-tools が自動生成する。そのとき **hosting.source の .env だけ**が関数の .env に
+# 取り込まれる（firebase-tools 14 の lib/frameworks/index.js）。.env.local は
+# 同じディレクトリへコピーはされるが、関数の環境変数にはならない。
+# つまり use-env.sh が apps/web/.env.local を書くだけでは、サーバー専用の変数が
+# SSR 側で undefined になる（middleware の Basic 認証が dev/stg で効かない等）。
+#
+# NEXT_PUBLIC_* はここに要らない。next build がローカルで走り、ビルド時に値が
+# 埋め込まれるため（アダプタは .next の成果物をコピーしてデプロイする）。
+#
+# 秘密はここに入れない。apps/functions/.env と同じ理由で、関数の環境変数は
+# 閲覧者ロールでも Cloud Console / gcloud functions describe から読める。
+# FIREBASE_SERVICE_ACCOUNT_KEY も入れない（Cloud Functions では ADC が自動で使われる）
+WEB_SSR_ENV_KEYS=(
+  BASIC_AUTH_CREDENTIALS
+)
+
 # layer:functions:start
 # apps/functions/.env に配布する変数。
 # Functions の .env はデプロイ時に関数の環境変数として取り込まれるため、
@@ -108,6 +127,26 @@ fi
 cp ".env.${ENV}" .env.local
 cp ".env.${ENV}" apps/web/.env.local
 echo "[done] .env.${ENV} → .env.local, apps/web/.env.local にコピーしました"
+
+# apps/web/.env を許可リストのキーだけで生成する。
+# 毎回作り直すのは、残ったまま環境を切り替えると前の環境の値が SSR 関数へ
+# 配られるため（apps/functions/.env と同じ理由）
+{
+  echo "# このファイルは scripts/use-env.sh が .env.${ENV} から生成しています。"
+  echo "# 直接編集しても yarn env:<環境名> の実行で上書きされます。"
+  echo "# 値を変更する場合は .env.${ENV} を編集してください。"
+  echo "#"
+  echo "# framework-backed hosting の SSR 関数には、このファイルの内容だけが"
+  echo "# 環境変数として取り込まれます（.env.local は取り込まれません）。"
+  echo ""
+  for key in "${WEB_SSR_ENV_KEYS[@]}"; do
+    line=$(grep -E "^${key}=" ".env.${ENV}" | tail -n 1 || true)
+    if [ -n "${line}" ]; then
+      echo "${line}"
+    fi
+  done
+} > apps/web/.env
+echo "[done] .env.${ENV} → apps/web/.env を生成しました（SSR で読むキーのみ）"
 
 # layer:mobile:start
 # Expo (app.config.ts) は apps/mobile/ の .env.local を読む
