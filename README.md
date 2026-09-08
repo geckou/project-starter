@@ -391,9 +391,9 @@ PR は DoD（type-check / lint / test）とセルフレビュー（`/review`）�
 | `yarn firebase:emulators`        | Firebase エミュレーター起動 |
 | `yarn env:<環境名>`              | 環境切り替え（develop / staging / production） |
 | `yarn deploy:<環境名>`           | 事前チェック付きデプロイ（develop / staging / production） |
-| `yarn firebase:deploy`           | Firebase 全体をデプロイ（チェックなしの素のコマンド） |
+| `yarn firebase:deploy`           | Firebase 全体をデプロイ（チェックなし・環境で絞り込まない素のコマンド） |
 | `yarn firebase:deploy:functions` | Functions のみデプロイ      |
-| `yarn firebase:deploy:hosting`   | Hosting のみデプロイ        |
+| `yarn firebase:deploy:hosting`   | Hosting のみデプロイ（hosting ターゲットが複数ある構成では**全部**に配る） |
 
 > デプロイは `yarn deploy:<環境名>` を推奨。型チェック・テスト・ビルドの事前実行、
 > webframeworks experiment の有効化、workspace 依存の一時削除（Cloud Build 対策）まで自動で行う。
@@ -438,6 +438,8 @@ Turborepo が自動的に認識するので、設定ファイルの追加は不�
 
 詳しくは [apps/README.md](apps/README.md) と [packages/README.md](packages/README.md) を参照。
 
+<!-- layer:firebase:start -->
+
 ---
 
 ## Firebase の構成
@@ -462,6 +464,10 @@ Firebase SDK はそれぞれ別のモジュールを使う。
 | `NEXT_PUBLIC_FIREBASE_*`       | Web クライアント用         | ブラウザに露出する（公開前提）   |
 | `FIREBASE_*`                   | Mobile (Expo) 用           | `app.config.ts` の `extra` 経由で参照 |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | Web サーバー用 (Admin SDK) | サーバーのみ。絶対に公開しない   |
+
+<!-- layer:firebase:end -->
+
+<!-- layer:billing:start -->
 
 ---
 
@@ -512,6 +518,8 @@ if (isSubscriptionActive(user.subscription)) {
 [.claude/docs/billing.md](.claude/docs/billing.md) に順を追ってまとめてある。
 権利状態の保護（`firestore.rules` での書き込み拒否、`billing_events` による冪等化）の方針は
 [.claude/docs/architecture.md](.claude/docs/architecture.md) の「課金 > セキュリティ上の要点」。
+
+<!-- layer:billing:end -->
 
 ---
 

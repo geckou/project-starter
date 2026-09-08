@@ -37,6 +37,14 @@ jobs:
       - name: Check documentation references
         run: bash scripts/check-docs.sh
 
+      # 同期されるドキュメントが「派生プロジェクトには届かないファイル」を
+      # 参照していないか。テンプレート本体では全ファイルが揃っているため、
+      # この壊れ方は上の検査では出ない（#322）。
+      # テンプレート本体だけが持つ検査なので、派生では起動しない
+      - name: Docs Check (downstream)
+        if: github.repository == 'geckou/project-starter' && hashFiles('scripts/test-docs-downstream.sh') != ''
+        run: bash scripts/test-docs-downstream.sh
+
       # 層マーカーは README（.md）にも入っている。ci.yml は .md を非コード扱いで
       # 重いステップを飛ばし、layer-matrix.yml は **/*.md を paths-ignore にしている
       # ため、マーカーだけを消した PR が緑のまま通っていた（node_modules 不要）

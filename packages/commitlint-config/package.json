@@ -1,6 +1,6 @@
 {
   "name": "@geckou/commitlint-config",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Shared commitlint config for geckou projects",
   "type": "commonjs",
   "main": "./index.cjs",
@@ -21,7 +21,7 @@
   "author": "geckou-shogo <shogo.nojima@geckou.net>",
   "license": "MIT",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.12.0"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",

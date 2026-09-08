@@ -20,6 +20,11 @@ description: マルチ環境（develop / staging / production）への Firebase 
 
 Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象外。
 
+⚠️ **`yarn firebase:deploy` / `yarn firebase:deploy:hosting` は `deploy.sh` を通らない。**
+事前チェックも環境ごとの絞り込みもしないので、`firebase.json` に hosting ターゲットが
+複数ある構成では**全ターゲットに配る**（今アクティブな環境のビルドが別の環境のサイトにも出る）。
+デプロイは `yarn deploy:<環境名>` を使う。
+
 ## deploy.sh がやること
 
 1. `scripts/use-env.sh <env>` で `.env.local`（ルート + `apps/web/` + `apps/mobile/`）と Firebase プロジェクトを切り替え
@@ -27,6 +32,9 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
 3. workspace 依存（`@geckou/*`）を package.json から一時削除（Cloud Build が npm registry から取得しようとして失敗するため。終了時に自動復元）
 4. functions / firestore → storage → framework hosting の順にデプロイ
    - hosting は複数同梱だと next build がハングするため、ターゲットごとに個別デプロイする
+   - **配る先は環境名と一致する hosting ターゲットだけ**（`firebase.json` に複数ある場合）。
+     ターゲット名が環境名と無関係な構成では絞り込めず全部に配るので、
+     `DEPLOY_HOSTING_TARGETS='web admin'` のように明示する
    - storage は Cloud Storage 未有効化時に失敗しうるため個別に実行し、失敗時は対処方法を表示する
    - storage は `firebase.json` が `storage` を宣言している場合のみ対象になる。Cloud Storage を使わないプロジェクトは `firebase.json` から `storage` を削除する
 

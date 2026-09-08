@@ -13,9 +13,13 @@ Next.js の API Routes（`app/api/`）は使わない。
 Next.js の API Routes は Web からしかアクセスできないが、
 Cloud Functions なら Web・Mobile・外部サービス（Webhook 等）全てから共通で使える。
 
+<!-- layer:firebase:start -->
+
 **例外**: セッション Cookie の発行・破棄を行う `app/api/session/` のみ API Routes を許可する
 （`apps/web/src/app/api/session/route.ts`）。Cookie は Web 固有かつ same-origin で
 設定する必要があり、`middleware.ts` のルート保護がこの Cookie を前提とするため。
+
+<!-- layer:firebase:end -->
 
 ### functions 層を含まない構成
 
@@ -29,6 +33,8 @@ functions 層を足す（`/add-functions`）。「API Routes で代用する」�
 なお `hosting.frameworksBackend` による SSR 用の関数は、framework アダプタが自動生成して
 Cloud Functions (2nd gen) にデプロイするもので、`apps/functions` とは別物。
 core の時点で存在し、Blaze プランもこの時点で必須になる。
+
+<!-- layer:firebase:start -->
 
 ## Firebase の使い分け
 
@@ -125,6 +131,8 @@ export default async function DashboardPage() {
 
 参考実装: `apps/web/src/app/dashboard/`（page + loading + error セット）
 
+<!-- layer:firebase:end -->
+
 ## ページの基本構成
 
 新しいページは以下の3ファイルセットで作る:
@@ -156,10 +164,17 @@ app/<path>/
 `scripts/use-env.sh` の `FUNCTIONS_ENV_KEYS` にも追記すること。**
 
 **秘密は `.env` に置かない。** `.env` の値は関数の環境変数としてデプロイされ、閲覧者ロールでも
-Cloud Console / `gcloud functions describe` から読める。決済キーや Webhook の署名シークレットは
-Secret Manager に置き、`defineSecret()` で宣言して `onRequest({ secrets })` に渡した関数だけに
-マウントする（`apps/functions/src/lib/billing.ts` / `api.ts`。手順は `.claude/docs/billing.md`）。
+Cloud Console / `gcloud functions describe` から読める。外部サービスの API キーや Webhook の
+署名シークレットは Secret Manager に置き、`defineSecret()` で宣言して
+`onRequest({ secrets })` に渡した関数だけにマウントする。
 **秘密を差し替えたら再デプロイが要る**（関数は登録時点のバージョンに固定される）。
+
+<!-- layer:billing:start -->
+
+決済まわりの配線は `apps/functions/src/lib/billing.ts` / `api.ts` にある（手順は
+`.claude/docs/billing.md`）。
+
+<!-- layer:billing:end -->
 
 外部サービスのテスト用キーと本番キーは環境ごとに分ける（Secret Manager は
 Firebase プロジェクトごとに別なので、環境の切り替えでキーも入れ替わる）。
@@ -174,7 +189,12 @@ Firebase プロジェクトごとに別なので、環境の切り替えでキ�
 
 ## 状態管理（Zustand）
 
-グローバル状態は Zustand で管理する。store は `packages/shared/src/stores/` に置き、Web・Mobile で共有する。
+グローバル状態は Zustand で管理する。store は `packages/shared` の `stores` に置き、
+Web・Mobile で共有する。新しい store はそこに作り、`index.ts` から export する。
+
+<!-- layer:firebase:start -->
+
+参考実装は認証状態を持つ `useAuthStore`（`packages/shared/src/stores/auth-store.ts`）。
 
 ```typescript
 // 使い方（どのクライアントコンポーネントからでも）
@@ -182,12 +202,6 @@ import { useAuthStore } from '@geckou/shared/stores'
 
 const { user, loading } = useAuthStore()
 ```
-
-| store         | ファイル                                    | 用途             |
-| ------------- | ------------------------------------------- | ---------------- |
-| `useAuthStore` | `packages/shared/src/stores/auth-store.ts` | 認証状態の管理   |
-
-新しい store を追加する場合は `packages/shared/src/stores/` に作成し、`index.ts` から export する。
 
 ## Firebase Storage
 
@@ -222,12 +236,18 @@ Auth しか要らないページに Firestore SDK が乗らないようにする
 `request.resource` を持たないため、この 2 条件を課さない（`allow delete` を別に書く）。
 拒否ケースは `tests/storage-rules.test.ts` にあり、`yarn test:rules` で検証する。
 
+<!-- layer:firebase:end -->
+
+<!-- layer:mobile:start -->
+
 ## プッシュ通知（FCM）
 
 | 場面       | ファイル                                       | 用途                          |
 | ---------- | ---------------------------------------------- | ----------------------------- |
 | Mobile受信 | `apps/mobile/src/lib/push-notifications.ts`    | 権限リクエスト・トークン取得  |
 | Server送信 | `apps/functions/src/lib/push-notifications.ts` | FCM 経由で通知送信            |
+
+<!-- layer:mobile:end -->
 
 ## エラー監視（Sentry）
 
@@ -252,6 +272,8 @@ getTranslation(ja, 'common.loading') // → '読み込み中...'
 ```
 
 新しい翻訳キーを追加する場合は `ja.ts` と `en.ts` の両方に追加すること。
+
+<!-- layer:billing:start -->
 
 ## 課金
 
@@ -339,6 +361,8 @@ if (isSubscriptionActive(user.subscription)) {
   Webhook が Firebase Auth のカスタムクレームにも同期し、`request.auth.token.subscriptionActive`
   で判定できるようになる（デフォルトは無効。画面の表示制御だけなら Firestore を読めば足りる）
 - **Checkout の戻り先 URL は環境変数で固定**（クライアント入力を使うとオープンリダイレクトになる）
+
+<!-- layer:billing:end -->
 
 ## Tailwind CSS / デザイントークン
 

@@ -33,6 +33,12 @@ yarn.lock
 # 層マニフェスト（どの層を採用しているかは派生プロジェクトごとに違う）
 layers.json
 
+# ここから下は「テンプレート本体にしか存在しないファイル」。上の除外（派生が自分の
+# 版を持つファイル）とは種類が違うので、マーカーで囲んで機械的に区別できるようにする。
+# scripts/check-docs.sh がこの範囲を読み、同期されるドキュメントがこれらを参照していても
+# 派生では参照切れにしない（テンプレート本体では実在するので通常どおり検査される）。
+# template-only:start
+
 # テンプレート本体だけが持つワークフロー（派生プロジェクトでは
 # `if: github.repository == 'geckou/project-starter'` で起動しない）。
 # /init-project が削除を案内するので、同期で戻さない
@@ -53,3 +59,8 @@ scripts/check-workspace-ranges.mjs
 scripts/test-workspace-ranges.sh
 scripts/adopt-references.mjs
 scripts/test-adopt-references.sh
+
+# 派生プロジェクトへ同期された状態を再現して docs-check を回す検査（テンプレート本体専用）
+scripts/test-docs-downstream.sh
+
+# template-only:end

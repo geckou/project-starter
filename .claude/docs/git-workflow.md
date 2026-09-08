@@ -168,6 +168,35 @@ yarn deploy:production
 CI/CD: `.github/workflows/deploy.yml` が `release/*` / `hotfix/*`（→ staging）と `production` の push で自動デプロイ。
 develop は自動デプロイ対象外（複数人の feat/* push が互いに上書きし合うため）。各自 `yarn deploy:develop` で手動デプロイする。
 
+### Hosting のターゲットは環境名に合わせる
+
+既定は 1 環境 = 1 Firebase プロジェクトで、`firebase.json` の `hosting` も 1 つ。この構成では
+`deploy.sh` は `firebase deploy --only hosting` を 1 回実行するだけで、以下は関係ない。
+
+1 つの Firebase プロジェクトに複数のサイトを相乗りさせる場合（`.firebaserc` の `targets` に
+サイトを並べ、`firebase.json` の `hosting` を配列にする構成）は、**ターゲット名を環境名
+（`develop` / `staging` / `production`）に揃えること。** `deploy.sh` は環境名と一致する
+ターゲットだけに配る。
+
+```jsonc
+// firebase.json
+"hosting": [
+  { "target": "staging", "source": "apps/web", "frameworksBackend": { "region": "asia-northeast1" } },
+  { "target": "production", "source": "apps/web", "frameworksBackend": { "region": "asia-northeast1" } }
+]
+```
+
+揃えないと**絞り込みができず、全ターゲットに配られる**。`yarn deploy:staging` が
+staging の `.env` でビルドしたものを production のサイトにも出す、という壊れ方をする
+（警告は出るが、止まりはしない）。環境名で分けられない構成（`web` / `admin` のような
+役割での分割）では `DEPLOY_HOSTING_TARGETS` で配る先を明示する。
+
+```bash
+DEPLOY_HOSTING_TARGETS='web admin' yarn deploy:staging
+```
+
+判定は `scripts/lib/hosting-targets.mjs` にあり、`scripts/test-deploy-targets.sh` が回帰テストする。
+
 ### CI 用 GitHub Secrets の登録
 
 `deploy.yml` はデプロイ時に環境別の env をシークレットから `.env.<環境名>` に書き出す（`secrets[format('ENV_FILE_{0}', name)]`）。
@@ -312,6 +341,17 @@ jobs:
     uses: geckou/project-starter/.github/workflows/ci.yml@v1
 ```
 
+**呼ぶ側に `concurrency` を書かないこと。** reusable workflow の `concurrency` は
+呼び出し元のコンテキストで評価されるため、呼ばれる側（テンプレートの `ci.yml`）が宣言している
+`ci-${{ github.ref }}` と group 名が一致する。run が自分自身の group を奪い、**ジョブを 1 つも
+起こさないまま数秒で failure** になる（jobs 0 件・ログもアノテーションも無い）。連続 push の
+打ち切りは呼ばれる側が持っているので、書かなくても挙動は変わらない。
+
+**既に参照方式へ移行済みの派生には、この修正が Template Sync では届かない。**
+派生の `ci.yml` は派生側の `.templatesyncignore` に載っていて上書きされないため、
+`node scripts/adopt-references.mjs --repo <派生のパス>` を流し直す必要がある
+（冪等なので、他の設定が推奨形なら差分は `ci.yml` だけになる。`--force` は要らない）。
+
 `hotfix/**` を落とさないこと。`.github/rulesets/release.json` は `hotfix/*` にも PR を
 必須にしているので、トリガーから外すと**緊急対応のときだけ** type-check / lint / test が
 走らない PR ができる（required check が無いので、そのままマージできてしまう）。
@@ -427,7 +467,7 @@ reusable workflow の `actions/checkout` は**呼び出し元のリポジトリ*
 | ルールテスト | `tests/*rules*.test.ts` の有無（`firestore.rules` があってもテストが無ければ走らせない） |
 | Hook Test / Layer Check | 対応するスクリプトの有無（`hashFiles`） |
 
-**古い派生プロジェクトからも呼べる。** `scripts/format.sh` や `scripts/test-rules.sh` が
+**古い派生プロジェクトからも呼べる。** `scripts/format.sh` やルールテストのスクリプトが
 まだ Template Sync で届いていない構成では、`yarn format:check` / `yarn test:rules` に
 フォールバックする（スクリプトは呼び出し元のものが実行されるため、届いていないことがある）。
 
