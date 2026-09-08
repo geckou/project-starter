@@ -16,8 +16,9 @@ on:
       - '.editorconfig'
       - 'LICENSE'
   # 差分判定をせず全ターゲットをデプロイする手動実行。
-  # 変更差分ベースのデプロイでは、デプロイが失敗した回の変更が次の push で
-  # 再送されないため、取りこぼしを手動で回復する手段として用意している
+  # 差分の基準は「前回デプロイに成功したコミット」なので、失敗した回や
+  # 取り消された回の変更は次の push で自動的に含まれる（→ Detect deploy targets）。
+  # それでも取りこぼしたときの回復手段として残している
   workflow_dispatch:
 
 # 同一ブランチへの連続 push でデプロイが競合しないよう直列化する
@@ -35,6 +36,8 @@ env:
 # 書き込み権限のトークンが渡る
 permissions:
   contents: read
+  # Detect deploy targets が「前回デプロイに成功した run」を引くのに使う
+  actions: read
 
 jobs:
   # チェックとデプロイを 1 ジョブにまとめている。
@@ -84,7 +87,8 @@ jobs:
 
       - uses: actions/checkout@v7
         with:
-          # デプロイ対象を変更差分から判定するため、前回の push のコミットまで遡れる履歴が要る
+          # デプロイ対象を変更差分から判定するため、前回デプロイに成功した
+          # コミットまで遡れる履歴が要る（間隔が空くと浅い clone では届かない）
           fetch-depth: 0
 
       - uses: actions/setup-node@v7
@@ -163,11 +167,22 @@ jobs:
       # 変更のあった箇所に対応するターゲットだけをデプロイする。
       # functions は無変更でもコンテナを再ビルドするため数分かかり、
       # web だけ触った push でその時間がまるごと無駄になっていた
+      #
+      # 差分の基準は **前回デプロイに成功したコミット**。push イベントの
+      # `before`（その push 1 回分の範囲）を使うと、次の 2 つで取りこぼす（#297）。
+      #
+      #   - concurrency は pending の run を 1 つしか保持しない。A の実行中に B が
+      #     pending のまま C が push されると B は取り消され、C は B の head からしか
+      #     diff しないので B の変更がどの run にも入らない
+      #   - チェックで落ちた回の変更も、次の push の diff に含まれない
+      #
+      # 前回成功した run の head から見れば、その間に積まれた変更は全て入る。
       - name: Detect deploy targets
         id: targets
         if: steps.env.outputs.deploy == 'true'
         env:
-          BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
           HEAD_SHA: ${{ github.sha }}
         run: |
           ALL="hosting"
@@ -178,17 +193,20 @@ jobs:
           ALL="functions,${ALL}"
           # layer:functions:end
 
-          # workflow_dispatch や新規ブランチの初回 push では基準コミットが無い。
+          # 実行中の run（自分自身）は success ではないので、ここには出てこない
+          BASE=$(gh run list --workflow deploy.yml --branch "$BRANCH" \
+            --status success --limit 1 --json headSha --jq '.[0].headSha' 2>/dev/null || true)
+
+          # 初回のデプロイ、履歴に無いコミット、API を引けなかった場合。
           # 判定できないときは絞らずに全部デプロイする（取りこぼしを作らないため）
-          if [ -z "$BEFORE" ] ||
-             [ "$BEFORE" = "0000000000000000000000000000000000000000" ] ||
-             ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            echo "基準コミットが取得できないため、全ターゲットをデプロイします"
+          if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "前回デプロイに成功したコミットが特定できないため、全ターゲットをデプロイします"
             echo "targets=$ALL" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          CHANGED=$(git diff --name-only "$BEFORE" "$HEAD_SHA")
+          echo "前回デプロイに成功したコミット: $BASE"
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD_SHA")
           echo "変更ファイル:"
           echo "$CHANGED" | sed 's/^/  /'
 

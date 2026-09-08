@@ -1727,7 +1727,11 @@ fi
 # --- ブランチの削除 -----------------------------------------------------
 # ローカル（git branch -d/-D）もリモート（push --delete / push origin :branch）も
 # 「その場で止めて聞く」対象（CLAUDE.md「自律性の境界」）。--prune は push の節で見る
-if has '(^|[[:space:]])git[[:space:]]+branch[^|;&]*[[:space:]](-d|-D|--delete)([[:space:]]|$)'; then
+#
+# 短縮フラグは束ねて書ける（-df / -dr / -Dr）。expand() は commit / push の行にしか
+# 掛からない（-m / -F / -t の値を飛ばす処理が commit 前提のため）ので、ここでは
+# 束の中の d / D を直接見る。git branch の短縮フラグで d / D を含むのは削除だけ
+if has '(^|[[:space:]])git[[:space:]]+branch[^|;&]*[[:space:]](-[A-Za-z]*[dD][A-Za-z]*|--delete)([[:space:]]|$)'; then
   ask 'ブランチの削除はユーザーが判断します（CLAUDE.md「自律性の境界」）。削除してよいかユーザーに確認してください。'
 fi
 

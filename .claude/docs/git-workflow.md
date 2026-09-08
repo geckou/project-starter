@@ -305,12 +305,16 @@ name: CI
 
 on:
   pull_request:
-    branches: [production, 'release/**']
+    branches: [production, 'release/**', 'hotfix/**']
 
 jobs:
   ci:
     uses: geckou/project-starter/.github/workflows/ci.yml@v1
 ```
+
+`hotfix/**` を落とさないこと。`.github/rulesets/release.json` は `hotfix/*` にも PR を
+必須にしているので、トリガーから外すと**緊急対応のときだけ** type-check / lint / test が
+走らない PR ができる（required check が無いので、そのままマージできてしまう）。
 
 **チェック内容の修正が、各派生での取り込み作業ゼロで行き渡る。** ルールテストの追加や
 `firebase-tools` のバージョン固定のような修正は、テンプレート側の 1 コミットで全派生に効く。

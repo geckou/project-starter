@@ -624,6 +624,15 @@ refute 'permissionDecision' '本文中のコマンド例では確認を求めな
 
 run 0 'ローカルブランチの削除は ask' 'git branch -D feat/other' feat/existing
 expect 'ブランチの削除' '削除であることを伝える'
+# 回帰: 単独のフラグしか見ておらず、束ねた -df / -dr / -Dr が素通りしていた（#300）
+run 0 'ローカルブランチの削除（-df）は ask' 'git branch -df feat/other' feat/existing
+expect 'ブランチの削除' '束ねた短縮フラグでも検出する'
+run 0 'リモート追跡ブランチの削除（-dr）は ask' \
+  'git branch -dr origin/feat/other' feat/existing
+expect 'ブランチの削除' '-dr でも検出する'
+run 0 'リモート追跡ブランチの削除（-Dr）は ask' \
+  'git branch -Dr origin/feat/other' feat/existing
+expect 'ブランチの削除' '-Dr でも検出する'
 run 0 'リモートブランチの削除（--delete）は ask' \
   'git push origin --delete feat/other' feat/existing
 expect 'リモートのブランチ削除' 'リモート削除であることを伝える'
@@ -632,6 +641,11 @@ run 0 'リモートブランチの削除（:branch）は ask' \
 expect 'リモートのブランチ削除' 'コロン形式でも検出する'
 run 0 'ブランチの一覧は削除ではない' "git branch -r --list 'origin/release/*'" feat/existing
 refute 'permissionDecision' '一覧では確認を求めない'
+run 0 'd / D を含まない短縮フラグは削除ではない' 'git branch -vv' feat/existing
+refute 'permissionDecision' '-vv では確認を求めない'
+run 0 '追跡先の設定は削除ではない' \
+  'git branch --set-upstream-to=origin/production' feat/existing
+refute 'permissionDecision' '--set-upstream-to では確認を求めない'
 
 run 0 '作業ブランチへの force push は ask' \
   'git push --force origin feat/existing' feat/existing
