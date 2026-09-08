@@ -196,13 +196,18 @@ firebase-tools 14 の `lib/frameworks/index.js` と `lib/functions/env.js` を�
 
 | 届き方 | 対象のファイル | 効くところ |
 | --- | --- | --- |
-| ビルドに埋め込まれる | Next.js の規約どおり（`.env.local` → `.env.production` → `.env`） | `NEXT_PUBLIC_*` |
+| ビルドに埋め込まれる | Next.js の規約どおり（`.env.local` → `.env.production` → `.env`）。デプロイ中は `.env.local` が退避されるので `.env` | `NEXT_PUBLIC_*` |
 | **関数の環境変数**になる | `.env` / `.env.<Firebase プロジェクト ID>` / `.env.<.firebaserc のエイリアス>` | SSR・middleware |
 | ファイルとして同梱され、実行時に Next が読む | `apps/web/.env.*` 全部（`deploy.sh` は `.env.local` を退避して同梱を防ぐ） | SSR・middleware |
 
-**`next build` はローカルで走る。** firebase-tools は手元でビルドし、`.next` の成果物を
-関数のソースへコピーする（Cloud Build 側でビルドし直さない）。そのため `NEXT_PUBLIC_*` は
-`.env.local` で足りる。
+**`next build` はローカルで走り、しかも 2 回走る。** `yarn deploy:<環境名>` の事前チェックで
+1 回（`.env.local` あり）、`firebase deploy` の中でアダプタがもう 1 回
+（`.env.local` は退避済み）。関数へ配られるのは**後者**なので、
+`NEXT_PUBLIC_*` は `apps/web/.env` から読ませる。Cloud Build 側でビルドし直すわけではない。
+
+> アダプタは 2 回目のビルドが非ゼロ終了しても reject しない（`frameworks/next/index.js` の
+> `buildProcess.on("exit", (code) => resolve(code))`）。事前チェックが緑でも、
+> デプロイ時のビルドで値が欠けていないかはデプロイ後の画面で確かめる。
 
 **サーバー専用の値は `apps/web/.env` に置く。** 3 行目の経路（Next が実行時に読む）だけに
 頼ると、`.env.local` が同梱されるかどうかというアダプタの実装に依存する。`use-env.sh` が
@@ -214,18 +219,31 @@ firebase-tools 14 の `lib/frameworks/index.js` と `lib/functions/env.js` を�
 > エイリアス名でもあるため、firebase-tools はこれを**関数の環境変数として全文読み込む**。
 > `FIREBASE_*` を含んでいると予約プレフィックスの検査に当たり、`firebase deploy` が
 > `Failed to validate key` で止まる。`.env.<Firebase プロジェクト ID>` も同じ。
-> ビルド時の `NEXT_PUBLIC_*` は `.env.local` で届くので、この経路は要らない。
+> ビルド時の `NEXT_PUBLIC_*` は `apps/web/.env` で届くので、この経路は要らない。
 
-**`.env.local` はデプロイ中だけ退避する。** `apps/web/.env.local` は `.env.<環境名>` の
+**`apps/web/.env.*` はデプロイ中だけ退避する。** `apps/web/.env.local` は `.env.<環境名>` の
 全文コピーなので、そのまま同梱されると `FIREBASE_SERVICE_ACCOUNT_KEY` のようなサーバー秘密まで
-関数のソースに入る。`deploy.sh` は `firebase deploy` に入る直前に退避し、終了時に戻す
-（`DEPLOY_STASHED_ENV_FILES`）。そのあいだに必要な値は `apps/web/.env` が持つ:
+関数のソースに入る。`deploy.sh` は `firebase deploy` に入る直前に `apps/web/.env.*` を全部退避し、終了時に戻す
+（`.env.local` だけでなく `.env.production.local` 等も同梱されるため）。
+そのあいだに必要な値は `apps/web/.env` が持つ:
 
 - `next build` が読む `NEXT_PUBLIC_*`（`.env.<環境名>` からプレフィックスで機械的に拾う）
 - SSR 実行時に読むサーバー専用の値（`WEB_SSR_ENV_KEYS` の許可リスト）
 
 **手で `firebase deploy` を叩くとこの退避は効かない。** `yarn deploy:<環境名>` を使うこと
 （`yarn firebase:deploy` も `deploy.sh` を通らない）。
+
+**退避で SSR に届かなくなる値がある。** これまでは `.env.<環境名>` の全キーが `.env.local` 経由で
+関数に同梱され、Next.js が実行時に読んでいた。退避後に届くのは `apps/web/.env` の中身だけなので、
+**`WEB_SSR_ENV_KEYS` に載せ忘れた値は例外もログも出さずに `undefined` になる。**
+`deploy.sh` はデプロイのたびに、届かなくなる非 `NEXT_PUBLIC_*` のキーを一覧で出す。
+Mobile / Functions 専用の値ならそのままでよい。
+
+> 退避の復元は EXIT / INT / TERM トラップで行うが、**本物の Ctrl-C は取りこぼす**
+> （プロセスグループ全体への SIGINT で、待機中の子が死ぬと bash 自身も
+> トラップを通らずに終了する）。そのため退避先は `.deploy-env-stash/` に固定し、
+> 次に `yarn deploy:<環境名>` を実行したときに戻す。すぐ戻したいときは
+> `yarn env:<環境名>` で作り直せる。
 
 配布の内容は `scripts/test-env-distribution.sh` が固定している（どのキーがどのファイルへ行くか、
 秘密が載らないか、許可リストが Cloud Functions の予約語に当たらないか、デプロイ中に

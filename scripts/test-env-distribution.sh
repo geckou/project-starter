@@ -311,10 +311,13 @@ echo "[6] デプロイ中は apps/web/.env.local を退避する（関数へ同�
 # 関数のソースへ同梱するため、その瞬間に .env.local が在ってはいけない（#329）
 cat >"$WORK/bin/firebase" <<'STUB'
 #!/bin/sh
-# deploy のときだけ、その時点の apps/web/ の env ファイルを記録する
+# deploy のときだけ、その時点の apps/web/ の状態を記録する。
+# アダプタが関数のソースを組み立てるのはこの瞬間なので、ここで見えるものが
+# そのまま同梱される
 case "$1" in
   deploy)
     ls -a apps/web 2>/dev/null | grep -E '^\.env' >>"$DEPLOY_SNAPSHOT"
+    cat apps/web/.env 2>/dev/null >>"$DEPLOY_ENV_CONTENT"
     ;;
 esac
 exit 0
@@ -322,12 +325,18 @@ STUB
 chmod +x "$WORK/bin/firebase"
 
 DEPLOY_SNAPSHOT="$WORK/deploy-snapshot.txt"
+DEPLOY_ENV_CONTENT="$WORK/deploy-env-content.txt"
 : >"$DEPLOY_SNAPSHOT"
-export DEPLOY_SNAPSHOT
+: >"$DEPLOY_ENV_CONTENT"
+export DEPLOY_SNAPSHOT DEPLOY_ENV_CONTENT
+
+# 退避をすり抜ける経路が無いか見るため、.env.local 以外も置いておく
+printf 'LEAK_CHECK=%s\n' "$SECRET_VALUE" >"$WORK/apps/web/.env.production.local"
 
 # 事前チェック（type-check / lint / test / build）は node_modules が要るので飛ばす。
 # 検証したいのは env ファイルの出し入れだけ
-if (cd "$WORK" && PATH="$WORK/bin:$PATH" SKIP_CHECKS=1 FORCE_DEPLOY=1 \
+# ブランチガードは ENV=production のときだけ効くので、staging では FORCE_DEPLOY は要らない
+if (cd "$WORK" && PATH="$WORK/bin:$PATH" SKIP_CHECKS=1 \
   bash scripts/deploy.sh staging --only hosting >"$WORK/deploy.log" 2>&1); then
   pass "deploy.sh が通る（firebase はスタブ）"
 else
@@ -354,12 +363,48 @@ else
   fail "firebase deploy が呼ばれていない（検証が素通りしている）" "$(tail -20 "$WORK/deploy.log")"
 fi
 
-# 退避したものは必ず戻す。戻らないとローカル開発が壊れる
-if [ -f "$WORK/apps/web/.env.local" ]; then
-  pass "デプロイ後に apps/web/.env.local が戻る"
+# 「その瞬間の apps/web/.env の中身」を直接見る。これがそのまま関数の環境変数になる
+if [ -s "$DEPLOY_ENV_CONTENT" ]; then
+  if grep -q "$SECRET_VALUE" "$DEPLOY_ENV_CONTENT"; then
+    fail "デプロイ時点の apps/web/.env に秘密が入っている" \
+      "$(grep -n "$SECRET_VALUE" "$DEPLOY_ENV_CONTENT")"
+  else
+    pass "デプロイ時点の apps/web/.env に秘密が無い"
+  fi
+
+  if grep -q '^NEXT_PUBLIC_' "$DEPLOY_ENV_CONTENT"; then
+    pass "デプロイ時点の apps/web/.env に NEXT_PUBLIC_* が入っている"
+  else
+    fail "デプロイ時点の apps/web/.env に NEXT_PUBLIC_* が無い（ビルドで値が消える）" \
+      "$(cat "$DEPLOY_ENV_CONTENT")"
+  fi
 else
-  fail "apps/web/.env.local が戻っていない（ローカル開発が壊れる）" \
-    "$(ls -a "$WORK/apps/web")"
+  fail "デプロイ時点の apps/web/.env を読めていない" "$(cat "$WORK/deploy.log" | tail -10)"
+fi
+
+# .env.local 以外の .env.* も同梱されるので、まとめて退避されている必要がある
+if grep -qx '.env.production.local' "$DEPLOY_SNAPSHOT" 2>/dev/null; then
+  fail "デプロイ中に apps/web/.env.production.local が残っている（同じ経路で同梱される）" \
+    "$(cat "$DEPLOY_SNAPSHOT")"
+else
+  pass "デプロイ中は .env.local 以外の .env.* も退避されている"
+fi
+
+# 退避したものは必ず戻す。戻らないとローカル開発が壊れる
+for restored in .env.local .env.production.local; do
+  if [ -f "$WORK/apps/web/$restored" ]; then
+    pass "デプロイ後に apps/web/$restored が戻る"
+  else
+    fail "apps/web/$restored が戻っていない（ローカル開発が壊れる）" \
+      "$(ls -a "$WORK/apps/web")"
+  fi
+done
+
+# 退避ディレクトリを残さない
+if [ -d "$WORK/.deploy-env-stash" ]; then
+  fail "退避ディレクトリが残っている" "$(ls -a "$WORK/.deploy-env-stash")"
+else
+  pass "退避ディレクトリを残さない"
 fi
 
 echo ""

@@ -25,6 +25,51 @@ fi
 echo "=== デプロイ: ${ENV} 環境 ==="
 echo ""
 
+# 退避先はリポジトリ内の決まった場所にする（.gitignore 済み）。
+#
+# **trap では取りこぼす。** 本物の Ctrl-C はフォアグラウンドのプロセスグループ全体に
+# SIGINT を送り、待機中の子が SIGINT で死ぬと bash 自身も SIGINT で終了するため、
+# EXIT / INT トラップのどちらも走らないまま終わることがある（実測）。
+# 退避した env は .gitignore の対象で git からも戻せないので、
+# 「次に deploy.sh を実行したとき、残骸があれば戻す」経路を別に用意する
+DEPLOY_STASH_DIR=.deploy-env-stash
+
+stash_path() {
+  printf '%s/%s' "${DEPLOY_STASH_DIR}" "$(printf '%s' "$1" | tr '/' '_')"
+}
+
+# 前回の中断で残った退避を戻してから始める。
+# 既にファイルが在る場合は触らない（use-env.sh が作り直した新しい値を、
+# 古い退避で上書きしないため）
+restore_stashed_env() {
+  [ -d "${DEPLOY_STASH_DIR}" ] || return 0
+
+  local stashed original restored
+  restored=0
+
+  for stashed in "${DEPLOY_STASH_DIR}"/*; do
+    [ -f "${stashed}" ] || continue
+
+    original="apps/web/$(basename "${stashed}" | sed 's/^apps_web_//')"
+
+    if [ ! -f "${original}" ]; then
+      cp "${stashed}" "${original}"
+      restored=$((restored + 1))
+    fi
+
+    rm -f "${stashed}"
+  done
+
+  rmdir "${DEPLOY_STASH_DIR}" 2>/dev/null || true
+
+  if [ "${restored}" -gt 0 ]; then
+    echo "[predeploy] 中断した前回のデプロイで退避した env を ${restored} 件戻しました"
+  fi
+}
+
+# 中断した前回のデプロイの退避が残っていれば戻す（use-env.sh が作り直す前に）
+restore_stashed_env
+
 # 環境の切り替え
 bash scripts/use-env.sh "${ENV}"
 echo ""
@@ -72,42 +117,105 @@ done
 
 # デプロイ中だけ退避する env ファイル。
 #
-# framework-backed hosting は apps/web/.env.* を **丸ごと関数のソースへ同梱**する
+# framework-backed hosting は **apps/web/.env.* を丸ごと**関数のソースへ同梱する
 # （firebase-tools 14 の lib/frameworks/index.js が glob('.env.*') でコピーし、
 # lib/deploy/functions/prepareFunctionsUpload.js の既定 ignore は dotfile を外さない）。
 # apps/web/.env.local は .env.<環境名> の全文コピーなので、そのままだと
 # FIREBASE_SERVICE_ACCOUNT_KEY のようなサーバー秘密まで関数に載る（#329）。
 #
-# 退避してよいのは、この間に必要な値を apps/web/.env が持っているため:
-#   - next build が読む NEXT_PUBLIC_*
-#   - SSR 実行時に読むサーバー専用の値（WEB_SSR_ENV_KEYS）
-# どちらも scripts/use-env.sh が生成する
-DEPLOY_STASHED_ENV_FILES=(apps/web/.env.local)
+# 退避するのは .env.local だけでなく **.env.* に一致するもの全部**。
+# .gitignore は .env.development.local / .env.production.local / .env.test.local も
+# 想定しており、アダプタはそれらも同じように同梱する。
+# apps/web/.env は残す（next build と SSR がこれを読む。中身は許可リストと
+# NEXT_PUBLIC_* だけで、scripts/use-env.sh が生成する）
+# 退避によって SSR 関数へ届かなくなる値を知らせる。
+#
+# これまでは apps/web/.env.local（.env.<環境名> の全文コピー）が関数へ同梱され、
+# Next.js が実行時に読んでいた。退避したあと SSR に届くのは apps/web/.env だけなので、
+# **許可リストに載せ忘れた値は例外もログも出さずに undefined になる。**
+# デプロイ済みの本番で初めて分かる壊れ方なので、ここで一覧を出す
+warn_env_not_reaching_ssr() {
+  local missing
 
-stash_local_env() {
-  for env_file in "${DEPLOY_STASHED_ENV_FILES[@]}"; do
-    if [ -f "${env_file}" ]; then
-      mv "${env_file}" "$(backup_path "${env_file}")"
-      echo "[predeploy] ${env_file} を退避しました（関数へ同梱させないため）"
-    fi
-  done
+  # NEXT_PUBLIC_* は apps/web/.env が持つので除く。
+  # コメント行と空行も除く
+  missing=$(grep -oE '^[A-Za-z_][A-Za-z0-9_]*=' ".env.${ENV}" | sed 's/=$//' |
+    grep -v '^NEXT_PUBLIC_' | sort -u |
+    while IFS= read -r key; do
+      grep -qE "^${key}=" apps/web/.env || printf '%s\n' "${key}"
+    done)
+
+  if [ -n "${missing}" ]; then
+    echo ""
+    echo "[note] 次の値は SSR 関数（middleware・Server Component）に届きません:"
+    printf '%s\n' "${missing}" | sed 's/^/  - /'
+    echo "  SSR で読むものがあれば scripts/use-env.sh の WEB_SSR_ENV_KEYS に足してください。"
+    echo "  Mobile / Functions 専用の値なら、このままで問題ありません。"
+    echo ""
+  fi
 }
 
-cleanup_deploy_state() {
-  echo "[cleanup] workspace 依存を復元中..."
-  for workspace_package in "${WORKSPACE_PACKAGE_JSONS[@]}"; do
-    cp "$(backup_path "${workspace_package}")" "${workspace_package}"
+STASHED_ENV_FILES=()
+
+stash_local_env() {
+  local env_file
+
+  mkdir -p "${DEPLOY_STASH_DIR}"
+
+  for env_file in apps/web/.env.*; do
+    # グロブが 1 件も一致しないとパターン文字列がそのまま入る
+    [ -f "${env_file}" ] || continue
+
+    cp "${env_file}" "$(stash_path "${env_file}")"
+    rm -f "${env_file}"
+    STASHED_ENV_FILES+=("${env_file}")
+    echo "[predeploy] ${env_file} を退避しました（関数へ同梱させないため）"
   done
 
-  for env_file in "${DEPLOY_STASHED_ENV_FILES[@]}"; do
-    if [ -f "$(backup_path "${env_file}")" ]; then
-      mv "$(backup_path "${env_file}")" "${env_file}"
+  if [ ${#STASHED_ENV_FILES[@]} -eq 0 ]; then
+    rmdir "${DEPLOY_STASH_DIR}" 2>/dev/null || true
+  else
+    warn_env_not_reaching_ssr
+    # 中断でトラップを取りこぼしても、次の yarn deploy:<環境名> が戻す。
+    # すぐ戻したいときは yarn env:<環境名> で作り直せる
+    echo "[predeploy] 退避先: ${DEPLOY_STASH_DIR}（中断しても次回のデプロイで戻します）"
+  fi
+}
+
+# 復元は 1 回だけ行う。INT / TERM でハンドラが走ったあと EXIT でも呼ばれるため
+CLEANUP_DONE=false
+
+cleanup_deploy_state() {
+  if [ "${CLEANUP_DONE}" = true ]; then
+    return 0
+  fi
+  CLEANUP_DONE=true
+
+  # **消えると復旧できないものから先に戻す。** workspace の package.json は
+  # git 管理下なので最悪 checkout で戻せるが、env ファイルは .gitignore の対象で
+  # 戻せない。この関数は set -e の下で走るため、途中で失敗すると以降は実行されない
+  local env_file
+  for env_file in ${STASHED_ENV_FILES[@]+"${STASHED_ENV_FILES[@]}"}; do
+    if [ -f "$(stash_path "${env_file}")" ]; then
+      cp "$(stash_path "${env_file}")" "${env_file}"
+      rm -f "$(stash_path "${env_file}")"
     fi
+  done
+  rmdir "${DEPLOY_STASH_DIR}" 2>/dev/null || true
+
+  echo "[cleanup] workspace 依存を復元中..."
+  local workspace_package
+  for workspace_package in "${WORKSPACE_PACKAGE_JSONS[@]}"; do
+    cp "$(backup_path "${workspace_package}")" "${workspace_package}" || true
   done
 
   rm -rf "${BACKUP_DIR}"
 }
-trap cleanup_deploy_state EXIT
+
+# EXIT だけでは足りない。**本物の Ctrl-C** はフォアグラウンドのプロセスグループ全体に
+# SIGINT を送るため、EXIT トラップが走らないまま終わる。退避した env は .gitignore の
+# 対象で git からも戻せないので、シグナルでも必ず復元する
+trap cleanup_deploy_state EXIT INT TERM HUP
 
 echo "[predeploy] workspace 依存を一時削除..."
 # 削除するのは「このリポジトリのワークスペース」だけ。スコープ前置き（@geckou/）で

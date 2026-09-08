@@ -36,7 +36,24 @@ WEB_SSR_ENV_KEYS=(
 # NEXT_PUBLIC_* はブラウザに露出する前提の値なので、関数の環境変数に載っても増える
 # リスクは無い
 web_public_env_keys() {
-  grep -oE '^NEXT_PUBLIC_[A-Z0-9_]+' ".env.${ENV}" | sort -u
+  grep -oE '^NEXT_PUBLIC_[A-Z0-9_]+=' ".env.${ENV}" | sed 's/=$//' | sort -u
+}
+
+# Cloud Functions の環境変数は ^[A-Z_][A-Z0-9_]*$ しか受け付けない
+# （firebase-tools の lib/functions/env.js の validateKey）。
+# NEXT_PUBLIC_apiUrl のような混在ケースの名前は firebase deploy が弾くので、
+# **黙って落とさずにここで気付かせる**
+warn_unsupported_public_keys() {
+  local unsupported
+  unsupported=$(grep -oE '^NEXT_PUBLIC_[A-Za-z0-9_]+=' ".env.${ENV}" | sed 's/=$//' |
+    grep -vE '^NEXT_PUBLIC_[A-Z0-9_]+$' | sort -u || true)
+
+  if [ -n "${unsupported}" ]; then
+    echo "[warn] 大文字以外を含む NEXT_PUBLIC_* があります（apps/web/.env に載せません）"
+    printf '%s\n' "${unsupported}" | sed 's/^/  - /'
+    echo "  Cloud Functions の環境変数は大文字・数字・アンダースコアのみ受け付けます"
+    echo "  （firebase deploy が弾きます）。名前を大文字に変えてください。"
+  fi
 }
 
 # layer:functions:start
@@ -163,6 +180,8 @@ cp ".env.${ENV}" apps/web/.env.local
 echo "[done] .env.${ENV} → .env.local, apps/web/.env.local にコピーしました"
 
 # apps/web/.env を許可リストのキーだけで生成する
+warn_unsupported_public_keys
+
 # shellcheck disable=SC2046
 write_env_file apps/web/.env \
   "framework-backed hosting では、このファイルの内容が SSR 関数の環境変数になります。" \

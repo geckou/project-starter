@@ -35,8 +35,8 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
      （→ `.claude/docs/architecture.md`）
 2. `type-check` / `lint` / `test` / `build` の事前チェック（`SKIP_CHECKS=1` を渡したときのみ省略。CI 専用の抜け道で、ローカルでは使わない）
 3. workspace 依存（`@geckou/*`）を package.json から一時削除（Cloud Build が npm registry から取得しようとして失敗するため。終了時に自動復元）
-3.5. `apps/web/.env.local` を退避（framework-backed hosting は `apps/web/.env.*` を関数のソースへ同梱するため、全文コピーの `.env.local` が入るとサーバー秘密まで載る。終了時に自動復元）
-4. functions / firestore → storage → framework hosting の順にデプロイ
+4. `apps/web/.env.*` を退避（framework-backed hosting はこれらを関数のソースへ同梱するため、全文コピーの `.env.local` が入るとサーバー秘密まで載る。終了時に自動復元。中断で取りこぼしても次回のデプロイで戻す）
+5. functions / firestore → storage → framework hosting の順にデプロイ
    - hosting は複数同梱だと next build がハングするため、ターゲットごとに個別デプロイする
    - **配る先は環境名と一致する hosting ターゲットだけ**（`firebase.json` に複数ある場合）。
      ターゲット名が環境名と無関係な構成では絞り込めず全部に配るので、
