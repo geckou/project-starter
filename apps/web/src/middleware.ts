@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+// layer:firebase:start
+import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
+// layer:firebase:end
+
 // Authorization ヘッダーの Base64 部分の最大長（過大な値による例外を防ぐ）
 const MAX_BASIC_AUTH_HEADER_LENGTH = 1024
 
@@ -94,7 +98,7 @@ export function middleware(request: NextRequest) {
 
   // Cookie の存在チェックのみ（Edge runtime では firebase-admin が使えないため）。
   // セッション Cookie の実検証（verifySessionCookie）は各保護ページのサーバーコンポーネントで行う
-  const session = request.cookies.get('session')
+  const session = request.cookies.get(SESSION_COOKIE_NAME)
 
   if (!session) {
     const loginUrl = new URL('/login', request.url)

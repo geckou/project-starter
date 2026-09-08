@@ -67,6 +67,7 @@
         "apps/web/src/lib/firebase-storage.ts",
         "apps/web/src/lib/firebase-admin.ts",
         "apps/web/src/lib/sanitize-redirect.ts",
+        "apps/web/src/lib/session-cookie.ts",
         "apps/web/src/app/api/session",
         "apps/web/src/app/login",
         "apps/web/src/app/dashboard",

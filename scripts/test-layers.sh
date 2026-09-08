@@ -687,8 +687,78 @@ fi
 rm -rf "$variant" "$pristine"
 echo ""
 
-# --- 7. core は外せない ---
-echo "[7] ガード"
+# --- 7. Template Sync 後の外し直し ---
+echo "[7] sync-layers.mjs（同期で戻った層を外し直す）"
+
+# 減算済みの派生に、同期対象のファイル（.templatesyncignore に載っていないもの）だけを
+# テンプレートから戻して、Template Sync が層マーカーを復活させる状況を作る（#296）
+pristine=$(make_variant)
+variant=$(mktemp -d)
+cp -a "$pristine/." "$variant/"
+remove_layers "$variant" mobile > /dev/null 2>&1
+
+for synced in renovate.json5 .github/workflows/deploy.yml scripts/deploy.sh \
+  scripts/use-env.sh lint-staged.config.cjs; do
+  mkdir -p "$variant/$(dirname "$synced")"
+  cp "$pristine/$synced" "$variant/$synced"
+done
+mkdir -p "$variant/renovate"
+cp -a "$pristine/renovate/." "$variant/renovate/"
+
+if node "$variant/scripts/check-layers.mjs" > /dev/null 2>&1; then
+  fail "同期で戻ったマーカーを check-layers.mjs が見逃す（この前提が崩れるとテストの意味が無い）"
+else
+  pass "同期で戻ったマーカーは check-layers.mjs が検出する"
+fi
+
+sync_output=$(node "$variant/scripts/sync-layers.mjs" --target "$variant" \
+  --template "$pristine/layers.json" 2>&1)
+
+if node "$variant/scripts/check-layers.mjs" > /dev/null 2>&1; then
+  pass "外し直したあとは check-layers.mjs が通る"
+else
+  fail "外し直したあとも check-layers.mjs が落ちる" "$sync_output"
+fi
+
+# 外し直した結果が、最初から remove-layer した状態と一致すること
+expected=$(mktemp -d)
+cp -a "$pristine/." "$expected/"
+remove_layers "$expected" mobile > /dev/null 2>&1
+result=$(node "$REPO_ROOT/scripts/lib/compare-trees.mjs" "$expected" "$variant" 2>&1)
+
+if [ "$result" = "IDENTICAL" ]; then
+  pass "外し直した結果は remove-layer.mjs と同じ"
+else
+  fail "外し直した結果が remove-layer.mjs と違う" "$result"
+fi
+rm -rf "$expected"
+
+# 全部入りの派生（何も外していない）では何もしない
+before=$(cd "$pristine" && find . -type f | wc -l)
+node "$REPO_ROOT/scripts/sync-layers.mjs" --target "$pristine" \
+  --template "$pristine/layers.json" > /dev/null 2>&1
+after=$(cd "$pristine" && find . -type f | wc -l)
+
+if [ "$before" = "$after" ]; then
+  pass "層を外していない構成では何もしない"
+else
+  fail "層を外していない構成でファイルが変わった"
+fi
+
+# layers.json を持たない派生ではスキップする（CI から無条件に呼ばれるため）
+rm -f "$variant/layers.json"
+if node "$variant/scripts/sync-layers.mjs" --target "$variant" \
+  --template "$pristine/layers.json" > /dev/null 2>&1; then
+  pass "layers.json が無ければスキップする"
+else
+  fail "layers.json が無いとエラーになる"
+fi
+
+rm -rf "$variant" "$pristine"
+echo ""
+
+# --- 8. core は外せない ---
+echo "[8] ガード"
 
 variant=$(make_variant)
 if remove_layers "$variant" core > /dev/null 2>&1; then

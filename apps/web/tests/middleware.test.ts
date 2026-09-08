@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
+import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
 import { middleware } from '@/middleware'
 
 const CREDENTIALS = 'user:pass'
@@ -16,7 +17,7 @@ function buildRequest(
 
   const request = new NextRequest(url, { headers })
 
-  if (options.session) request.cookies.set('session', 'token')
+  if (options.session) request.cookies.set('__session', 'token')
 
   return request
 }
@@ -116,5 +117,24 @@ describe('middleware route protection', () => {
 
     expect(response.status).toBe(200)
   })
+
+  // 回帰: cookie 名が `session` だったため、Firebase Hosting が Cloud Functions /
+  // Cloud Run への転送時に落としてしまい、デプロイ環境でだけログインがループしていた
+  // （Hosting が通すのは `__session` のみ。ローカルの next dev では再現しない）
+  it('セッション cookie の名前は __session', () => {
+    expect(SESSION_COOKIE_NAME).toBe('__session')
+  })
+
+  it.each(protectedPaths)(
+    '%s に __session 以外の名前の cookie しか無ければ /login へ返す',
+    (path) => {
+      const request = new NextRequest(`https://example.web.app${path}`)
+      request.cookies.set('session', 'token')
+
+      const response = middleware(request)
+
+      expect(response.status).toBe(307)
+    }
+  )
 })
 // layer:firebase:end

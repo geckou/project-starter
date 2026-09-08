@@ -49,6 +49,7 @@ jobs:
       # サードパーティ Action は書き込み権限のあるトークン（TEMPLATE_SYNC_TOKEN）を受け取るため、
       # 差し替え可能なタグではなくコミット SHA で固定する。更新は Renovate が SHA ごと差し替える
       - uses: AndreasAugustin/actions-template-sync@8a0f668b83c32a0f673353086d74f12b8853d4f5 # v2.5.3
+        id: sync
         with:
           source_repo_path: geckou/project-starter
           upstream_branch: production
@@ -65,3 +66,47 @@ jobs:
           pr_title: 'chore: テンプレート更新の取り込み'
           pr_labels: template-sync
           pr_commit_msg: 'chore: テンプレート更新の取り込み'
+
+      # テンプレート本体は全部入りなので、同期対象のファイルには派生で外した層の
+      # マーカー・CI ステップ・Renovate 設定が含まれる。layers.json は
+      # .templatesyncignore で派生側の状態が残るため、そのままだと
+      # 「未定義の層のマーカーです」で docs-check が落ち、マージすると
+      # 外したはずの層が復活する（#296）。取り込んだ差分から外し直す
+      - name: 派生で外した層を取り込んだ差分から外し直す
+        if: steps.sync.outputs.pr_branch != ''
+        env:
+          GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
+          PR_BRANCH: ${{ steps.sync.outputs.pr_branch }}
+          TEMPLATE_GIT_HASH: ${{ steps.sync.outputs.template_git_hash }}
+          TEMPLATE_REPO: geckou/project-starter
+        run: |
+          set -euo pipefail
+
+          git fetch origin "$PR_BRANCH"
+          git checkout "$PR_BRANCH"
+
+          if [ ! -f layers.json ]; then
+            echo "layers.json が無いためスキップします"
+            exit 0
+          fi
+
+          # 減算に使うのはテンプレート側（全部入り）のマニフェスト。
+          # ワークツリーの layers.json は派生の構成そのもので、外した層の定義を持たない。
+          # 同期の pull でテンプレートのオブジェクトはローカルに来ているので git show で取れる。
+          # 取れない場合（gc 等）だけ API に落とす
+          if ! git show "${TEMPLATE_GIT_HASH}:layers.json" > /tmp/template-layers.json 2>/dev/null; then
+            gh api "repos/${TEMPLATE_REPO}/contents/layers.json?ref=${TEMPLATE_GIT_HASH}" \
+              --jq '.content' | base64 -d > /tmp/template-layers.json
+          fi
+
+          node scripts/sync-layers.mjs --template /tmp/template-layers.json
+
+          if git diff --quiet; then
+            echo "外し直す層はありませんでした"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am 'chore: 派生で外した層を取り込んだ差分から外し直す'
+          git push origin "$PR_BRANCH"

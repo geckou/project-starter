@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 
 import { BillingActions } from '@/components/billing/BillingActions'
 import { adminAuth, adminDb } from '@/lib/firebase-admin'
+import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
 
 // 参考実装: Web 決済（Stripe）の購入・管理導線。
 // 権利状態は users/{uid}.subscription を単一の正とし、
@@ -11,7 +12,7 @@ import { adminAuth, adminDb } from '@/lib/firebase-admin'
 export const dynamic = 'force-dynamic'
 
 export default async function BillingPage() {
-  const sessionCookie = (await cookies()).get('session')?.value
+  const sessionCookie = (await cookies()).get(SESSION_COOKIE_NAME)?.value
   if (!sessionCookie) redirect('/login?redirect=/billing')
 
   const decoded = await adminAuth

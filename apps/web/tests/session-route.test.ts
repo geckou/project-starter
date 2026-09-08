@@ -151,7 +151,7 @@ describe('POST /api/session', () => {
       expiresIn: expect.any(Number),
     })
     expect(mockCookieSet).toHaveBeenCalledWith(
-      'session',
+      '__session',
       'session-cookie-value',
       expect.objectContaining({ httpOnly: true, path: '/' })
     )
@@ -194,7 +194,7 @@ describe('DELETE /api/session', () => {
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual({ success: true })
-    expect(mockCookieDelete).toHaveBeenCalledWith('session')
+    expect(mockCookieDelete).toHaveBeenCalledWith('__session')
   })
 
   // 回帰: cookie を消すだけで revoke しておらず、漏れた cookie が最長 5 日使えた
@@ -206,7 +206,7 @@ describe('DELETE /api/session', () => {
 
     expect(response.status).toBe(200)
     expect(mockRevokeRefreshTokens).toHaveBeenCalledWith('user-1')
-    expect(mockCookieDelete).toHaveBeenCalledWith('session')
+    expect(mockCookieDelete).toHaveBeenCalledWith('__session')
   })
 
   it('無効な cookie でもサインアウトは成功する', async () => {
@@ -217,7 +217,7 @@ describe('DELETE /api/session', () => {
 
     expect(response.status).toBe(200)
     expect(mockRevokeRefreshTokens).not.toHaveBeenCalled()
-    expect(mockCookieDelete).toHaveBeenCalledWith('session')
+    expect(mockCookieDelete).toHaveBeenCalledWith('__session')
   })
 
   it('クロスサイトからの DELETE は 403 を返す', async () => {

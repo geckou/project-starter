@@ -177,3 +177,27 @@ core から加算で組み直した構成を、それぞれインストールし
 - 逆に `scripts/remove-layer.mjs` / `scripts/check-layers.mjs` は同期対象。マニフェストの形式を
   変えるときは、古いマニフェストでも動くか（キーが無くても既定値で動くか）に注意する
 - 層の構成を持たないプロジェクトは `layers.json` を削除してよい。検証はスキップされる
+
+### Template Sync は外した層を復活させない
+
+テンプレート本体は全部入りなので、同期対象のファイル（`renovate.json5`・
+`.github/workflows/deploy.yml`・`scripts/deploy.sh`・`scripts/use-env.sh`・
+`lint-staged.config.cjs` 等）には外した層のマーカーやステップが入っている。
+`layers.json` は ignore されて派生側の状態が残るため、素通しすると
+「未定義の層のマーカーです」で `check-layers.mjs` が落ち、マージすれば外した層が戻る。
+
+`template-sync.yml` は PR を作った直後に `scripts/sync-layers.mjs` を走らせ、
+**テンプレートの `layers.json` にはあるが派生の `layers.json` に無い層**を、
+取り込んだ差分に対して外し直してから PR ブランチへ push する。
+
+```bash
+# 手元で同じことをする（同期 PR のブランチで）
+gh api repos/geckou/project-starter/contents/layers.json --jq '.content' \
+  | base64 -d > /tmp/template-layers.json
+node scripts/sync-layers.mjs --template /tmp/template-layers.json --dry-run
+```
+
+層を 1 つも外していない派生と、`layers.json` を消した派生では何もしない。
+残る層の定義はテンプレート側（＝取り込んだ最新）を正に書き直すので、
+同期でファイルやマーカーが増えても `check-layers.mjs` が通る。派生でしか定義していない
+層があればそのまま残す。
