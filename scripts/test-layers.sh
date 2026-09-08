@@ -489,6 +489,59 @@ else
   fail "外した層への import が残っている" "$leftovers"
 fi
 
+# 上の検査はキーワードの列挙なので、新しく足したファイルへの import は素通りする。
+# apps/web の `@/...` を全部解決して、実在しないものが残っていないか見る
+# （層のマーカーで囲み忘れた import は、layer-matrix の型チェックより先にここで分かる）
+unresolved=$(node - "$variant" <<'NODE'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const root = process.argv[2]
+const web = path.join(root, 'apps/web')
+const missing = []
+
+const resolves = (specifier) => {
+  const base = path.join(web, 'src', specifier)
+
+  return ['.ts', '.tsx', '.css', '/index.ts', '/index.tsx', ''].some((suffix) =>
+    fs.existsSync(base + suffix)
+  )
+}
+
+const walk = (dir) => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name === '.next') continue
+
+    const full = path.join(dir, entry.name)
+
+    if (entry.isDirectory()) {
+      walk(full)
+      continue
+    }
+
+    if (!/\.(ts|tsx)$/.test(entry.name)) continue
+
+    for (const match of fs
+      .readFileSync(full, 'utf8')
+      .matchAll(/from '@\/([^']+)'/g)) {
+      if (!resolves(match[1])) {
+        missing.push(`${path.relative(root, full)} -> @/${match[1]}`)
+      }
+    }
+  }
+}
+
+if (fs.existsSync(web)) walk(web)
+
+console.log(missing.join('\n'))
+NODE
+)
+if [ -z "$unresolved" ]; then
+  pass "core 構成に解決できない @/ import が無い"
+else
+  fail "core 構成に解決できない @/ import が残っている" "$unresolved"
+fi
+
 # マーカーは外した層のものだけが消え、残る層のものは残っている。
 # 層ツール自身（scripts/lib/ と層スクリプト）と、マーカーの消え方を検証する
 # テストはマーカーの構文を本文に含むので除く

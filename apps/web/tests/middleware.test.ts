@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
+// layer:firebase:start
 import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
+// layer:firebase:end
 import { middleware } from '@/middleware'
 
 const CREDENTIALS = 'user:pass'
