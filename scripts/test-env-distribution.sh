@@ -63,12 +63,24 @@ trap 'rm -rf "$WORK"' EXIT
 cp -R "$REPO/scripts" "$WORK/scripts"
 
 # 「.env.<環境名> に無いキーの行は書かない」を検証するため、フィクスチャに
-# 存在しないキーを許可リストへ足した版で回す（本体の許可リストは変えない）
+# 存在しないキーを許可リストへ足した版で回す（本体の許可リストは変えない）。
+#
+# use-env.sh の書式が変わってこの置換が当たらなくなると、検証したい状況が
+# そもそも作られないまま全件緑になる。当たったことを下で必ず確かめる
 UNSET_KEY_PATCH='WEB_SSR_ENV_KEYS=(\
   UNSET_KEY'
 sed -i.bak "s/^WEB_SSR_ENV_KEYS=($/${UNSET_KEY_PATCH}/" "$WORK/scripts/use-env.sh" 2>/dev/null ||
   sed -i '' "s/^WEB_SSR_ENV_KEYS=($/${UNSET_KEY_PATCH}/" "$WORK/scripts/use-env.sh"
 rm -f "$WORK/scripts/use-env.sh.bak"
+
+if ! grep -q '^  UNSET_KEY$' "$WORK/scripts/use-env.sh"; then
+  echo "テストの前提を作れませんでした。" >&2
+  echo "  scripts/use-env.sh の WEB_SSR_ENV_KEYS=( の書式が変わって、" >&2
+  echo "  テスト用のキーを差し込む置換が当たらなくなっています。" >&2
+  echo "  このまま進めると「.env.<環境名> に無いキーの行は書かない」の検証が" >&2
+  echo "  素通りするため、ここで止めます。" >&2
+  exit 1
+fi
 mkdir -p "$WORK/apps/web" "$WORK/apps/functions" "$WORK/apps/mobile"
 
 # [6] で deploy.sh を回すために要るもの（firebase.json / package.json / git）
