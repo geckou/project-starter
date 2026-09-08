@@ -76,13 +76,20 @@ fi
 echo ""
 
 # Node.js バージョンチェック
+# メジャーだけでなく minor も見る。@commitlint/* が engines.node で >=22.12.0 を
+# 要求するため、22.0〜22.11 はここを通ったあと yarn install が engines で落ちる
 REQUIRED_NODE=22
-CURRENT_NODE=$(node -v 2>/dev/null | cut -d'.' -f1 | tr -d 'v')
+REQUIRED_NODE_MINOR=12
+CURRENT_NODE=$(node -v 2>/dev/null | tr -d 'v')
+CURRENT_NODE_MAJOR=$(printf '%s' "$CURRENT_NODE" | cut -d'.' -f1)
+CURRENT_NODE_MINOR=$(printf '%s' "$CURRENT_NODE" | cut -d'.' -f2)
 if [ -z "$CURRENT_NODE" ]; then
   echo "[warn] Node.js がインストールされていません"
-  echo "  → Node.js $REQUIRED_NODE 以上をインストールしてください"
-elif [ "$CURRENT_NODE" -lt "$REQUIRED_NODE" ]; then
-  echo "[warn] Node.js v$CURRENT_NODE が検出されました（v$REQUIRED_NODE 以上が必要）"
+  echo "  → Node.js $REQUIRED_NODE.$REQUIRED_NODE_MINOR 以上をインストールしてください"
+elif [ "$CURRENT_NODE_MAJOR" -lt "$REQUIRED_NODE" ] ||
+  { [ "$CURRENT_NODE_MAJOR" -eq "$REQUIRED_NODE" ] &&
+    [ "$CURRENT_NODE_MINOR" -lt "$REQUIRED_NODE_MINOR" ]; }; then
+  echo "[warn] Node.js v$CURRENT_NODE が検出されました（v$REQUIRED_NODE.$REQUIRED_NODE_MINOR 以上が必要）"
   echo "  → nvm use $REQUIRED_NODE または nvm install $REQUIRED_NODE"
 else
   echo "[ok] Node.js v$CURRENT_NODE"
