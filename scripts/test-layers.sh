@@ -74,9 +74,22 @@ make_variant() {
   printf '%s' "$dir"
 }
 
+# SHA-1 を取るコマンド。macOS には sha1sum が無く shasum になる。
+# 無いまま find -exec に渡すと出力が空になり、チェックサムの比較が
+# 「どちらも空文字」で常に一致してしまう（assert が空振りで通る）。
+# 見つからなければここで落として、空振りを起こさない（#314）
+if command -v sha1sum > /dev/null 2>&1; then
+  SHA1=sha1sum
+elif command -v shasum > /dev/null 2>&1; then
+  SHA1='shasum -a 1'
+else
+  echo "[error] sha1sum も shasum も見つかりません。どちらかを入れてください" >&2
+  exit 1
+fi
+
 # ファイル数だけでは中身の書き換えを見逃すため、全ファイルのチェックサムで比べる
 tree_checksum() {
-  find "$1" -type f -exec sha1sum {} + | sed "s|$1||" | sort | sha1sum
+  find "$1" -type f -exec $SHA1 {} + | sed "s|$1||" | sort | $SHA1
 }
 
 remove_layers() {
@@ -698,7 +711,10 @@ renamed_scope='@myapp'
 [ "$local_scope" = "$renamed_scope" ] && renamed_scope='@otherapp'
 # 内部ワークスペースのスコープだけを変える（外部パッケージはそのまま）
 while IFS= read -r target; do
-  sed -i "s#$local_scope/web#$renamed_scope/web#g; s#$local_scope/shared#$renamed_scope/shared#g" "$target"
+  # sed -i は GNU と BSD で引数が違う（BSD は接尾辞が必須で、s 式を接尾辞として
+  # 読んでしまう）。OS で分岐せずに済むよう一時ファイル経由で書き換える（#314）
+  sed "s#$local_scope/web#$renamed_scope/web#g; s#$local_scope/shared#$renamed_scope/shared#g" \
+    "$target" > "$target.tmp" && mv "$target.tmp" "$target"
 done < <(grep -rl "$local_scope/\(web\|shared\)" "$renamed/apps" "$renamed/packages" "$renamed/package.json" 2>/dev/null)
 add_layers "$renamed" "$pristine_renamed" firebase functions > /dev/null 2>&1
 

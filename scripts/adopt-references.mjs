@@ -61,7 +61,7 @@ const CI_WORKFLOW_CONTENT = `name: CI
 # 実行するため（含めると check が二重に走る）。
 on:
   pull_request:
-    branches: [production, 'release/**']
+    branches: [production, 'release/**', 'hotfix/**']
     # paths-ignore は使わない。除外に当たった PR ではワークフローが起動せず、
     # required status check が Pending のままマージできなくなるため。
     # 重いステップの省略は呼ばれる側（ci.yml）が差分を見て判断する

@@ -80,9 +80,22 @@ adopt() {
   node "$SCRIPT" --repo "$dir" "$@" 2>&1
 }
 
+# SHA-1 を取るコマンド。macOS には sha1sum が無く shasum になる。
+# 無いまま find -exec に渡すと出力が空になり、チェックサムの比較が
+# 「どちらも空文字」で常に一致してしまう（assert が空振りで通る）。
+# 見つからなければここで落として、空振りを起こさない（#314）
+if command -v sha1sum > /dev/null 2>&1; then
+  SHA1=sha1sum
+elif command -v shasum > /dev/null 2>&1; then
+  SHA1='shasum -a 1'
+else
+  echo "[error] sha1sum も shasum も見つかりません。どちらかを入れてください" >&2
+  exit 1
+fi
+
 tree_checksum() {
-  find "$1" -type f -not -path '*/.git/*' -exec sha1sum {} + |
-    sed "s|$1||" | sort | sha1sum
+  find "$1" -type f -not -path '*/.git/*' -exec $SHA1 {} + |
+    sed "s|$1||" | sort | $SHA1
 }
 
 echo "=== adopt-references.mjs の回帰テスト ==="
@@ -102,6 +115,16 @@ if grep -qE '^\s*push:' "$derived/.github/workflows/ci.yml"; then
   fail "古い push トリガーが引き継がれた（CI と deploy が二重実行になる）"
 else
   pass "古い push トリガーを引き継がない"
+fi
+
+# 回帰: hotfix/** が抜けていて、ruleset で PR は必須なのに CI が走らない
+# 緊急対応 PR ができていた（#309）
+if grep -q "branches: \[production, 'release/\*\*', 'hotfix/\*\*'\]" \
+  "$derived/.github/workflows/ci.yml"; then
+  pass "PR トリガーに hotfix/** が含まれる"
+else
+  fail "PR トリガーに hotfix/** が無い（緊急対応の PR で CI が走らない）" \
+    "$(grep -n 'branches' "$derived/.github/workflows/ci.yml" 2>&1)"
 fi
 
 if grep -q '^\.github/workflows/ci\.yml$' "$derived/.templatesyncignore"; then
