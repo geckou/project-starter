@@ -8,13 +8,15 @@ set -u
 #   - 多すぎる: 秘密が関数の環境変数として載り、閲覧者ロールから読める
 # のどちらかになる。どちらも型チェックにもテストにも引っかからないため、ここで固定する。
 #
-# 検証するもの:
-#   1. apps/web/.env が SSR で読むキーだけを持つ（framework-backed hosting 用）
-#   2. apps/web/.env に秘密が載らない
-#   3. apps/functions/.env が許可リストのキーだけを持つ
-#   4. apps/functions/.env に秘密が載らない
-#   5. 環境を切り替えると前の環境の値が残らない
-#   6. .env.local は全文コピーされる（ローカル開発とビルドはこちらを読む）
+# 検証するもの（[n] は下のセクション番号）:
+#   [1] apps/web/.env が SSR で読むキーだけを持ち、秘密を持たない
+#   [2] apps/functions/.env が許可リストのキーだけを持ち、秘密を持たない（functions 層のみ）
+#   [3] .env.local は全文コピーされる（ローカル開発と next build はこちらを読む）
+#   [4] 環境を切り替えると、前の環境の値が消えて新しい値が入る
+#   [5] 許可リストのキーが Cloud Functions の予約語に当たらない
+#
+# 「ファイルが無いので grep が空振りして緑」を避けるため、内容を見る前に
+# 必ず存在を主張する。層を持たない構成では、その層のセクションごと飛ばす。
 
 cd "$(dirname "$0")/.."
 REPO=$(pwd)
@@ -35,6 +37,19 @@ fail() {
   fi
 }
 
+# 内容を検査する前に、そのファイルが在ることを主張する。
+# grep -q は対象が無ければ非ゼロを返すため、存在確認を挟まないと
+# 「載っていない」系の assert がファイルごと消えても緑のままになる
+require_file() {
+  if [ -f "$1" ]; then
+    pass "$2"
+    return 0
+  fi
+
+  fail "$2（ファイルが無い）" "$1"
+  return 1
+}
+
 WORK=$(mktemp -d) || exit 1
 
 if [ -z "$WORK" ] || [ ! -d "$WORK" ]; then
@@ -45,6 +60,14 @@ fi
 trap 'rm -rf "$WORK"' EXIT
 
 cp -R "$REPO/scripts" "$WORK/scripts"
+
+# 「.env.<環境名> に無いキーの行は書かない」を検証するため、フィクスチャに
+# 存在しないキーを許可リストへ足した版で回す（本体の許可リストは変えない）
+UNSET_KEY_PATCH='WEB_SSR_ENV_KEYS=(\
+  UNSET_KEY'
+sed -i.bak "s/^WEB_SSR_ENV_KEYS=($/${UNSET_KEY_PATCH}/" "$WORK/scripts/use-env.sh" 2>/dev/null ||
+  sed -i '' "s/^WEB_SSR_ENV_KEYS=($/${UNSET_KEY_PATCH}/" "$WORK/scripts/use-env.sh"
+rm -f "$WORK/scripts/use-env.sh.bak"
 mkdir -p "$WORK/apps/web" "$WORK/apps/functions" "$WORK/apps/mobile"
 
 # use-env.sh の末尾は firebase use を呼ぶ。CLI もログインも無い環境で回すため
@@ -64,6 +87,7 @@ STRIPE_SECRET_KEY=${SECRET_VALUE}
 ENVFILE
 
 cat >"$WORK/.env.production" <<'ENVFILE'
+BASIC_AUTH_CREDENTIALS=user:production-password
 NEXT_PUBLIC_GTM_ID=GTM-PRODUCTION
 ALLOWED_ORIGINS=https://example.com
 ENVFILE
@@ -75,6 +99,18 @@ run_use_env() {
 echo "=== use-env.sh の配布内容 ==="
 echo ""
 
+# functions 層を持たない構成（core / core + firebase）では apps/functions/.env を
+# 配らない。採用の判定は use-env.sh に許可リストの宣言が残っているかで行う
+# （layers.json を持たない古い派生でも動く）。
+#
+# ここで層マーカーの文字列そのものを書かないこと。書くと remove-layer.mjs が
+# **このファイルのその行を本物のマーカーとみなし**、対応する end が無いため
+# ファイル末尾まで削り落とす（実際に踏んで 276 行が 104 行になった）
+HAS_FUNCTIONS_LAYER=false
+if grep -q '^FUNCTIONS_ENV_KEYS=(' "$REPO/scripts/use-env.sh"; then
+  HAS_FUNCTIONS_LAYER=true
+fi
+
 echo "[1] apps/web/.env（framework-backed hosting の SSR 関数が読む）"
 
 if ! run_use_env staging; then
@@ -83,60 +119,74 @@ else
   pass "use-env.sh staging が通る"
 fi
 
-if [ -f "$WORK/apps/web/.env" ]; then
-  pass "apps/web/.env が生成される"
-else
-  fail "apps/web/.env が生成されない（SSR でサーバー専用の値が undefined になる）" \
-    "$(cat "$WORK/use-env.log")"
-fi
+if require_file "$WORK/apps/web/.env" "apps/web/.env が生成される"; then
+  if grep -qx 'BASIC_AUTH_CREDENTIALS=user:staging-password' "$WORK/apps/web/.env"; then
+    pass "SSR で読むキーが載る（BASIC_AUTH_CREDENTIALS）"
+  else
+    fail "BASIC_AUTH_CREDENTIALS が apps/web/.env に無い（dev/stg の Basic 認証が効かない）" \
+      "$(cat "$WORK/apps/web/.env")"
+  fi
 
-if grep -qx 'BASIC_AUTH_CREDENTIALS=user:staging-password' "$WORK/apps/web/.env" 2>/dev/null; then
-  pass "SSR で読むキーが載る（BASIC_AUTH_CREDENTIALS）"
-else
-  fail "BASIC_AUTH_CREDENTIALS が apps/web/.env に無い（dev/stg の Basic 認証が効かない）" \
-    "$(cat "$WORK/apps/web/.env" 2>&1)"
-fi
+  if grep -q "$SECRET_VALUE" "$WORK/apps/web/.env"; then
+    fail "apps/web/.env に秘密が載っている（関数の環境変数は閲覧者ロールから読める）" \
+      "$(grep -n "$SECRET_VALUE" "$WORK/apps/web/.env")"
+  else
+    pass "apps/web/.env に秘密が載らない"
+  fi
 
-if grep -q "$SECRET_VALUE" "$WORK/apps/web/.env" 2>/dev/null; then
-  fail "apps/web/.env に秘密が載っている（関数の環境変数は閲覧者ロールから読める）" \
-    "$(grep -n "$SECRET_VALUE" "$WORK/apps/web/.env")"
-else
-  pass "apps/web/.env に秘密が載らない"
-fi
+  # NEXT_PUBLIC_* は next build がローカルで埋め込むので、関数の環境変数には要らない
+  if grep -q '^NEXT_PUBLIC_' "$WORK/apps/web/.env"; then
+    fail "apps/web/.env に NEXT_PUBLIC_* が載っている（ビルド時に埋め込まれるので不要）" \
+      "$(grep -n '^NEXT_PUBLIC_' "$WORK/apps/web/.env")"
+  else
+    pass "apps/web/.env に NEXT_PUBLIC_* を載せない"
+  fi
 
-# NEXT_PUBLIC_* は next build がローカルで埋め込むので、関数の環境変数には要らない
-if grep -q '^NEXT_PUBLIC_' "$WORK/apps/web/.env" 2>/dev/null; then
-  fail "apps/web/.env に NEXT_PUBLIC_* が載っている（ビルド時に埋め込まれるので不要）" \
-    "$(grep -n '^NEXT_PUBLIC_' "$WORK/apps/web/.env")"
-else
-  pass "apps/web/.env に NEXT_PUBLIC_* を載せない"
+  # .env.<環境名> に無いキーは行を書かない（空の値で上書きしない）
+  if grep -q '^UNSET_KEY=' "$WORK/apps/web/.env"; then
+    fail "許可リストにあるが .env.staging に無いキーの行が書かれている" \
+      "$(grep -n '^UNSET_KEY=' "$WORK/apps/web/.env")"
+  else
+    pass ".env.<環境名> に無いキーは行を書かない"
+  fi
 fi
 
 echo ""
-echo "[2] apps/functions/.env（Functions が読む）"
 
-if grep -qx 'ALLOWED_ORIGINS=https://staging.example.com' "$WORK/apps/functions/.env" 2>/dev/null; then
-  pass "許可リストのキーが載る（ALLOWED_ORIGINS）"
-else
-  fail "ALLOWED_ORIGINS が apps/functions/.env に無い" \
-    "$(cat "$WORK/apps/functions/.env" 2>&1)"
-fi
+if [ "$HAS_FUNCTIONS_LAYER" = true ]; then
+  echo "[2] apps/functions/.env（Functions が読む）"
 
-if grep -q "$SECRET_VALUE" "$WORK/apps/functions/.env" 2>/dev/null; then
-  fail "apps/functions/.env に秘密が載っている" \
-    "$(grep -n "$SECRET_VALUE" "$WORK/apps/functions/.env")"
+  if require_file "$WORK/apps/functions/.env" "apps/functions/.env が生成される"; then
+    if grep -qx 'ALLOWED_ORIGINS=https://staging.example.com' "$WORK/apps/functions/.env"; then
+      pass "許可リストのキーが載る（ALLOWED_ORIGINS）"
+    else
+      fail "ALLOWED_ORIGINS が apps/functions/.env に無い" \
+        "$(cat "$WORK/apps/functions/.env")"
+    fi
+
+    if grep -q "$SECRET_VALUE" "$WORK/apps/functions/.env"; then
+      fail "apps/functions/.env に秘密が載っている" \
+        "$(grep -n "$SECRET_VALUE" "$WORK/apps/functions/.env")"
+    else
+      pass "apps/functions/.env に秘密が載らない"
+    fi
+  fi
 else
-  pass "apps/functions/.env に秘密が載らない"
+  echo "[2] apps/functions/.env — functions 層が無いので飛ばす"
 fi
 
 echo ""
 echo "[3] .env.local は全文コピー（ローカル開発と next build が読む）"
 
-if grep -q "$SECRET_VALUE" "$WORK/apps/web/.env.local" 2>/dev/null; then
-  pass "apps/web/.env.local は全文（サーバー専用の値も含む）"
-else
-  fail "apps/web/.env.local が全文になっていない" "$(cat "$WORK/apps/web/.env.local" 2>&1)"
-fi
+for target in .env.local apps/web/.env.local; do
+  if require_file "$WORK/$target" "$target が生成される"; then
+    if grep -q "$SECRET_VALUE" "$WORK/$target"; then
+      pass "$target は全文（サーバー専用の値も含む）"
+    else
+      fail "$target が全文になっていない" "$(cat "$WORK/$target")"
+    fi
+  fi
+done
 
 echo ""
 echo "[4] 環境の切り替え"
@@ -154,11 +204,74 @@ else
   pass "apps/web/.env に前の環境の値が残らない"
 fi
 
-if grep -q 'staging.example.com' "$WORK/apps/functions/.env" 2>/dev/null; then
-  fail "apps/functions/.env に前の環境の値が残っている" \
-    "$(cat "$WORK/apps/functions/.env")"
+# 「消える」だけでなく「新しい値が入る」ことも見る。
+# 見ないと、生成が空になるバグを通してしまう
+if grep -qx 'BASIC_AUTH_CREDENTIALS=user:production-password' "$WORK/apps/web/.env" 2>/dev/null; then
+  pass "apps/web/.env に切り替え先の値が入る"
 else
-  pass "apps/functions/.env に前の環境の値が残らない"
+  fail "apps/web/.env に切り替え先の値が入っていない" "$(cat "$WORK/apps/web/.env" 2>&1)"
+fi
+
+if [ "$HAS_FUNCTIONS_LAYER" = true ]; then
+  if grep -q 'staging.example.com' "$WORK/apps/functions/.env" 2>/dev/null; then
+    fail "apps/functions/.env に前の環境の値が残っている" \
+      "$(cat "$WORK/apps/functions/.env")"
+  else
+    pass "apps/functions/.env に前の環境の値が残らない"
+  fi
+
+  if grep -qx 'ALLOWED_ORIGINS=https://example.com' "$WORK/apps/functions/.env" 2>/dev/null; then
+    pass "apps/functions/.env に切り替え先の値が入る"
+  else
+    fail "apps/functions/.env に切り替え先の値が入っていない" \
+      "$(cat "$WORK/apps/functions/.env" 2>&1)"
+  fi
+fi
+
+echo ""
+echo "[5] 許可リストのキーが Cloud Functions の予約語に当たらない"
+
+# firebase-tools の lib/functions/env.js が弾くもの。当たると firebase deploy が
+# Failed to validate key で止まる（秘密の混入より先に、デプロイ自体が落ちる）
+RESERVED_PREFIXES='X_GOOGLE_ FIREBASE_ EXT_'
+RESERVED_KEYS='FIREBASE_CONFIG CLOUD_RUNTIME_CONFIG EVENTARC_CLOUD_EVENT_SOURCE ENTRY_POINT GCP_PROJECT GCLOUD_PROJECT GOOGLE_CLOUD_PROJECT FUNCTION_TRIGGER_TYPE FUNCTION_NAME FUNCTION_MEMORY_MB FUNCTION_TIMEOUT_SEC FUNCTION_IDENTITY FUNCTION_REGION FUNCTION_TARGET FUNCTION_SIGNATURE_TYPE K_SERVICE K_REVISION PORT K_CONFIGURATION'
+
+# use-env.sh の許可リストに載っているキーを取り出す
+allowlist_keys=$(
+  sed -n '/^WEB_SSR_ENV_KEYS=(/,/^)/p;/^FUNCTIONS_ENV_KEYS=(/,/^)/p' "$REPO/scripts/use-env.sh" |
+    grep -vE '^(WEB_SSR_ENV_KEYS|FUNCTIONS_ENV_KEYS)=\(|^\)|^\s*#' |
+    tr -d ' \t' | grep -v '^$'
+)
+
+if [ -z "$allowlist_keys" ]; then
+  fail "use-env.sh から許可リストを読み取れない" "検査が素通りしてしまいます"
+else
+  reserved_hits=""
+
+  while IFS= read -r key; do
+    [ -n "$key" ] || continue
+
+    for reserved in $RESERVED_KEYS; do
+      [ "$key" = "$reserved" ] && reserved_hits="${reserved_hits}${key}（予約キー）
+"
+    done
+
+    for prefix in $RESERVED_PREFIXES; do
+      case "$key" in
+        "$prefix"*) reserved_hits="${reserved_hits}${key}（予約プレフィックス ${prefix}）
+" ;;
+      esac
+    done
+  done <<EOF
+$allowlist_keys
+EOF
+
+  if [ -z "$reserved_hits" ]; then
+    pass "許可リストのキーは全て予約語に当たらない"
+  else
+    fail "許可リストに Cloud Functions の予約語がある（firebase deploy が失敗する）" \
+      "$(printf '%s' "$reserved_hits")"
+  fi
 fi
 
 echo ""

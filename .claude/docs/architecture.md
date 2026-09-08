@@ -151,7 +151,7 @@ app/<path>/
 | Web クライアント用 | `.env.local`（ルート） | `NEXT_PUBLIC_FIREBASE_*`               |
 | Mobile 用          | `apps/mobile/.env.local`（use-env.sh が配布） | `FIREBASE_*`（app.config.ts の extra 経由） |
 | サーバー専用       | `.env.local`（ルート） | `FIREBASE_SERVICE_ACCOUNT_KEY`         |
-| SSR 実行時         | `apps/web/.env`（use-env.sh が許可リストのキーのみ生成） | `BASIC_AUTH_CREDENTIALS` |
+| SSR 実行時（関数の環境変数） | `apps/web/.env`（use-env.sh が許可リストのキーのみ生成） | `BASIC_AUTH_CREDENTIALS` |
 | Functions 専用     | `apps/functions/.env`（use-env.sh が許可リストのキーのみ生成） | `ALLOWED_ORIGINS`, `STRIPE_PRICE_IDS` |
 | Functions の秘密   | Secret Manager（`firebase functions:secrets:set`）。エミュレーターは `apps/functions/.secret.local` | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `REVENUECAT_WEBHOOK_AUTH` |
 
@@ -188,32 +188,43 @@ Firebase プロジェクトごとに別なので、環境の切り替えでキ�
 として現れる。`api-client.ts` は `NODE_ENV === 'production'`（Expo は `__DEV__ === false`）で
 未設定なら `throw` する。Functions 側の `ALLOWED_ORIGINS` と同じ方針。
 
-### framework-backed hosting の env は 2 経路ある
+### framework-backed hosting の env の届き方
 
 `hosting.frameworksBackend` を使う構成では、SSR 用の Cloud Functions を firebase-tools が
-自動生成する。このとき**ビルド時と実行時で読まれるファイルが違う**。
+自動生成する。`apps/web/` の env ファイルは**3 通りの届き方**をする。以下は
+firebase-tools 14 の `lib/frameworks/index.js` と `lib/functions/env.js` を読んで確かめたもの。
 
-| 経路 | 読まれるファイル | 使う値 |
+| 届き方 | 対象のファイル | 効くところ |
 | --- | --- | --- |
-| ビルド時（`next build`） | `apps/web/.env.local`（Next.js の規約どおり） | `NEXT_PUBLIC_*` |
-| SSR 実行時（関数の環境変数） | **`apps/web/.env` だけ** | サーバー専用（`NEXT_PUBLIC_` でないもの） |
+| ビルドに埋め込まれる | Next.js の規約どおり（`.env.local` → `.env.production` → `.env`） | `NEXT_PUBLIC_*` |
+| **関数の環境変数**になる | `.env` / `.env.<Firebase プロジェクト ID>` / `.env.<.firebaserc のエイリアス>` | SSR・middleware |
+| ファイルとして同梱され、実行時に Next が読む | `apps/web/.env.*` 全部（`.env.local` を含む） | SSR・middleware |
 
 **`next build` はローカルで走る。** firebase-tools は手元でビルドし、`.next` の成果物を
-関数のソースへコピーしてデプロイする（Cloud Build 側でビルドし直さない）。そのため
-`NEXT_PUBLIC_*` は `.env.local` で足りる。
+関数のソースへコピーする（Cloud Build 側でビルドし直さない）。そのため `NEXT_PUBLIC_*` は
+`.env.local` で足りる。
 
-**関数の環境変数になるのは `apps/web/.env` の中身だけ。** `.env.local` は関数のディレクトリへ
-コピーはされるが、環境変数としては取り込まれない。`use-env.sh` が `WEB_SSR_ENV_KEYS` の
-許可リストで `apps/web/.env` を生成しているのはこのため。**SSR で読むサーバー専用の変数を
-足したら、`scripts/use-env.sh` の `WEB_SSR_ENV_KEYS` にも追記すること**（`apps/functions/.env` と同じ）。
+**サーバー専用の値は `apps/web/.env` に置く。** 3 行目の経路（Next が実行時に読む）だけに
+頼ると、`.env.local` が同梱されるかどうかというアダプタの実装に依存する。`use-env.sh` が
+`WEB_SSR_ENV_KEYS` の許可リストで `apps/web/.env` を生成しているのはこのため。
+**SSR で読むサーバー専用の変数を足したら、`scripts/use-env.sh` の `WEB_SSR_ENV_KEYS` にも
+追記すること**（`apps/functions/.env` と同じ）。
 
-`apps/web/.env` にも秘密は置かない。理由は `apps/functions/.env` と同じで、関数の環境変数は
-閲覧者ロールでも読める。`FIREBASE_SERVICE_ACCOUNT_KEY` は Cloud Functions では不要
-（ADC が自動で使われる）。配布の内容は `scripts/test-env-distribution.sh` が固定している。
+> ⚠️ **`apps/web/.env.production` を作らないこと。** `production` は `.firebaserc` の
+> エイリアス名でもあるため、firebase-tools はこれを**関数の環境変数として全文読み込む**。
+> `FIREBASE_*` を含んでいると予約プレフィックスの検査に当たり、`firebase deploy` が
+> `Failed to validate key` で止まる。`.env.<Firebase プロジェクト ID>` も同じ。
+> ビルド時の `NEXT_PUBLIC_*` は `.env.local` で届くので、この経路は要らない。
 
-> firebase-tools は `apps/web/.env.<Firebase プロジェクト ID>` も読む（環境名ではなく
-> プロジェクト ID）。テンプレートはこの経路を使っていないが、置くと `next build` に効くので、
-> 意図せず作らないこと。
+> ⚠️ **`apps/web/.env.local` は `.env.<環境名>` の全文コピーで、SSR 関数に同梱される。**
+> つまり `FIREBASE_SERVICE_ACCOUNT_KEY` のようなサーバー秘密も関数のソースに入り、
+> 実行時の `process.env` に載る。`apps/web/.env` を許可リストにしても**そちらは塞がらない**。
+> Cloud Functions の環境変数（`gcloud functions describe` で読める）にはならないが、
+> 関数のソースを取得できる権限があれば読める。**`.env.<環境名>` に秘密を置くときは、
+> それが SSR 関数からも読めることを前提にする**（`geckou/project-starter#329`）。
+
+配布の内容は `scripts/test-env-distribution.sh` が固定している（どのキーがどのファイルへ行くか、
+秘密が載らないか、許可リストが Cloud Functions の予約語に当たらないか）。
 
 ## 状態管理（Zustand）
 

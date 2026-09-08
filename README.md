@@ -279,7 +279,7 @@ yarn env:production
 
 #### CI 自動デプロイ用の GitHub Secrets 登録
 
-[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) はデプロイ時に環境別の env をシークレットから `.env.<環境名>` に書き出す（その後 `scripts/use-env.sh` が `.env.local` へ配布する）。
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) はデプロイ時に環境別の env をシークレットから `.env.<環境名>` に書き出す（その後 `scripts/use-env.sh` が `.env.local` と各アプリへ配布する。配布先の一覧は `.env.example` の冒頭）。
 未登録のまま push すると `.env.local` が空のままビルドされ失敗する。
 リポジトリに以下を登録する（値は対応する env ファイルの全文）:
 

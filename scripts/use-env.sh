@@ -75,6 +75,32 @@ read_env_value() {
   printf '%s' "${value}"
 }
 
+# 許可リストのキーだけを抜き出して env ファイルを生成する。
+#   write_env_file <出力先> <用途の説明> <キー…>
+# 毎回作り直すのは、残ったまま環境を切り替えると前の環境の値が配られるため
+write_env_file() {
+  local destination=$1
+  local description=$2
+  shift 2
+
+  {
+    echo "# このファイルは scripts/use-env.sh が .env.${ENV} から生成しています。"
+    echo "# 直接編集しても yarn env:<環境名> の実行で上書きされます。"
+    echo "# 値を変更する場合は .env.${ENV} を編集してください。"
+    echo "#"
+    echo "# ${description}"
+    echo ""
+
+    local key line
+    for key in "$@"; do
+      line=$(grep -E "^${key}=" ".env.${ENV}" | tail -n 1 || true)
+      if [ -n "${line}" ]; then
+        echo "${line}"
+      fi
+    done
+  } >"${destination}"
+}
+
 # layer:billing:start
 # 本番キーの誤用ガード。
 # development 環境に本番キーが入っていると、開発中の操作が実際の決済として
@@ -128,24 +154,10 @@ cp ".env.${ENV}" .env.local
 cp ".env.${ENV}" apps/web/.env.local
 echo "[done] .env.${ENV} → .env.local, apps/web/.env.local にコピーしました"
 
-# apps/web/.env を許可リストのキーだけで生成する。
-# 毎回作り直すのは、残ったまま環境を切り替えると前の環境の値が SSR 関数へ
-# 配られるため（apps/functions/.env と同じ理由）
-{
-  echo "# このファイルは scripts/use-env.sh が .env.${ENV} から生成しています。"
-  echo "# 直接編集しても yarn env:<環境名> の実行で上書きされます。"
-  echo "# 値を変更する場合は .env.${ENV} を編集してください。"
-  echo "#"
-  echo "# framework-backed hosting の SSR 関数には、このファイルの内容だけが"
-  echo "# 環境変数として取り込まれます（.env.local は取り込まれません）。"
-  echo ""
-  for key in "${WEB_SSR_ENV_KEYS[@]}"; do
-    line=$(grep -E "^${key}=" ".env.${ENV}" | tail -n 1 || true)
-    if [ -n "${line}" ]; then
-      echo "${line}"
-    fi
-  done
-} > apps/web/.env
+# apps/web/.env を許可リストのキーだけで生成する
+write_env_file apps/web/.env \
+  "framework-backed hosting では、このファイルの内容が SSR 関数の環境変数になります。" \
+  "${WEB_SSR_ENV_KEYS[@]}"
 echo "[done] .env.${ENV} → apps/web/.env を生成しました（SSR で読むキーのみ）"
 
 # layer:mobile:start
@@ -158,18 +170,9 @@ echo "[done] .env.${ENV} → apps/mobile/.env.local にコピーしました"
 # apps/functions/.env を許可リストのキーだけで生成する。
 # ここを配布しないと、環境を切り替えても Functions だけ前の環境のキーが残り、
 # 例えば develop に切り替えたつもりで本番の Stripe / RevenueCat を叩いてしまう
-{
-  echo "# このファイルは scripts/use-env.sh が .env.${ENV} から生成しています。"
-  echo "# 直接編集しても yarn env:<環境名> の実行で上書きされます。"
-  echo "# 値を変更する場合は .env.${ENV} を編集してください。"
-  echo ""
-  for key in "${FUNCTIONS_ENV_KEYS[@]}"; do
-    line=$(grep -E "^${key}=" ".env.${ENV}" | tail -n 1 || true)
-    if [ -n "${line}" ]; then
-      echo "${line}"
-    fi
-  done
-} > apps/functions/.env
+write_env_file apps/functions/.env \
+  "デプロイ時に、このファイルの内容が関数の環境変数として取り込まれます。" \
+  "${FUNCTIONS_ENV_KEYS[@]}"
 echo "[done] .env.${ENV} → apps/functions/.env を生成しました（Functions 用のキーのみ）"
 # layer:functions:end
 
