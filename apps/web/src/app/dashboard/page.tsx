@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import { adminAuth, adminDb } from '@/lib/firebase-admin'
+import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
 
 // 参考実装: 保護ページでのセッション検証 + SSR での Firestore データ取得パターン
 // ビルド時の静的生成をスキップし、リクエスト時に SSR で実行する
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic'
 export default async function DashboardPage() {
   // middleware は Cookie の存在チェックのみ（Edge runtime では firebase-admin が使えない）。
   // セッション Cookie の実検証は保護ページ側で行う
-  const sessionCookie = (await cookies()).get('session')?.value
+  const sessionCookie = (await cookies()).get(SESSION_COOKIE_NAME)?.value
   if (!sessionCookie) redirect('/login?redirect=/dashboard')
 
   // 失効チェック付きで検証（第2引数 true でログアウト・無効化済みセッションを弾く）

@@ -74,6 +74,11 @@ make_variant() {
   printf '%s' "$dir"
 }
 
+# ファイル数だけでは中身の書き換えを見逃すため、全ファイルのチェックサムで比べる
+tree_checksum() {
+  find "$1" -type f -exec sha1sum {} + | sed "s|$1||" | sort | sha1sum
+}
+
 remove_layers() {
   local dir=$1
   shift
@@ -489,6 +494,59 @@ else
   fail "外した層への import が残っている" "$leftovers"
 fi
 
+# 上の検査はキーワードの列挙なので、新しく足したファイルへの import は素通りする。
+# apps/web の `@/...` を全部解決して、実在しないものが残っていないか見る
+# （層のマーカーで囲み忘れた import は、layer-matrix の型チェックより先にここで分かる）
+unresolved=$(node - "$variant" <<'NODE'
+const fs = require('node:fs')
+const path = require('node:path')
+
+const root = process.argv[2]
+const web = path.join(root, 'apps/web')
+const missing = []
+
+const resolves = (specifier) => {
+  const base = path.join(web, 'src', specifier)
+
+  return ['.ts', '.tsx', '.css', '/index.ts', '/index.tsx', ''].some((suffix) =>
+    fs.existsSync(base + suffix)
+  )
+}
+
+const walk = (dir) => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name === '.next') continue
+
+    const full = path.join(dir, entry.name)
+
+    if (entry.isDirectory()) {
+      walk(full)
+      continue
+    }
+
+    if (!/\.(ts|tsx)$/.test(entry.name)) continue
+
+    for (const match of fs
+      .readFileSync(full, 'utf8')
+      .matchAll(/from '@\/([^']+)'/g)) {
+      if (!resolves(match[1])) {
+        missing.push(`${path.relative(root, full)} -> @/${match[1]}`)
+      }
+    }
+  }
+}
+
+if (fs.existsSync(web)) walk(web)
+
+console.log(missing.join('\n'))
+NODE
+)
+if [ -z "$unresolved" ]; then
+  pass "core 構成に解決できない @/ import が無い"
+else
+  fail "core 構成に解決できない @/ import が残っている" "$unresolved"
+fi
+
 # マーカーは外した層のものだけが消え、残る層のものは残っている。
 # 層ツール自身（scripts/lib/ と層スクリプト）と、マーカーの消え方を検証する
 # テストはマーカーの構文を本文に含むので除く
@@ -687,8 +745,86 @@ fi
 rm -rf "$variant" "$pristine"
 echo ""
 
-# --- 7. core は外せない ---
-echo "[7] ガード"
+# --- 7. Template Sync 後の外し直し ---
+echo "[7] sync-layers.mjs（同期で戻った層を外し直す）"
+
+# 減算済みの派生に、同期対象のファイル（.templatesyncignore に載っていないもの）だけを
+# テンプレートから戻して、Template Sync が層マーカーを復活させる状況を作る（#296）
+pristine=$(make_variant)
+variant=$(mktemp -d)
+cp -a "$pristine/." "$variant/"
+remove_layers "$variant" mobile > /dev/null 2>&1
+
+for synced in renovate.json5 .github/workflows/deploy.yml scripts/deploy.sh \
+  scripts/use-env.sh lint-staged.config.cjs; do
+  mkdir -p "$variant/$(dirname "$synced")"
+  cp "$pristine/$synced" "$variant/$synced"
+done
+mkdir -p "$variant/renovate"
+cp -a "$pristine/renovate/." "$variant/renovate/"
+
+if node "$variant/scripts/check-layers.mjs" > /dev/null 2>&1; then
+  fail "同期で戻ったマーカーを check-layers.mjs が見逃す（この前提が崩れるとテストの意味が無い）"
+else
+  pass "同期で戻ったマーカーは check-layers.mjs が検出する"
+fi
+
+sync_output=$(node "$variant/scripts/sync-layers.mjs" --target "$variant" \
+  --template "$pristine/layers.json" 2>&1)
+
+if node "$variant/scripts/check-layers.mjs" > /dev/null 2>&1; then
+  pass "外し直したあとは check-layers.mjs が通る"
+else
+  fail "外し直したあとも check-layers.mjs が落ちる" "$sync_output"
+fi
+
+# 外し直した結果が、最初から remove-layer した状態と一致すること
+expected=$(mktemp -d)
+cp -a "$pristine/." "$expected/"
+remove_layers "$expected" mobile > /dev/null 2>&1
+result=$(node "$REPO_ROOT/scripts/lib/compare-trees.mjs" "$expected" "$variant" 2>&1)
+
+if [ "$result" = "IDENTICAL" ]; then
+  pass "外し直した結果は remove-layer.mjs と同じ"
+else
+  fail "外し直した結果が remove-layer.mjs と違う" "$result"
+fi
+rm -rf "$expected"
+
+# 全部入りの派生（何も外していない）では何もしない。
+# ファイル数だけだと同数のまま中身が書き換わった場合を見逃す
+before=$(tree_checksum "$pristine")
+node "$REPO_ROOT/scripts/sync-layers.mjs" --target "$pristine" \
+  --template "$pristine/layers.json" > /dev/null 2>&1
+after=$(tree_checksum "$pristine")
+
+if [ "$before" = "$after" ]; then
+  pass "層を外していない構成では何もしない"
+else
+  fail "層を外していない構成でファイルが変わった"
+fi
+
+# フラグの値を省略したら分かりやすく落ちる（カレントディレクトリ扱いにしない）
+if node "$REPO_ROOT/scripts/sync-layers.mjs" --template > /dev/null 2>&1; then
+  fail "--template の値を省略してもエラーにならない"
+else
+  pass "--template の値を省略するとエラーになる"
+fi
+
+# layers.json を持たない派生ではスキップする（CI から無条件に呼ばれるため）
+rm -f "$variant/layers.json"
+if node "$variant/scripts/sync-layers.mjs" --target "$variant" \
+  --template "$pristine/layers.json" > /dev/null 2>&1; then
+  pass "layers.json が無ければスキップする"
+else
+  fail "layers.json が無いとエラーになる"
+fi
+
+rm -rf "$variant" "$pristine"
+echo ""
+
+# --- 8. core は外せない ---
+echo "[8] ガード"
 
 variant=$(make_variant)
 if remove_layers "$variant" core > /dev/null 2>&1; then
@@ -702,11 +838,6 @@ if remove_layers "$variant" no-such-layer > /dev/null 2>&1; then
 else
   pass "未定義の層はエラーになる"
 fi
-
-# ファイル数だけでは中身の書き換えを見逃すため、全ファイルのチェックサムで比べる
-tree_checksum() {
-  find "$1" -type f -exec sha1sum {} + | sed "s|$1||" | sort | sha1sum
-}
 
 before=$(tree_checksum "$variant")
 remove_layers "$variant" --dry-run mobile > /dev/null 2>&1

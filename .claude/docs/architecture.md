@@ -52,6 +52,19 @@ core の時点で存在し、Blaze プランもこの時点で必須になる。
 - ログインページ: `apps/web/src/app/login/page.tsx`
 - ミドルウェア: `apps/web/src/middleware.ts`
 
+### session cookie の名前は `__session` 固定
+
+Cookie 名は `apps/web/src/lib/session-cookie.ts` の `SESSION_COOKIE_NAME` に集約し、
+middleware・API Route・保護ページはそこから import する。値は `__session` から変えない。
+
+Firebase Hosting は Cloud Functions / Cloud Run へ転送するリクエストから `__session` 以外の
+cookie を落とす。apps/web は framework-backed Hosting で SSR するため、別名にすると
+デプロイ環境でだけログインがループする（middleware に cookie が届かず `/login` へ戻る）。
+ローカルの `next dev` は CDN を通らないので再現しない。
+
+`__session` を使うと Hosting の CDN は cookie 付きの応答をキャッシュしなくなる。
+middleware が付ける `private, no-store` と目的が重なるが、どちらも外さない。
+
 ### session cookie の発行は「直近のサインイン」に限る
 
 `/api/session` の POST は `verifyIdToken(idToken, true)` を通し、`auth_time` が 5 分以内の
@@ -87,11 +100,12 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import { adminAuth, adminDb } from '@/lib/firebase-admin'
+import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
 
 export default async function DashboardPage() {
   // middleware は Cookie の存在チェックのみ（Edge runtime では firebase-admin が
   // 使えない）。セッション Cookie の実検証は保護ページ側で行う
-  const sessionCookie = (await cookies()).get('session')?.value
+  const sessionCookie = (await cookies()).get(SESSION_COOKIE_NAME)?.value
   if (!sessionCookie) redirect('/login?redirect=/dashboard')
 
   const decoded = await adminAuth
