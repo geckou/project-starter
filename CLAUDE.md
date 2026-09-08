@@ -293,7 +293,7 @@ yarn env:<環境名> / deploy:<環境名>  # 環境切り替え / デプロイ�
 | `.claude/docs/roadmap.md` | ロードマップ（機能ステータス表・セッション引き継ぎ） |
 | `.claude/docs/workflow.md` | フェーズ順・機能の実装順序・機能実装フローの手順 |
 | `.claude/docs/questions.md` | 確認事項キュー（ユーザー確認待ちの判断と、その積み方） |
-| `.claude/docs/architecture.md` | API 方針、Firebase 使い分け、認証、データ取得、環境変数、Zustand、Storage、FCM、Sentry、i18n、課金 |
+| `.claude/docs/architecture.md` | 実装パターンと設計判断（API 方針、認証、データ取得、環境変数、状態管理、監視、i18n ほか。採用している層のぶんだけ載る） |
 | `.claude/docs/billing.md` | 決済の実装手順（Stripe / IAP、権利判定、チェックリスト） |
 | `.claude/docs/git-workflow.md` | リリースフロー、マルチ環境構成、マージルールの強制、GCP API 有効化 |
 | `.claude/docs/layers.md` | 層構成と層マニフェスト（層の外し方・マーカー・検証） |

@@ -15,6 +15,10 @@ set -u
 #
 # やること: 追跡ファイルを一時ディレクトリへ複製し、上の 1 を消し、
 # 2 を remove-layer.mjs で外してから check-docs.sh を回す。
+#
+# 注意: `.templatesyncignore` は本来 gitignore 形式だが、template-only の範囲に
+# 書けるのは**リテラルなパスだけ**。ここも check-docs.sh も完全一致で突き合わせるため、
+# `scripts/*.mjs` のようなパターンや `!` の否定は効かない。
 
 cd "$(dirname "$0")/.."
 REPO=$(pwd)
@@ -26,6 +30,7 @@ REMOVE_LAYER_SETS=${REMOVE_LAYER_SETS:-"
 :
 billing:
 billing mobile:
+billing mobile functions:
 billing mobile functions firebase:
 "}
 
@@ -77,17 +82,26 @@ TEMPLATE_ONLY=$(
     grep -v '^#' | grep -v '^[[:space:]]*$'
 )
 
-if [ -z "$TEMPLATE_ONLY" ]; then
+# end が無いと sed のレンジは**ファイル末尾まで**読み、除外が黙って増える。
+# start が消えた場合は TEMPLATE_ONLY が空になるので下で拾える
+if ! grep -qx '# template-only:end' "$REPO/.templatesyncignore"; then
+  fail ".templatesyncignore に template-only:end が無い" \
+    "終端が無いと、以降の行が全て「テンプレート本体だけが持つファイル」として扱われます"
+elif [ -z "$TEMPLATE_ONLY" ]; then
   fail ".templatesyncignore の template-only:start / :end が読めない" \
     "マーカーが消えていると、この検査は何も消さずに通ってしまう"
 else
   removed=0
-  for file in $TEMPLATE_ONLY; do
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+
     if [ -e "$DERIVED/$file" ]; then
       rm -rf "$DERIVED/$file"
       removed=$((removed + 1))
     fi
-  done
+  done <<EOF
+$TEMPLATE_ONLY
+EOF
 
   pass "テンプレート本体だけが持つファイルを ${removed} 件外した"
 fi

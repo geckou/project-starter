@@ -187,11 +187,14 @@ Firebase プロジェクトごとに別なので、環境の切り替えでキ�
 として現れる。`api-client.ts` は `NODE_ENV === 'production'`（Expo は `__DEV__ === false`）で
 未設定なら `throw` する。Functions 側の `ALLOWED_ORIGINS` と同じ方針。
 
-<!-- layer:firebase:start -->
-
 ## 状態管理（Zustand）
 
-グローバル状態は Zustand で管理する。store は `packages/shared/src/stores/` に置き、Web・Mobile で共有する。
+グローバル状態は Zustand で管理する。store は `packages/shared` の `stores` に置き、
+Web・Mobile で共有する。新しい store はそこに作り、`index.ts` から export する。
+
+<!-- layer:firebase:start -->
+
+参考実装は認証状態を持つ `useAuthStore`（`packages/shared/src/stores/auth-store.ts`）。
 
 ```typescript
 // 使い方（どのクライアントコンポーネントからでも）
@@ -199,12 +202,6 @@ import { useAuthStore } from '@geckou/shared/stores'
 
 const { user, loading } = useAuthStore()
 ```
-
-| store         | ファイル                                    | 用途             |
-| ------------- | ------------------------------------------- | ---------------- |
-| `useAuthStore` | `packages/shared/src/stores/auth-store.ts` | 認証状態の管理   |
-
-新しい store を追加する場合は `packages/shared/src/stores/` に作成し、`index.ts` から export する。
 
 ## Firebase Storage
 
@@ -241,12 +238,16 @@ Auth しか要らないページに Firestore SDK が乗らないようにする
 
 <!-- layer:firebase:end -->
 
+<!-- layer:mobile:start -->
+
 ## プッシュ通知（FCM）
 
 | 場面       | ファイル                                       | 用途                          |
 | ---------- | ---------------------------------------------- | ----------------------------- |
 | Mobile受信 | `apps/mobile/src/lib/push-notifications.ts`    | 権限リクエスト・トークン取得  |
 | Server送信 | `apps/functions/src/lib/push-notifications.ts` | FCM 経由で通知送信            |
+
+<!-- layer:mobile:end -->
 
 ## エラー監視（Sentry）
 

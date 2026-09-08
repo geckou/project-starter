@@ -391,9 +391,9 @@ PR は DoD（type-check / lint / test）とセルフレビュー（`/review`）�
 | `yarn firebase:emulators`        | Firebase エミュレーター起動 |
 | `yarn env:<環境名>`              | 環境切り替え（develop / staging / production） |
 | `yarn deploy:<環境名>`           | 事前チェック付きデプロイ（develop / staging / production） |
-| `yarn firebase:deploy`           | Firebase 全体をデプロイ（チェックなしの素のコマンド） |
+| `yarn firebase:deploy`           | Firebase 全体をデプロイ（チェックなし・環境で絞り込まない素のコマンド） |
 | `yarn firebase:deploy:functions` | Functions のみデプロイ      |
-| `yarn firebase:deploy:hosting`   | Hosting のみデプロイ        |
+| `yarn firebase:deploy:hosting`   | Hosting のみデプロイ（hosting ターゲットが複数ある構成では**全部**に配る） |
 
 > デプロイは `yarn deploy:<環境名>` を推奨。型チェック・テスト・ビルドの事前実行、
 > webframeworks experiment の有効化、workspace 依存の一時削除（Cloud Build 対策）まで自動で行う。
@@ -438,9 +438,9 @@ Turborepo が自動的に認識するので、設定ファイルの追加は不�
 
 詳しくは [apps/README.md](apps/README.md) と [packages/README.md](packages/README.md) を参照。
 
----
-
 <!-- layer:firebase:start -->
+
+---
 
 ## Firebase の構成
 
@@ -467,9 +467,9 @@ Firebase SDK はそれぞれ別のモジュールを使う。
 
 <!-- layer:firebase:end -->
 
----
-
 <!-- layer:billing:start -->
+
+---
 
 ## 課金 / サブスクリプション
 

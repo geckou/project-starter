@@ -67,19 +67,28 @@ is_template_only() {
 # プロジェクトでも apps/mobile/… への言及が届く。これを参照切れとして数えると、
 # テンプレートを取り込んだだけで docs-check が赤くなる。
 #
-# 判定は「入れ物ごと無いか」で行う。apps/mobile/ が丸ごと無ければ「その層を
-# 採用していない」、あれば「中のファイルを消したか動かした」とみなして検査する。
-# apps/ や packages/ のように 1 段目自体が無い構成（設定だけを同期した
-# プロジェクト）も同じ扱いにする
+# 見逃すのは**ここに挙げたワークスペースが丸ごと無いとき**だけ。
+# 「apps/ 配下が無ければ全部見逃す」にすると、apps/wev/… のような綴り違いや
+# ワークスペースのリネーム漏れまで黙って通る（検出したいものが検出できなくなる）。
+# 層として外せるワークスペースは限られているので、一覧で持つほうが安全
+OPTIONAL_WORKSPACES='
+apps/mobile
+apps/functions
+'
+
 is_absent_workspace() {
   case "$1" in
     apps/* | packages/*)
       # apps/mobile も apps/mobile/src/lib/sentry.ts も apps/mobile の有無で決める
       workspace=$(printf '%s' "$1" | cut -d/ -f1-2)
 
+      printf '%s\n' "$OPTIONAL_WORKSPACES" | grep -qxF "$workspace" || return 1
+
       [ ! -e "$workspace" ]
       ;;
     *)
+      # apps/ や packages/ ごと無い構成（設定だけを同期したプロジェクト）。
+      # 1 段目が無いなら中の綴りは検査しようがない
       [ ! -e "${1%%/*}" ]
       ;;
   esac

@@ -347,6 +347,11 @@ jobs:
 起こさないまま数秒で failure** になる（jobs 0 件・ログもアノテーションも無い）。連続 push の
 打ち切りは呼ばれる側が持っているので、書かなくても挙動は変わらない。
 
+**既に参照方式へ移行済みの派生には、この修正が Template Sync では届かない。**
+派生の `ci.yml` は派生側の `.templatesyncignore` に載っていて上書きされないため、
+`node scripts/adopt-references.mjs --repo <派生のパス>` を流し直す必要がある
+（冪等なので、他の設定が推奨形なら差分は `ci.yml` だけになる。`--force` は要らない）。
+
 `hotfix/**` を落とさないこと。`.github/rulesets/release.json` は `hotfix/*` にも PR を
 必須にしているので、トリガーから外すと**緊急対応のときだけ** type-check / lint / test が
 走らない PR ができる（required check が無いので、そのままマージできてしまう）。

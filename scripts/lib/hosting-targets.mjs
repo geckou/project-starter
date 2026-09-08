@@ -39,8 +39,8 @@ export function declaredTargets(hosting) {
 export function selectHostingTargets(hosting, env, explicit) {
   const declared = declaredTargets(hosting)
 
-  if (declared.length === 0) return { targets: [], warnings: [] }
-
+  // 明示指定を先に見る。ターゲット未宣言の firebase.json でも、指定が黙って
+  // 捨てられるのではなく「宣言に無い」と分かるようにする
   if (explicit) {
     const requested = explicit
       .split(/[\s,]+/)
@@ -64,6 +64,8 @@ export function selectHostingTargets(hosting, env, explicit) {
 
     return { targets: requested, warnings: [] }
   }
+
+  if (declared.length === 0) return { targets: [], warnings: [] }
 
   if (declared.includes(env)) return { targets: [env], warnings: [] }
 

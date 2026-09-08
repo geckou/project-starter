@@ -110,6 +110,8 @@ node scripts/add-layer.mjs <層>      # 層を足す（テンプレートから�
 node scripts/adopt-references.mjs --repo <派生のパス>  # 既存の派生を参照方式へ移行する
 bash scripts/test-adopt-references.sh                 # 上記スクリプトの回帰テスト
 
+bash scripts/test-docs-downstream.sh                  # 派生に同期された状態で check-docs.sh が通るか
+
 yarn release <パッケージのディレクトリ名>...           # タグを打って公開する（通常は自動公開で足りる。複数可）
 bash scripts/install-release-command.sh               # geckou-release をどこからでも使えるようにする
 bash scripts/test-release-command.sh                  # 上記コマンドの回帰テスト

@@ -16,6 +16,7 @@ set -u
 #   7. DEPLOY_HOSTING_TARGETS があれば、それを優先する
 #   8. DEPLOY_HOSTING_TARGETS に未宣言のターゲットがあれば止める
 #   9. DEPLOY_HOSTING_TARGETS が空文字なら止める
+#  10. ターゲット未宣言の構成でも、明示指定を黙って捨てない
 
 cd "$(dirname "$0")/.."
 SCRIPT="$(pwd)/scripts/lib/hosting-targets.mjs"
@@ -136,6 +137,15 @@ if [ "$RUN_STATUS" -ne 0 ]; then
   pass "空の DEPLOY_HOSTING_TARGETS で止める"
 else
   fail "空の DEPLOY_HOSTING_TARGETS が素通りした（全ターゲットに配りうる）" "$RUN_OUT"
+fi
+
+# ターゲット未宣言の firebase.json でも、明示指定は黙って捨てない
+DEPLOY_HOSTING_TARGETS='web'
+run "$SINGLE" staging
+if [ "$RUN_STATUS" -ne 0 ]; then
+  pass "ターゲット未宣言の構成でも明示指定を検査する"
+else
+  fail "ターゲット未宣言だと明示指定が黙って捨てられる" "$RUN_OUT"
 fi
 
 unset DEPLOY_HOSTING_TARGETS

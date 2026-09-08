@@ -31,6 +31,7 @@
         "packages/shared/src/i18n/index.ts",
         "scripts/deploy.sh",
         "scripts/lib/hosting-targets.mjs",
+        "scripts/test-deploy-targets.sh",
         "scripts/use-env.sh",
         "packages/eslint-config/index.js",
         "packages/eslint-config/next.js",
@@ -203,6 +204,7 @@
         "renovate/mobile.json"
       ],
       "blocks": [
+        ".claude/docs/architecture.md",
         ".env.example",
         "scripts/use-env.sh",
         "lint-staged.config.cjs",
