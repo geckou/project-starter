@@ -145,6 +145,12 @@ jobs:
         if: steps.changes.outputs.code == 'true' && hashFiles('scripts/test-deploy-targets.sh') != ''
         run: bash scripts/test-deploy-targets.sh
 
+      # use-env.sh がどのキーをどのファイルへ配るか。足りないと SSR / Functions が
+      # undefined になり、多すぎると秘密が関数の環境変数として載る（#325）
+      - name: Env Distribution Test
+        if: steps.changes.outputs.code == 'true' && hashFiles('scripts/test-env-distribution.sh') != ''
+        run: bash scripts/test-env-distribution.sh
+
       # packages/* の version が、それを参照するワークスペースのレンジを
       # 満たしているか。満たしていないと yarn が npm の旧版を落としてきて、
       # ローカルの変更が使われないまま lint も type-check も通ってしまう

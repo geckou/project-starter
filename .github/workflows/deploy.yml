@@ -311,7 +311,8 @@ jobs:
           echo "targets=$TARGETS" >> $GITHUB_OUTPUT
 
       # 環境別の .env をシークレットから生成
-      # （deploy.sh → use-env.sh が .env.local と apps/web/.env.local に配布する）
+      # （deploy.sh → use-env.sh が .env.local / apps/web/.env.local と、
+      #   SSR 関数が読む apps/web/.env・Functions が読む apps/functions/.env に配布する）
       - name: Create .env.${{ steps.env.outputs.name }}
         if: steps.env.outputs.deploy == 'true' && steps.targets.outputs.targets != ''
         env:

@@ -97,6 +97,37 @@ CI でも実行される。
 無いと流せないため、**選び方だけを切り出してテスト可能にしている。** ターゲットの選び方を
 変えるときはこのテストも足す。CI では `ci.yml` の Deploy Target Test が実行する。
 
+## env の配布内容は回帰テストで固定する
+
+`scripts/use-env.sh` は `.env.<環境名>` を単一の正として各所へ配る。間違えると
+どちらかに倒れ、**どちらも型チェックにもテストにも引っかからない。**
+
+- **足りない**: SSR / Functions で `undefined` になる（本番に出て初めて分かる）
+- **多すぎる**: 秘密が関数の環境変数として載り、閲覧者ロールから読める
+
+とくに framework-backed hosting は env の届き方が 3 通りあり、経路ごとに読まれる
+ファイルが違う（→ `.claude/docs/architecture.md`）。
+`bash scripts/test-env-distribution.sh`（`yarn test:env-distribution`）が検証するのは:
+
+- どのキーがどのファイルへ行くか（許可リストのキーが載り、無いキーの行は書かれない）
+- 生成ファイルにフィクスチャの秘密が載らないこと
+- 環境を切り替えると前の値が消え、新しい値が入ること
+- **デプロイ中に `apps/web/.env.local` が退避され、終了後に戻ること**
+  （`firebase` をスタブに差し替えて `deploy.sh` を実際に流し、`firebase deploy` が
+  呼ばれた時点のファイルの状態を記録して検証する）
+- **許可リストのキーが Cloud Functions の予約語に当たらないこと**
+  （`FIREBASE_*` / `X_GOOGLE_*` / `EXT_*` や `PORT` 等。当たると `firebase deploy` が
+  `Failed to validate key` で止まる）
+
+秘密の検査はフィクスチャに置いた 2 キーを見ているだけなので、**別名の秘密を許可リストへ
+足しても素通りする**。許可リスト（`WEB_SSR_ENV_KEYS` / `FUNCTIONS_ENV_KEYS`）に何かを
+足すときは、テストの緑だけでなく「それは秘密か」を人が見る。
+
+層を持たない構成では、その層のセクションごと飛ばす（`FUNCTIONS_ENV_KEYS` の宣言が
+残っているかで判定）。**このスクリプトに層マーカーの文字列を書かないこと** —
+`remove-layer.mjs` が本物のマーカーとみなし、対応する `end` が無いためファイル末尾まで
+削り落とす。CI では `ci.yml` の Env Distribution Test が実行する。
+
 ## 本体保守で使うスクリプト
 
 派生プロジェクトでは使わない（テンプレート本体の検証・公開まわり）。

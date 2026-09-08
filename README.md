@@ -279,7 +279,7 @@ yarn env:production
 
 #### CI 自動デプロイ用の GitHub Secrets 登録
 
-[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) はデプロイ時に環境別の env をシークレットから `.env.<環境名>` に書き出す（その後 `scripts/use-env.sh` が `.env.local` へ配布する）。
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) はデプロイ時に環境別の env をシークレットから `.env.<環境名>` に書き出す（その後 `scripts/use-env.sh` が `.env.local` と各アプリへ配布する。配布先の一覧は `.env.example` の冒頭）。
 未登録のまま push すると `.env.local` が空のままビルドされ失敗する。
 リポジトリに以下を登録する（値は対応する env ファイルの全文）:
 
@@ -393,7 +393,7 @@ PR は DoD（type-check / lint / test）とセルフレビュー（`/review`）�
 | `yarn deploy:<環境名>`           | 事前チェック付きデプロイ（develop / staging / production） |
 | `yarn firebase:deploy`           | Firebase 全体をデプロイ（チェックなし・環境で絞り込まない素のコマンド） |
 | `yarn firebase:deploy:functions` | Functions のみデプロイ      |
-| `yarn firebase:deploy:hosting`   | Hosting のみデプロイ（hosting ターゲットが複数ある構成では**全部**に配る） |
+| `yarn firebase:deploy:hosting`   | Hosting のみデプロイ（`deploy.sh` を通らないため、ターゲットの絞り込みも `.env.local` の退避もしない） |
 
 > デプロイは `yarn deploy:<環境名>` を推奨。型チェック・テスト・ビルドの事前実行、
 > webframeworks experiment の有効化、workspace 依存の一時削除（Cloud Build 対策）まで自動で行う。

@@ -12,6 +12,50 @@ if [ ! -f ".env.${ENV}" ]; then
   exit 1
 fi
 
+# apps/web/.env に配布するサーバー専用の変数（SSR 実行時に読まれる値）。
+#
+# framework-backed hosting（firebase.json の frameworksBackend）では、SSR 用の関数を
+# firebase-tools が自動生成する。そのとき **hosting.source の .env** が関数の環境変数に
+# なる（firebase-tools 14 の lib/frameworks/index.js）。use-env.sh が
+# apps/web/.env.local を書くだけでは、サーバー専用の変数が SSR 側で undefined になる
+# （middleware の Basic 認証が dev/stg で効かない等）。
+#
+# 秘密はここに入れない。apps/functions/.env と同じ理由で、関数の環境変数は
+# 閲覧者ロールでも Cloud Console / gcloud functions describe から読める。
+# FIREBASE_SERVICE_ACCOUNT_KEY も入れない（Cloud Functions では ADC が自動で使われる。
+# そもそも FIREBASE_ は予約プレフィックスなので、入れると firebase deploy が落ちる）
+WEB_SSR_ENV_KEYS=(
+  BASIC_AUTH_CREDENTIALS
+)
+
+# apps/web/.env には NEXT_PUBLIC_* も入れる。
+# deploy.sh はデプロイ中だけ apps/web/.env.local を退避するため（全文コピーの
+# .env.local が関数へ同梱されると、サーバー秘密まで載る。#329）、そのあいだの
+# next build は .env から NEXT_PUBLIC_* を読む。プレフィックスで機械的に拾うので、
+# 変数を足しても許可リストの更新は要らない。
+# NEXT_PUBLIC_* はブラウザに露出する前提の値なので、関数の環境変数に載っても増える
+# リスクは無い
+web_public_env_keys() {
+  grep -oE '^NEXT_PUBLIC_[A-Z0-9_]+=' ".env.${ENV}" | sed 's/=$//' | sort -u
+}
+
+# Cloud Functions の環境変数は ^[A-Z_][A-Z0-9_]*$ しか受け付けない
+# （firebase-tools の lib/functions/env.js の validateKey）。
+# NEXT_PUBLIC_apiUrl のような混在ケースの名前は firebase deploy が弾くので、
+# **黙って落とさずにここで気付かせる**
+warn_unsupported_public_keys() {
+  local unsupported
+  unsupported=$(grep -oE '^NEXT_PUBLIC_[A-Za-z0-9_]+=' ".env.${ENV}" | sed 's/=$//' |
+    grep -vE '^NEXT_PUBLIC_[A-Z0-9_]+$' | sort -u || true)
+
+  if [ -n "${unsupported}" ]; then
+    echo "[warn] 大文字以外を含む NEXT_PUBLIC_* があります（apps/web/.env に載せません）"
+    printf '%s\n' "${unsupported}" | sed 's/^/  - /'
+    echo "  Cloud Functions の環境変数は大文字・数字・アンダースコアのみ受け付けます"
+    echo "  （firebase deploy が弾きます）。名前を大文字に変えてください。"
+  fi
+}
+
 # layer:functions:start
 # apps/functions/.env に配布する変数。
 # Functions の .env はデプロイ時に関数の環境変数として取り込まれるため、
@@ -54,6 +98,32 @@ read_env_value() {
   value=${value%\'}
   value=${value#\'}
   printf '%s' "${value}"
+}
+
+# 許可リストのキーだけを抜き出して env ファイルを生成する。
+#   write_env_file <出力先> <用途の説明> <キー…>
+# 毎回作り直すのは、残ったまま環境を切り替えると前の環境の値が配られるため
+write_env_file() {
+  local destination=$1
+  local description=$2
+  shift 2
+
+  {
+    echo "# このファイルは scripts/use-env.sh が .env.${ENV} から生成しています。"
+    echo "# 直接編集しても yarn env:<環境名> の実行で上書きされます。"
+    echo "# 値を変更する場合は .env.${ENV} を編集してください。"
+    echo "#"
+    echo "# ${description}"
+    echo ""
+
+    local key line
+    for key in "$@"; do
+      line=$(grep -E "^${key}=" ".env.${ENV}" | tail -n 1 || true)
+      if [ -n "${line}" ]; then
+        echo "${line}"
+      fi
+    done
+  } >"${destination}"
 }
 
 # layer:billing:start
@@ -109,6 +179,15 @@ cp ".env.${ENV}" .env.local
 cp ".env.${ENV}" apps/web/.env.local
 echo "[done] .env.${ENV} → .env.local, apps/web/.env.local にコピーしました"
 
+# apps/web/.env を許可リストのキーだけで生成する
+warn_unsupported_public_keys
+
+# shellcheck disable=SC2046
+write_env_file apps/web/.env \
+  "framework-backed hosting では、このファイルの内容が SSR 関数の環境変数になります。" \
+  "${WEB_SSR_ENV_KEYS[@]}" $(web_public_env_keys)
+echo "[done] .env.${ENV} → apps/web/.env を生成しました（SSR で読むキーと NEXT_PUBLIC_*）"
+
 # layer:mobile:start
 # Expo (app.config.ts) は apps/mobile/ の .env.local を読む
 cp ".env.${ENV}" apps/mobile/.env.local
@@ -119,18 +198,9 @@ echo "[done] .env.${ENV} → apps/mobile/.env.local にコピーしました"
 # apps/functions/.env を許可リストのキーだけで生成する。
 # ここを配布しないと、環境を切り替えても Functions だけ前の環境のキーが残り、
 # 例えば develop に切り替えたつもりで本番の Stripe / RevenueCat を叩いてしまう
-{
-  echo "# このファイルは scripts/use-env.sh が .env.${ENV} から生成しています。"
-  echo "# 直接編集しても yarn env:<環境名> の実行で上書きされます。"
-  echo "# 値を変更する場合は .env.${ENV} を編集してください。"
-  echo ""
-  for key in "${FUNCTIONS_ENV_KEYS[@]}"; do
-    line=$(grep -E "^${key}=" ".env.${ENV}" | tail -n 1 || true)
-    if [ -n "${line}" ]; then
-      echo "${line}"
-    fi
-  done
-} > apps/functions/.env
+write_env_file apps/functions/.env \
+  "デプロイ時に、このファイルの内容が関数の環境変数として取り込まれます。" \
+  "${FUNCTIONS_ENV_KEYS[@]}"
 echo "[done] .env.${ENV} → apps/functions/.env を生成しました（Functions 用のキーのみ）"
 # layer:functions:end
 

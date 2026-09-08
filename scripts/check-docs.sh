@@ -17,11 +17,16 @@ set -u
 
 cd "$(dirname "$0")/.."
 
-# 実在しなくてよいパス。gitignore されるファイルと、必要になった時点で作るもの
+# 実在しなくてよいパス。gitignore されるファイル、必要になった時点で作るもの、
+# そして「作ってはいけないもの」として名指しで説明しているパス
+# （apps/web/.env.production → .claude/docs/architecture.md）
 ALLOW_MISSING='
 apps/functions/.env
 apps/functions/.secret.local
 apps/mobile/.env.local
+apps/web/.env
+apps/web/.env.local
+apps/web/.env.production
 .claude/docs/roadmap-archive.md
 packages/shared/dist/
 '

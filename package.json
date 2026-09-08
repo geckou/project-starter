@@ -43,6 +43,7 @@
     "test:release-command": "bash scripts/test-release-command.sh",
     "test:ranges": "bash scripts/test-workspace-ranges.sh",
     "test:deploy-targets": "bash scripts/test-deploy-targets.sh",
+    "test:env-distribution": "bash scripts/test-env-distribution.sh",
     "check:docs": "bash scripts/check-docs.sh",
     "check:ranges": "node scripts/check-workspace-ranges.mjs",
     "release": "bash scripts/release.sh"
