@@ -78,6 +78,17 @@ npm に載っていないパッケージを全部公開する。
 `yarn.lock` に tarball の行が増えるのが唯一の手がかりになる。
 `node scripts/check-workspace-ranges.mjs` が検出する（CI と `release.sh` の両方で実行）。
 
+**`engines.node` は依存の要求を下回らせない。** yarn 1 は engines を検査してインストール自体を
+止めるため（警告ではなくエラー）、実際より緩い宣言は「対応を謳う Node で入らないパッケージ」を作る。
+依存を major 更新したら、その依存の `engines.node` を確認して宣言を合わせる
+（`npm view <パッケージ>@<バージョン> engines.node`）。現在の宣言と、それを決めている依存:
+
+| パッケージ | `engines.node` | 根拠 |
+| --- | --- | --- |
+| `@geckou/commitlint-config` | `>=22.12.0` | `@commitlint/config-conventional@21` |
+| `@geckou/prettier-config` | `>=20.19.0` | `prettier-plugin-tailwindcss@0.8` |
+| `@geckou/eslint-config` | `>=20.9.0` | `typescript-eslint@8` ほか（`^18.18 \|\| ^20.9 \|\| >=21.1`） |
+
 #### タグを打って公開する（通常は不要）
 
 上の自動公開とは別に、タグ（`<ディレクトリ名>@<バージョン>`）を push しての公開も

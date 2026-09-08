@@ -10,6 +10,12 @@ yarn add -D @geckou/commitlint-config @commitlint/cli
 
 `@commitlint/cli` は peerDependency。`@commitlint/config-conventional` はこのパッケージが依存として持つ。
 
+**Node 22.12 以上が要る。** `@commitlint/config-conventional@21` と `@commitlint/cli@21` が
+どちらも `engines.node: ">=22.12.0"` を宣言しているため、Node 20 では yarn 1 が
+`The engine "node" is incompatible with this module` でインストール自体を止める。
+Node 20 のまま使うなら、`@commitlint/cli` と `@commitlint/config-conventional` を
+`^19` に固定する（`resolutions` が要る）。
+
 ## 使い方
 
 ```js
