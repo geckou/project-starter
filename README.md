@@ -440,6 +440,8 @@ Turborepo が自動的に認識するので、設定ファイルの追加は不�
 
 ---
 
+<!-- layer:firebase:start -->
+
 ## Firebase の構成
 
 ### クライアント / サーバーの使い分け（Web）
@@ -463,7 +465,11 @@ Firebase SDK はそれぞれ別のモジュールを使う。
 | `FIREBASE_*`                   | Mobile (Expo) 用           | `app.config.ts` の `extra` 経由で参照 |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | Web サーバー用 (Admin SDK) | サーバーのみ。絶対に公開しない   |
 
+<!-- layer:firebase:end -->
+
 ---
+
+<!-- layer:billing:start -->
 
 ## 課金 / サブスクリプション
 
@@ -512,6 +518,8 @@ if (isSubscriptionActive(user.subscription)) {
 [.claude/docs/billing.md](.claude/docs/billing.md) に順を追ってまとめてある。
 権利状態の保護（`firestore.rules` での書き込み拒否、`billing_events` による冪等化）の方針は
 [.claude/docs/architecture.md](.claude/docs/architecture.md) の「課金 > セキュリティ上の要点」。
+
+<!-- layer:billing:end -->
 
 ---
 

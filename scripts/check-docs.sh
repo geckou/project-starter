@@ -30,10 +30,60 @@ packages/shared/dist/
 # nuxt-nextjs.md が例示する Nuxt 側の server/api/ 等）は誤検出になるので拾わない
 PREFIXES='apps|packages|scripts|tests|\.claude|\.github'
 
+# テンプレート本体にしか存在しないファイル。
+# `.templatesyncignore` の template-only:start / :end で囲んだ範囲が正で、
+# ここではその一覧を読むだけ（2 か所に書くと必ず片方が古くなる）。
+#
+# ドキュメント（.claude/docs/ 等）は同期されるが、これらのファイルは同期されない。
+# そのため派生プロジェクトでは「同期されたドキュメントが、同期されないファイルを
+# 指している」状態になり、テンプレートを素直に取り込んだだけで必ず赤くなっていた。
+# テンプレート本体では実在するので、通常どおり検査対象になる
+TEMPLATE_ONLY=''
+
+if [ -f .templatesyncignore ]; then
+  TEMPLATE_ONLY=$(
+    sed -n '/^# template-only:start$/,/^# template-only:end$/p' .templatesyncignore |
+      grep -v '^#' | grep -v '^[[:space:]]*$'
+  )
+fi
+
 findings=$(mktemp)
 trap 'rm -f "$findings"' EXIT
 
 is_allowed() { printf '%s\n' "$ALLOW_MISSING" | grep -qxF "$1"; }
+
+# テンプレート本体に実在するなら検査する。実在しない（＝派生プロジェクト）ときだけ見逃す。
+# 「実在しないものは全部見逃す」にすると、テンプレート本体でパスを消したときに
+# 検出できなくなる
+is_template_only() {
+  [ -n "$TEMPLATE_ONLY" ] || return 1
+
+  printf '%s\n' "$TEMPLATE_ONLY" | grep -qxF "$1"
+}
+
+# **採用していない層への言及**は参照切れにしない。
+#
+# 同期されるドキュメントは全部入りの構成を前提に書いてあるため、mobile 層を持たない
+# プロジェクトでも apps/mobile/… への言及が届く。これを参照切れとして数えると、
+# テンプレートを取り込んだだけで docs-check が赤くなる。
+#
+# 判定は「入れ物ごと無いか」で行う。apps/mobile/ が丸ごと無ければ「その層を
+# 採用していない」、あれば「中のファイルを消したか動かした」とみなして検査する。
+# apps/ や packages/ のように 1 段目自体が無い構成（設定だけを同期した
+# プロジェクト）も同じ扱いにする
+is_absent_workspace() {
+  case "$1" in
+    apps/* | packages/*)
+      # apps/mobile も apps/mobile/src/lib/sentry.ts も apps/mobile の有無で決める
+      workspace=$(printf '%s' "$1" | cut -d/ -f1-2)
+
+      [ ! -e "$workspace" ]
+      ;;
+    *)
+      [ ! -e "${1%%/*}" ]
+      ;;
+  esac
+}
 
 # プレースホルダ・グロブ・変数展開を含む記述は検査対象にしない
 is_literal() {
@@ -64,6 +114,8 @@ while IFS= read -r -d '' doc; do
 
       is_literal "$path" || continue
       is_allowed "$path" && continue
+      is_template_only "$path" && continue
+      is_absent_workspace "$path" && continue
       [ -e "$path" ] && continue
 
       printf '%s:%s\t%s\n' "$doc" "$line" "$path" >>"$findings"
@@ -79,6 +131,8 @@ while IFS= read -r -d '' doc; do
 
       is_literal "$target" || continue
       is_allowed "$target" && continue
+      is_template_only "$target" && continue
+      is_absent_workspace "$target" && continue
       [ -e "$(dirname "$doc")/$target" ] && continue
 
       printf '%s:%s\tリンク先 %s\n' "$doc" "$line" "$target" >>"$findings"
@@ -104,6 +158,8 @@ if [ "$fail" -gt 0 ]; then
     echo 'ドキュメントが実在しないパスを指しています。移動先に書き換えるか、'
     echo '意図的に存在しないもの（gitignore 対象など）なら'
     echo 'scripts/check-docs.sh の ALLOW_MISSING に追加してください。'
+    echo 'テンプレート本体にしか無いファイルなら .templatesyncignore の'
+    echo 'template-only:start / :end の範囲に追加してください。'
   } >&2
   exit 1
 fi

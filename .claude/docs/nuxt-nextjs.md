@@ -15,7 +15,7 @@
 | ローディング | `<NuxtLoadingIndicator>` | `loading.tsx`（ファイル規約） | 同階層に置くだけで Suspense が効く |
 | エラーハンドリング | `error.vue` | `error.tsx`（ファイル規約） | `'use client'` 必須 |
 | 自動 import | デフォルト ON | なし | Next は全て明示的に import する |
-| 状態管理 | Pinia | Zustand | このプロジェクトでは `packages/shared/src/stores/` |
+| 状態管理 | Pinia | Zustand | store は `packages/shared` に置いて Web / Mobile で共有する |
 | メタデータ | `useHead()` / `useSeoMeta()` | `export const metadata` / `generateMetadata()` | Server Component で静的に export する |
 | 動的ルート | `pages/users/[id].vue` | `app/users/[id]/page.tsx` | ディレクトリ名に `[param]` を使う |
 | catch-all ルート | `pages/[...slug].vue` | `app/[...slug]/page.tsx` | 同じ記法 |

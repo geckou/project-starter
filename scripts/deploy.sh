@@ -141,14 +141,14 @@ firebase experiments:enable webframeworks
 # framework hosting ターゲットを 1 つずつデプロイする。
 # 複数の framework-backed Hosting ターゲットを 1 回の firebase deploy に
 # 同梱すると Next アダプタが next build で停止（ハング）するため。
+#
+# **配る先は今の環境のターゲットだけ。** 1 つの Firebase プロジェクトに develop /
+# staging / production の 3 サイトを相乗りさせる構成（→ .claude/docs/git-workflow.md）
+# では firebase.json に 3 ターゲットが並び、全部に配ると staging の .env でビルドした
+# ものが production のサイトにも出る（#323）。選び方は scripts/lib/hosting-targets.mjs
 deploy_hosting_per_target() {
   local targets
-  targets=$(node -e "
-    const h = require('./firebase.json').hosting;
-    if (!h) process.exit(0);
-    const arr = Array.isArray(h) ? h : [h];
-    process.stdout.write(arr.map((x) => x.target || x.site || '').filter(Boolean).join(' '));
-  ")
+  targets=$(node scripts/lib/hosting-targets.mjs "$ENV")
 
   if [ -z "$targets" ]; then
     # hosting が単一・target/site 未設定（テンプレート既定）
@@ -184,7 +184,7 @@ DEFAULT_TARGETS="functions,${DEFAULT_TARGETS}"
 
 TARGETS="${DEPLOY_ONLY:-$DEFAULT_TARGETS}"
 
-DEPLOY_ALL_HOSTING=false
+DEPLOY_HOSTING=false
 DEPLOY_STORAGE=false
 SKIPPED_TARGET=false
 HOSTING_TARGETS=()
@@ -201,8 +201,8 @@ for target in "${REQUESTED_TARGETS[@]}"; do
 
   case "$target" in
     hosting)
-      # firebase.json のターゲット全部。個別デプロイは下の関数が担当する
-      DEPLOY_ALL_HOSTING=true
+      # ターゲットの選択と個別デプロイは deploy_hosting_per_target が担当する
+      DEPLOY_HOSTING=true
       ;;
     hosting:*)
       # hosting:<site> の個別指定。複数まとめて firebase へ渡すと
@@ -229,7 +229,7 @@ for target in "${REQUESTED_TARGETS[@]}"; do
 done
 
 if [ -z "$OTHER_TARGETS" ] &&
-  [ "$DEPLOY_ALL_HOSTING" = false ] &&
+  [ "$DEPLOY_HOSTING" = false ] &&
   [ "$DEPLOY_STORAGE" = false ] &&
   [ ${#HOSTING_TARGETS[@]} -eq 0 ]; then
   # 指定自体はあったが、この構成では対象外だったケース（storage 未宣言など）。
@@ -263,7 +263,7 @@ if [ "$DEPLOY_STORAGE" = true ]; then
   fi
 fi
 
-if [ "$DEPLOY_ALL_HOSTING" = true ]; then
+if [ "$DEPLOY_HOSTING" = true ]; then
   deploy_hosting_per_target
 fi
 

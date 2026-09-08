@@ -30,6 +30,7 @@
         "packages/shared/src/theme/index.ts",
         "packages/shared/src/i18n/index.ts",
         "scripts/deploy.sh",
+        "scripts/lib/hosting-targets.mjs",
         "scripts/use-env.sh",
         "packages/eslint-config/index.js",
         "packages/eslint-config/next.js",
@@ -87,6 +88,8 @@
         "scripts/test-rules.sh"
       ],
       "blocks": [
+        ".claude/docs/architecture.md",
+        "README.md",
         "apps/web/src/app/layout.tsx",
         "apps/web/src/middleware.ts",
         "apps/web/tests/middleware.test.ts",
@@ -252,9 +255,13 @@
         "apps/functions/src/lib/entitlement-hooks.ts",
         "apps/functions/tests/billing-wiring.test.ts",
         "apps/functions/tests/billing-lazy-load.test.ts",
-        "apps/mobile/src/lib/revenuecat.ts"
+        "apps/mobile/src/lib/revenuecat.ts",
+        ".claude/docs/billing.md"
       ],
       "blocks": [
+        ".claude/docs/architecture.md",
+        ".claude/docs/questions.md",
+        "README.md",
         "firestore.rules",
         "tests/firestore-rules.test.ts",
         "packages/shared/src/index.ts",
@@ -282,6 +289,12 @@
         "packages/shared/package.json": [["exports", "./billing"]]
       },
       "replace": [
+        {
+          "$comment": "詳細リファレンスの表から billing.md の行を落とす。表の途中に HTML コメントを置くと Markdown の表が切れてしまうため、マーカーではなく replace で消す",
+          "file": "CLAUDE.md",
+          "find": "| `.claude/docs/billing.md` | 決済の実装手順（Stripe / IAP、権利判定、チェックリスト） |\n",
+          "with": ""
+        },
         {
           "file": "apps/functions/package.json",
           "find": " --external:stripe",
