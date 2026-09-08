@@ -19,7 +19,10 @@ function buildRequest(
 
   const request = new NextRequest(url, { headers })
 
-  if (options.session) request.cookies.set('__session', 'token')
+  // layer:firebase:start
+  // session を使うのは保護ルートのテストだけなので、firebase 層と一緒に外れる
+  if (options.session) request.cookies.set(SESSION_COOKIE_NAME, 'token')
+  // layer:firebase:end
 
   return request
 }

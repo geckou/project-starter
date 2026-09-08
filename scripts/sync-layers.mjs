@@ -30,15 +30,25 @@ import {
 function parseArguments(argv) {
   const options = { target: process.cwd(), template: '', dryRun: false }
 
+  // 値を省略すると path.resolve('') がカレントディレクトリになり、
+  // --template ではディレクトリを readFileSync して分かりにくい失敗になる
+  const requireValue = (flag, value) => {
+    if (value === undefined || value.startsWith('-')) {
+      throw new Error(`${flag} には値が必要です`)
+    }
+
+    return path.resolve(value)
+  }
+
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
 
     if (argument === '--target') {
       index += 1
-      options.target = path.resolve(argv[index] ?? '')
+      options.target = requireValue('--target', argv[index])
     } else if (argument === '--template') {
       index += 1
-      options.template = path.resolve(argv[index] ?? '')
+      options.template = requireValue('--template', argv[index])
     } else if (argument === '--dry-run') {
       options.dryRun = true
     } else if (argument === '--help' || argument === '-h') {

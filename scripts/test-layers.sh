@@ -74,6 +74,11 @@ make_variant() {
   printf '%s' "$dir"
 }
 
+# ファイル数だけでは中身の書き換えを見逃すため、全ファイルのチェックサムで比べる
+tree_checksum() {
+  find "$1" -type f -exec sha1sum {} + | sed "s|$1||" | sort | sha1sum
+}
+
 remove_layers() {
   local dir=$1
   shift
@@ -786,16 +791,24 @@ else
 fi
 rm -rf "$expected"
 
-# 全部入りの派生（何も外していない）では何もしない
-before=$(cd "$pristine" && find . -type f | wc -l)
+# 全部入りの派生（何も外していない）では何もしない。
+# ファイル数だけだと同数のまま中身が書き換わった場合を見逃す
+before=$(tree_checksum "$pristine")
 node "$REPO_ROOT/scripts/sync-layers.mjs" --target "$pristine" \
   --template "$pristine/layers.json" > /dev/null 2>&1
-after=$(cd "$pristine" && find . -type f | wc -l)
+after=$(tree_checksum "$pristine")
 
 if [ "$before" = "$after" ]; then
   pass "層を外していない構成では何もしない"
 else
   fail "層を外していない構成でファイルが変わった"
+fi
+
+# フラグの値を省略したら分かりやすく落ちる（カレントディレクトリ扱いにしない）
+if node "$REPO_ROOT/scripts/sync-layers.mjs" --template > /dev/null 2>&1; then
+  fail "--template の値を省略してもエラーにならない"
+else
+  pass "--template の値を省略するとエラーになる"
 fi
 
 # layers.json を持たない派生ではスキップする（CI から無条件に呼ばれるため）
@@ -825,11 +838,6 @@ if remove_layers "$variant" no-such-layer > /dev/null 2>&1; then
 else
   pass "未定義の層はエラーになる"
 fi
-
-# ファイル数だけでは中身の書き換えを見逃すため、全ファイルのチェックサムで比べる
-tree_checksum() {
-  find "$1" -type f -exec sha1sum {} + | sed "s|$1||" | sort | sha1sum
-}
 
 before=$(tree_checksum "$variant")
 remove_layers "$variant" --dry-run mobile > /dev/null 2>&1
