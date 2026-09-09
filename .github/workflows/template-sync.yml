@@ -111,8 +111,15 @@ jobs:
       # .templatesyncignore で派生側の状態が残るため、そのままだと
       # 「未定義の層のマーカーです」で docs-check が落ち、マージすると
       # 外したはずの層が復活する（#296）。取り込んだ差分から外し直す
+      #
+      # template_git_hash も見るのは、同期ブランチが remote に残っている状態
+      # （前回の実行が PR の作成だけ失敗した等）で action が pr_branch だけを出力して
+      # 早期に exit 0 するため。その場合ここが空のハッシュで起動し、下の
+      # `git show "${TEMPLATE_GIT_HASH}:layers.json"` が `git show ":layers.json"`
+      # = index の参照として成功してしまい、派生自身のマニフェストを
+      # テンプレート側のものとして渡すことになる（#335）
       - name: 派生で外した層を取り込んだ差分から外し直す
-        if: steps.sync.outputs.pr_branch != ''
+        if: steps.sync.outputs.pr_branch != '' && steps.sync.outputs.template_git_hash != ''
         env:
           # gh を使うのは下のフォールバック（テンプレートの layers.json を読む）だけで、
           # 相手は public リポジトリなので github.token で足りる。同期用トークンは前段の
