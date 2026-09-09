@@ -112,12 +112,13 @@ jobs:
       # 「未定義の層のマーカーです」で docs-check が落ち、マージすると
       # 外したはずの層が復活する（#296）。取り込んだ差分から外し直す
       #
-      # template_git_hash も見るのは、同期ブランチが remote に残っている状態
-      # （前回の実行が PR の作成だけ失敗した等）で action が pr_branch だけを出力して
-      # 早期に exit 0 するため。その場合ここが空のハッシュで起動し、下の
-      # `git show "${TEMPLATE_GIT_HASH}:layers.json"` が `git show ":layers.json"`
-      # = index の参照として成功してしまい、派生自身のマニフェストを
-      # テンプレート側のものとして渡すことになる（#335）
+      # template_git_hash も見るのは、同期ブランチが remote に残っている状態で action が
+      # 早期に exit 0 し、pr_branch だけが非空で出力されるため（3 つとも書き出すが、
+      # 残り 2 つは空になる）。前回の同期 PR が未マージのまま、テンプレート側にも
+      # 新しいコミットが無い、という平常運転でもこの経路に入る。
+      # 空のハッシュで起動すると、下の `git show "${TEMPLATE_GIT_HASH}:layers.json"` が
+      # `git show ":layers.json"` = index の参照として成功してしまい、派生自身の
+      # マニフェストをテンプレート側のものとして渡すことになる（#335）
       - name: 派生で外した層を取り込んだ差分から外し直す
         if: steps.sync.outputs.pr_branch != '' && steps.sync.outputs.template_git_hash != ''
         env:
@@ -135,6 +136,11 @@ jobs:
           TEMPLATE_REPO: geckou/project-starter
         run: |
           set -euo pipefail
+
+          # if: でも弾いているが、ここでも止める。空文字は set -u を素通りするうえ、
+          # 空のまま下へ行くと git show は index の参照として、gh api は ref 未指定
+          # （= 既定ブランチ）として、どちらも成功してしまう
+          : "${TEMPLATE_GIT_HASH:?テンプレートのハッシュが空です}"
 
           git fetch origin "$PR_BRANCH"
           git checkout "$PR_BRANCH"
