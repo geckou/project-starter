@@ -80,7 +80,11 @@ CI でも実行される。
   参照実装（`apps/web/src/lib/billing.ts` 等）は派生に届かない。`workflow.md` が指す
   `.claude/docs/planning.md` / `spec.md` / `roadmap.md` も同じで、Notion 等で管理する派生には
   無い。**同期では埋めようがないもの**なので数えない（#338）。逆に、除外に載っている
-  ドキュメント（`CLAUDE.md` や `questions.md`。派生が自分で書く側）からの言及は従来どおり検査する
+  ドキュメント（`CLAUDE.md` や `questions.md`。派生が自分で書く側）からの言及は従来どおり検査する。
+  **代償**: 派生では `.claude/docs/*.md` からの `apps/**` `packages/**` への言及が実質検査されなく
+  なる（同期されたものと派生が書き足したものを、パスからは区別できないため）。派生の実装を指す
+  参照切れを拾いたいなら、除外に載るドキュメント側（`CLAUDE.md` や派生が `.templatesyncignore` に
+  足したファイル）に書く
 
 **この壊れ方はテンプレート本体では観測できない。** 本体には全ファイルが揃っているので
 `check-docs.sh` は緑になり、同期した派生でだけ赤くなる（#322）。`scripts/test-docs-downstream.sh`
@@ -89,9 +93,14 @@ CI でも実行される。
 
 逆向きの穴もある。上の「同期されないパスは数えない」を本体にも効かせると、本体で
 `apps/…` の綴りを間違えても黙って通ってしまう。そこで `CHECK_DOCS_STRICT=1` を立てると
-この見逃しだけが切れる（他の見逃しはそのまま）。`test-docs-downstream.sh` が本体で
-必ず 1 回この形で回すので、本体側の追従漏れは従来どおり落ちる。**派生では立てない**
-（立てると取り込んだだけで赤くなる）。
+この見逃しだけが切れる（他の見逃しはそのまま。有効なのは値が `1` のときだけで、
+`CHECK_DOCS_STRICT=0` は「切っている」扱い）。**派生では立てない** — 立てると
+取り込んだだけで赤くなる。
+
+**この strict は `yarn check:docs` には入っていない。** 回すのは `test-docs-downstream.sh`
+（テンプレート本体だけが持つ）で、CI では `docs-check.yml` の Docs Check (downstream) が
+本体でだけ実行する。つまり本体で `apps/…` の綴りを間違えると、**手元の `yarn check:docs` は
+緑のまま CI で赤くなる**。手元で先に見るなら `bash scripts/test-docs-downstream.sh` を回す。
 
 `.github/workflows/docs-check.yml` が全 PR で実行する。`ci.yml` と分けているのは、
 `ci.yml` がコードの差分が無い PR で重いステップを飛ばす作りになっており、

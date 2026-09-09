@@ -60,7 +60,7 @@ if [ -f .templatesyncignore ]; then
   # 減る（＝検査が厳しくなる）方向に転ぶ。緩む方向には壊れない
   SYNC_IGNORED=$(
     sed '/^# template-only:start$/,/^# template-only:end$/d' .templatesyncignore |
-      grep -v '^#' | grep -v '^[[:space:]]*$' | grep -v '^!'
+      grep -v '^#' | grep -v '^[[:space:]]*$'
   )
 fi
 
@@ -82,36 +82,54 @@ is_template_only() {
   printf '%s\n' "$TEMPLATE_ONLY" | grep -qxF "$1"
 }
 
-# テンプレート本体では、除外に載っているファイルも全て実在する。そこで下の見逃しを
-# 切って**全部を検査する**モード。テンプレート本体でだけ立てる
+# テンプレート本体では、除外に載っているファイルも（ALLOW_MISSING のものを除いて）
+# 全て実在する。そこで下の見逃しを切って**全部を検査する**モード。テンプレート本体でだけ立てる
 # （scripts/test-docs-downstream.sh が立てて回す。派生プロジェクトへは同期されない）。
 #
 # 「実在するファイルの一覧から本体かどうかを推測する」書き方はやめた。派生プロジェクトは
-# `.templatesyncignore` の template-only の範囲に自分の分を足すため、推測が外れる
-STRICT=${CHECK_DOCS_STRICT:-}
+# `.templatesyncignore` の template-only の範囲に自分の分を足すため、推測が外れる。
+#
+# 値は 1 だけを有効とする。CHECK_DOCS_STRICT=0 を「切っているつもり」で書いたときに
+# 本体扱いになって派生の CI が赤くなるのを避ける
+STRICT=${CHECK_DOCS_STRICT:-0}
 
 # `.templatesyncignore` の除外に当たるか。
 #
 # 本来は gitignore 形式だが、ここで効かせるのは「完全一致」「ディレクトリ配下」
-# 「.env* のような単純なグロブ」だけ。`!` の否定と `**` は扱わない（除外に使われていない）。
-# 扱えない書き方が増えたら、ここが黙って false を返して検査が厳しくなる側に倒れる
+# 「.env* のような単純なグロブ」と `!` の否定だけ。`**` は扱わない（除外に使われていない）。
+#
+# `!` を素通しにすると危ない。否定は「除外から戻す＝同期される」意味なので、無視すると
+# 親の除外（apps/）だけが残り、**同期されるパスまで見逃す**側に倒れる。gitignore と同じく
+# 最後に一致した行を採る
 matches_sync_ignore() {
   [ -n "$SYNC_IGNORED" ] || return 1
 
+  # 1 = 除外に当たらない
+  ignored=1
+
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
+
+    hit=0
+
+    case "$entry" in
+      '!'*)
+        hit=1
+        entry=${entry#!}
+        ;;
+    esac
 
     entry=${entry%/}
 
     case "$1" in
       # shellcheck disable=SC2254 -- entry はグロブとして評価させる
-      $entry | $entry/*) return 0 ;;
+      $entry | $entry/*) ignored=$hit ;;
     esac
   done <<EOF
 $SYNC_IGNORED
 EOF
 
-  return 1
+  return "$ignored"
 }
 
 # 相対リンクを解決した結果をリポジトリ相対のパスに直す（./ と ../ を畳む）
@@ -143,7 +161,7 @@ normalize_path() {
 # ドキュメント側が除外に載っている（＝派生が自分で書き換えるもの。questions.md や
 # CLAUDE.md）なら、書いたのは派生自身なので厳格に見る
 is_unsynced_reference() {
-  [ -z "$STRICT" ] || return 1
+  [ "$STRICT" = 1 ] && return 1
 
   matches_sync_ignore "$1" && return 1
 
@@ -159,7 +177,11 @@ is_unsynced_reference() {
 # 見逃すのは**ここに挙げたワークスペースが丸ごと無いとき**だけ。
 # 「apps/ 配下が無ければ全部見逃す」にすると、apps/wev/… のような綴り違いや
 # ワークスペースのリネーム漏れまで黙って通る（検出したいものが検出できなくなる）。
-# 層として外せるワークスペースは限られているので、一覧で持つほうが安全
+# 層として外せるワークスペースは限られているので、一覧で持つほうが安全。
+#
+# なお `.claude/docs/*.md` からの言及は、下の is_unsynced_reference のほうが先に
+# （より広く）見逃すため、非 strict ではここまで来ない。ここが効くのは除外一覧に載る
+# ドキュメント（README.md 等）からの言及と、CHECK_DOCS_STRICT=1 のとき
 OPTIONAL_WORKSPACES='
 apps/mobile
 apps/functions
