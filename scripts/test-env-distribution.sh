@@ -38,6 +38,14 @@ fail() {
   fi
 }
 
+# 集計して終わる。前提が欠けて以降を実行できないときも、ここまでの結果は出す
+summarize() {
+  echo ""
+  echo "=== 結果: ${passed} 件成功 / ${failed} 件失敗 ==="
+
+  [ "$failed" -eq 0 ]
+}
+
 # 内容を検査する前に、そのファイルが在ることを主張する。
 # grep -q は対象が無ければ非ゼロを返すため、存在確認を挟まないと
 # 「載っていない」系の assert がファイルごと消えても緑のままになる
@@ -334,8 +342,29 @@ export DEPLOY_SNAPSHOT DEPLOY_ENV_CONTENT
 printf 'LEAK_CHECK=%s\n' "$SECRET_VALUE" >"$WORK/apps/web/.env.production.local"
 
 # 事前チェック（type-check / lint / test / build）は node_modules が要るので飛ばす。
-# 検証したいのは env ファイルの出し入れだけ
-# ブランチガードは ENV=production のときだけ効くので、staging では FORCE_DEPLOY は要らない
+# 検証したいのは env ファイルの出し入れだけ。
+#
+# deploy.sh は `.templatesyncignore` で同期対象外なので、派生プロジェクトは自分の版を持つ。
+# その版が SKIP_CHECKS を落としていると事前チェックに入って `yarn type-check` で止まり、
+# 「env の配り方が壊れている」ように見える失敗になる。原因を名指しできるよう先に見る（#341）
+# ファイルが無いのか、契約が無いのかを分ける。grep 直呼びだと、対象が無いときも
+# 「SKIP_CHECKS に対応していない」と報告してしまう（grep はエラー時も非ゼロを返す）
+if ! require_file "$WORK/scripts/deploy.sh" "scripts/deploy.sh がある"; then
+  summarize
+  exit
+elif ! grep -q 'SKIP_CHECKS' "$WORK/scripts/deploy.sh"; then
+  fail "deploy.sh が SKIP_CHECKS に対応していない（[6] を実行できない）" \
+    "scripts/deploy.sh のデプロイ前チェックを SKIP_CHECKS=1 で省略できるようにしてください。
+このテストは node_modules の無い一時ツリーで deploy.sh を回すため、省略できないと
+env の配り方とは無関係な理由（yarn type-check）で止まります。
+.github/workflows/deploy.yml も同じ理由で SKIP_CHECKS=1 を渡しています
+（→ .claude/docs/git-workflow.md「deploy.sh を書き換えるときに保つ約束」）。"
+
+  # 以降の [6] は deploy.sh を回せた前提なので、続けても実行できない理由で赤が増えるだけ
+  summarize
+  exit
+fi
+
 if (cd "$WORK" && PATH="$WORK/bin:$PATH" SKIP_CHECKS=1 \
   bash scripts/deploy.sh staging --only hosting >"$WORK/deploy.log" 2>&1); then
   pass "deploy.sh が通る（firebase はスタブ）"
@@ -407,7 +436,4 @@ else
   pass "退避ディレクトリを残さない"
 fi
 
-echo ""
-echo "=== 結果: ${passed} 件成功 / ${failed} 件失敗 ==="
-
-[ "$failed" -eq 0 ]
+summarize
