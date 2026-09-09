@@ -537,25 +537,41 @@ GitHub App と PAT のどちらでも動く。**App を推奨**する。
 
 | | 同期 PR の作成者 | 紐づく先 | 期限 |
 | --- | --- | --- | --- |
-| GitHub App | bot | Organization | 秘密鍵に期限なし |
+| GitHub App | bot | Organization（個人アカウント所有でも作れる） | 秘密鍵に期限なし |
 | PAT | トークンの持ち主 | 個人アカウント | あり（切れると毎週失敗に戻る） |
 
-PAT だと、詰まる／詰まらない以前に次の3つが常時ついて回る。
+App のインストールトークンは 1 時間で失効するため Secrets には置けず、実行時に生成する。
+登録するのは秘密鍵と Client ID であって、トークンそのものではない。
+
+PAT だと、詰まる／詰まらない以前に次の2つが常時ついて回る。
 
 - **承認 1 件必須の ruleset と噛み合わない。** 自分の PR は自分で承認できないため、
   `required_approving_review_count` を 1 以上にすると毎週マージできない PR ができる
-- **同期 PR が来たことに気付けない。** GitHub は既定で自分の操作による通知を送らない
-  （Settings > Notifications の "Include your own updates"）
 - **帰属が嘘になる。** cron が取り込んだものが、人の判断として履歴に残る
+
+### 先に `template-sync` ラベルを作る
+
+ワークフローは同期 PR に `template-sync` ラベルを付ける（`pr_labels`）。
+`AndreasAugustin/actions-template-sync` は**ラベルが無ければ作りに行くが、失敗しても警告だけ出して
+先へ進み**、そのあとの `gh pr create --label` でラベルが見つからず PR の作成に失敗しうる
+（v2.5.3 のソースで確認）。ラベルの作成は Issues スコープなので、下で設定する権限
+（Contents / Pull requests）だけのトークンでは作れない可能性がある（**権限要件は未確認**）。
+
+scaffold 直後のリポジトリにこのラベルは無いので、先に作っておく。
+
+```bash
+gh label create template-sync
+```
 
 ### GitHub App を使う場合（推奨）
 
 1. **App を作る** — Organization settings > Developer settings > GitHub Apps > New GitHub App
+   （個人アカウント所有にするなら Settings > Developer settings > GitHub Apps）
    - Repository permissions: **Contents: Read and write** / **Pull requests: Read and write**
    - **Webhook の Active のチェックを外す**（このワークフローは webhook を使わない）
    - 親テンプレートは public なので、読み取り用の追加権限は要らない
 2. **Client ID を控え、Private key を生成する**（`.pem` がダウンロードされる）
-3. **インストールする** — 作った App を Organization にインストールし、対象を派生リポジトリに絞る
+3. **インストールする** — 作った App をインストールし、対象を派生リポジトリに絞る
 4. **登録する** — Client ID は Variables、秘密鍵は Secrets（置き場所が違う）
 
    ```bash
@@ -565,13 +581,22 @@ PAT だと、詰まる／詰まらない以前に次の3つが常時ついて回
 
    Client ID は Settings > Secrets and variables > Actions > **Variables** タブで
    `TEMPLATE_SYNC_APP_CLIENT_ID` として登録する（Secrets タブではない）。
-5. **確認する** — Actions > Template Sync > Run workflow。差分があれば
-   `chore: テンプレート更新の取り込み` の PR ができる。**作成者が bot になっていること**を見る
+5. **確認する** — Actions > Template Sync > Run workflow
+   - **差分が無ければ PR は作られない。** 成功しても PR 0 件はありうるので、
+     ジョブが緑かどうかで判断する
+   - PR ができたら、**作成者が bot になっていること**を見る
+   - 同期 PR の head は `chore/template_sync*` で、`branch-guard.yml` がこれを
+     `production` への PR の例外として明示的に許可している（だから guard が緑になる）
 
-⚠️ **Variables / Secrets を Organization に置くと、全リポジトリに継承される。**
-`TEMPLATE_SYNC_APP_CLIENT_ID` だけを先に Org へ置くと、まだ秘密鍵の無いリポジトリが
-「App の設定が片方だけです」で落ちる（設定漏れを PAT で黙って隠さないための挙動）。
-Org へ置くのは、App を全リポジトリへインストールしてからにする。
+⚠️ **Variables / Secrets を Organization に置くと、全リポジトリに継承される。** 落ち方が
+2 通りあるので、置く順番に注意する。
+
+- `TEMPLATE_SYNC_APP_CLIENT_ID` だけを先に Org へ置く → まだ秘密鍵の無いリポジトリが
+  「App の設定が片方だけです」で落ちる（設定漏れを PAT で黙って隠さないための挙動）
+- 両方を Org へ置く → App を未インストールのリポジトリで、トークン生成のステップが落ちる
+
+**App を対象リポジトリへインストールしてから、両方をまとめて置く。**
+リポジトリ単位で登録するぶんには、他のリポジトリに影響しない。
 
 **つまずきやすいところ**: 秘密鍵の改行が落ちていると、トークン生成のステップだけが落ちる。
 エラーメッセージからは鍵の問題だと読み取りにくいので、`gh secret set ... < file` の形で入れる。
@@ -588,15 +613,21 @@ Repository access に対象リポジトリ、権限は **Contents: Read and writ
 gh secret set TEMPLATE_SYNC_TOKEN
 ```
 
+⚠️ Organization 所有のリポジトリでは、**組織側が fine-grained PAT を許可している必要がある**
+（ポリシーによっては組織オーナーの承認待ちになる）。「owner 権限が無いから App を作れない」
+という状況では、この代替も通らないことがある（**未確認**）。
+
 期限が切れると毎週の実行が失敗に戻る。更新を促す仕組みは無いので、期限を長めに取るか
-カレンダーに入れておく。App を作れるようになったら、Secrets を入れ替えるだけで移行できる
-（ワークフローは App があればそちらを優先する）。
+カレンダーに入れておく。App へ移るときは、秘密鍵を Secrets、Client ID を Variables に足せば
+切り替わる（ワークフローは App があればそちらを優先するので、`TEMPLATE_SYNC_TOKEN` は
+残っていても使われない）。
 
 ### なぜ `GITHUB_TOKEN` では駄目か
 
 `GITHUB_TOKEN` が起こしたイベントは新しいワークフローを起動しない、という GitHub の仕様がある。
-そのままだと同期 PR で ci / branch-guard / docs-check が一切走らず、required status check が
-Expected のままマージできない PR になる。PR にワークフローを起こすために、外部のトークンが要る。
+そのままだと同期 PR で ci / branch-guard / docs-check が一切走らず、required status check
+（`guard` / `ci / ci`）が Expected のまま埋まらないため、マージできない PR になる。
+PR にワークフローを起こすために、外部のトークンが要る。
 
 なお、取り込み元（親テンプレート）の**読み取り**は `github.token` で行う。親は public で足りるうえ、
 App のインストールトークンは `owner` / `repositories` を指定しない限り自リポジトリにしか

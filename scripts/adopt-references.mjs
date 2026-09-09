@@ -97,7 +97,7 @@ const PRETTIER_IGNORE_ENTRIES = [
 const MANUAL_STEPS = [
   'Renovate の GitHub App をインストールし、Mend（app.mend.io）で Silent mode を OFF / Automated PRs を ON にする（→ .claude/docs/dependencies.md）',
   'リポジトリ設定で Dependency graph と Dependabot alerts を有効化する（vulnerabilityAlerts がこれを読む）',
-  'Template Sync（.github/workflows/template-sync.yml）の認証を設定する。GitHub App（Variables: TEMPLATE_SYNC_APP_CLIENT_ID / Secrets: TEMPLATE_SYNC_APP_PRIVATE_KEY）推奨、PAT なら Secrets: TEMPLATE_SYNC_TOKEN',
+  'Template Sync（.github/workflows/template-sync.yml）の認証を設定する。GitHub App 推奨、PAT でも動く（→ .claude/docs/git-workflow.md「Template Sync の有効化」）',
   'Dependabot の設定ファイルが残っていれば削除する（Renovate と PR が二重に立つ）',
   // ruleset はリポジトリ外の状態なので、このスクリプトからは直せない
   'production の ruleset を取り込み済みなら、required status check の名前を「ci」から「ci / ci」へ更新する（CI を参照形にするとチェック名が変わるため。→ .claude/docs/git-workflow.md「マージルールの強制」）',
