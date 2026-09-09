@@ -99,7 +99,9 @@ for (const relative of listFiles(root)) {
   try {
     blocks = findBlocks(content)
   } catch (error) {
-    fail(`${relative}: ${error instanceof Error ? error.message : String(error)}`)
+    fail(
+      `${relative}: ${error instanceof Error ? error.message : String(error)}`
+    )
     continue
   }
 

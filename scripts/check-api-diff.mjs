@@ -594,6 +594,8 @@ try {
   // main は「止めるとき」だけ終了コードを返す（それ以外は undefined）
   process.exitCode = main() ?? 0
 } catch (error) {
-  console.error(`[error] ${error instanceof Error ? error.message : String(error)}`)
+  console.error(
+    `[error] ${error instanceof Error ? error.message : String(error)}`
+  )
   process.exitCode = 1
 }
