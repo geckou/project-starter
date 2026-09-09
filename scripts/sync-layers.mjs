@@ -152,6 +152,8 @@ function main() {
 try {
   main()
 } catch (error) {
-  console.error(`[error] ${error.message}`)
+  console.error(
+    `[error] ${error instanceof Error ? error.message : String(error)}`
+  )
   process.exit(1)
 }

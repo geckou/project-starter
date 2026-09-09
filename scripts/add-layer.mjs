@@ -106,9 +106,11 @@ function prepareSource(root, options) {
   } catch (error) {
     fs.rmSync(dir, { recursive: true, force: true })
 
-    throw new Error(
-      `テンプレートの取得に失敗しました: ${error.stderr?.toString().trim() ?? error.message}`
-    )
+    const detail =
+      error.stderr?.toString().trim() ||
+      (error instanceof Error ? error.message : String(error))
+
+    throw new Error(`テンプレートの取得に失敗しました: ${detail}`)
   }
 
   return {
@@ -621,6 +623,8 @@ function main() {
 try {
   main()
 } catch (error) {
-  console.error(`[error] ${error.message}`)
+  console.error(
+    `[error] ${error instanceof Error ? error.message : String(error)}`
+  )
   process.exit(1)
 }
