@@ -347,7 +347,12 @@ printf 'LEAK_CHECK=%s\n' "$SECRET_VALUE" >"$WORK/apps/web/.env.production.local"
 # deploy.sh は `.templatesyncignore` で同期対象外なので、派生プロジェクトは自分の版を持つ。
 # その版が SKIP_CHECKS を落としていると事前チェックに入って `yarn type-check` で止まり、
 # 「env の配り方が壊れている」ように見える失敗になる。原因を名指しできるよう先に見る（#341）
-if ! grep -q 'SKIP_CHECKS' "$WORK/scripts/deploy.sh"; then
+# ファイルが無いのか、契約が無いのかを分ける。grep 直呼びだと、対象が無いときも
+# 「SKIP_CHECKS に対応していない」と報告してしまう（grep はエラー時も非ゼロを返す）
+if ! require_file "$WORK/scripts/deploy.sh" "scripts/deploy.sh がある"; then
+  summarize
+  exit
+elif ! grep -q 'SKIP_CHECKS' "$WORK/scripts/deploy.sh"; then
   fail "deploy.sh が SKIP_CHECKS に対応していない（[6] を実行できない）" \
     "scripts/deploy.sh のデプロイ前チェックを SKIP_CHECKS=1 で省略できるようにしてください。
 このテストは node_modules の無い一時ツリーで deploy.sh を回すため、省略できないと
