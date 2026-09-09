@@ -6,14 +6,22 @@ name: Template Sync
 # セットアップ（派生プロジェクト側）:
 # 1. 取り込みたくないファイル（プロジェクト固有にカスタマイズしたもの）は .templatesyncignore に追記する
 # 2. 差分 PR が作られたら、内容を確認してマージする（コンフリクトは PR 上で解決）
+# 3. 書き込み権限のある認証情報を登録する。GitHub App と PAT のどちらでも動く（App を推奨）
 #
-# 3. リポジトリのシークレットに TEMPLATE_SYNC_TOKEN（PAT または GitHub App のトークン）を登録する
+#    App: Variables に TEMPLATE_SYNC_APP_CLIENT_ID、Secrets に TEMPLATE_SYNC_APP_PRIVATE_KEY
+#         （App 側の権限は Contents: Read and write と Pull requests: Read and write）
+#    PAT: Secrets に TEMPLATE_SYNC_TOKEN
+#
+#    App があればそちらを使う。App は Organization が持つので個人アカウントに紐づかず、
+#    同期 PR の作成者が bot になる。PAT だと作成者がトークンの持ち主になるため、承認 1 件必須の
+#    ruleset を入れている場合は自分の PR を承認できず毎週詰まる（GitHub の仕様）。
+#    App のインストールトークンは 1 時間で失効して Secrets に置けないので、実行時に生成する
 #
 # 親テンプレートは public なので読み取り自体は github.token でもできるが、
 # GITHUB_TOKEN が起こしたイベントは新しいワークフローを起動しないという GitHub の仕様があり、
 # その場合この workflow が作る PR で ci / branch-guard / docs-check が一切走らない
 # （required check が Expected のままマージできない）。PR にワークフローを起こすために
-# TEMPLATE_SYNC_TOKEN が要る。
+# App のインストールトークンか PAT が要る。
 
 on:
   schedule:
@@ -30,24 +38,49 @@ jobs:
 
     steps:
       # 未設定のまま動かすと、毎週「CI が 1 つも走らない = マージできない PR」を
-      # 作り続けることになる。黙って続けるより、ここで落として気付けるようにする
-      - name: Require TEMPLATE_SYNC_TOKEN
+      # 作り続けることになる。黙って続けるより、ここで落として気付けるようにする。
+      # secrets は step の if: から参照できないため、判定結果を outputs に落として後段で使う
+      - name: 認証方式を決める
+        id: auth
         env:
+          APP_CLIENT_ID: ${{ vars.TEMPLATE_SYNC_APP_CLIENT_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.TEMPLATE_SYNC_APP_PRIVATE_KEY }}
           TEMPLATE_SYNC_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
         run: |
-          if [ -z "$TEMPLATE_SYNC_TOKEN" ]; then
-            echo "::error::TEMPLATE_SYNC_TOKEN が未設定です。GITHUB_TOKEN が起こしたイベントはワークフローを起動しないため、このまま PR を作っても ci / branch-guard が走らずマージできません。PAT または GitHub App のトークンをリポジトリの Secrets に登録してください"
+          if [ -n "$APP_CLIENT_ID" ] || [ -n "$APP_PRIVATE_KEY" ]; then
+            # 片方だけの登録は設定漏れ。黙って PAT へ落とすと、App に移したつもりの
+            # プロジェクトが PAT 名義のまま回り続けて気付けない
+            if [ -z "$APP_CLIENT_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
+              echo "::error::GitHub App の設定が片方だけです。Variables の TEMPLATE_SYNC_APP_CLIENT_ID と Secrets の TEMPLATE_SYNC_APP_PRIVATE_KEY の両方を登録してください"
+              exit 1
+            fi
+            echo 'mode=app' >> "$GITHUB_OUTPUT"
+          elif [ -n "$TEMPLATE_SYNC_TOKEN" ]; then
+            echo 'mode=pat' >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::認証情報が未設定です。GITHUB_TOKEN が起こしたイベントはワークフローを起動しないため、このまま PR を作っても ci / branch-guard が走らずマージできません。GitHub App（Variables: TEMPLATE_SYNC_APP_CLIENT_ID / Secrets: TEMPLATE_SYNC_APP_PRIVATE_KEY）か PAT（Secrets: TEMPLATE_SYNC_TOKEN）を登録してください"
             exit 1
           fi
 
+      # インストールトークンを実行時に作る。actions/* は GitHub 公式のため
+      # SHA 固定の対象外（renovate/default.json の方針）
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        if: steps.auth.outputs.mode == 'app'
+        with:
+          client-id: ${{ vars.TEMPLATE_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.TEMPLATE_SYNC_APP_PRIVATE_KEY }}
+
       # push と PR 作成を GITHUB_TOKEN 以外のトークンで行う。
-      # GITHUB_TOKEN のままだと、作られた PR で CI が 1 つも走らない
+      # GITHUB_TOKEN のままだと、作られた PR で CI が 1 つも走らない。
+      # App を使わない場合は上のステップが skip され outputs.token が空になるので、PAT へ落ちる
       - uses: actions/checkout@v7
         with:
-          token: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
+          token: ${{ steps.app-token.outputs.token || secrets.TEMPLATE_SYNC_TOKEN }}
 
-      # サードパーティ Action は書き込み権限のあるトークン（TEMPLATE_SYNC_TOKEN）を受け取るため、
-      # 差し替え可能なタグではなくコミット SHA で固定する。更新は Renovate が SHA ごと差し替える
+      # サードパーティ Action は書き込み権限のあるトークン（App のインストールトークン、
+      # または PAT）を受け取るため、差し替え可能なタグではなくコミット SHA で固定する。
+      # 更新は Renovate が SHA ごと差し替える
       - uses: AndreasAugustin/actions-template-sync@8a0f668b83c32a0f673353086d74f12b8853d4f5 # v2.5.3
         id: sync
         with:
@@ -61,8 +94,8 @@ jobs:
           #
           # PR 作成に効くのは target_gh_token だけ。ここを渡さないと PR が
           # GITHUB_TOKEN 名義で作られ、CI が 1 つも走らない
-          source_gh_token: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
-          target_gh_token: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
+          source_gh_token: ${{ steps.app-token.outputs.token || secrets.TEMPLATE_SYNC_TOKEN }}
+          target_gh_token: ${{ steps.app-token.outputs.token || secrets.TEMPLATE_SYNC_TOKEN }}
           pr_title: 'chore: テンプレート更新の取り込み'
           pr_labels: template-sync
           pr_commit_msg: 'chore: テンプレート更新の取り込み'
@@ -75,7 +108,11 @@ jobs:
       - name: 派生で外した層を取り込んだ差分から外し直す
         if: steps.sync.outputs.pr_branch != ''
         env:
-          GH_TOKEN: ${{ secrets.TEMPLATE_SYNC_TOKEN }}
+          # gh を使うのは下のフォールバック（テンプレートの layers.json を読む）だけで、
+          # 相手は public リポジトリなので github.token で足りる。App のインストール先を
+          # 派生リポジトリだけに絞っていても通るよう、同期用のトークンは渡さない。
+          # PR ブランチへの push は checkout が埋め込んだ同期用トークンで行われる
+          GH_TOKEN: ${{ github.token }}
           PR_BRANCH: ${{ steps.sync.outputs.pr_branch }}
           TEMPLATE_GIT_HASH: ${{ steps.sync.outputs.template_git_hash }}
           TEMPLATE_REPO: geckou/project-starter

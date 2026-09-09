@@ -362,7 +362,7 @@ PR は DoD（type-check / lint / test）とセルフレビュー（`/review`）�
 |---|---|
 | PR 自動レビュー / `@claude` メンション | リポジトリの Secrets に `ANTHROPIC_API_KEY` を登録（未登録ならスキップされる）。`.github/workflows/claude.yml` |
 | Copilot の自動レビュー | `.github/rulesets/copilot-review.json` を `gh api` で 1 回取り込む。以後は PR を開くだけでレビューが走る（[`.claude/docs/git-workflow.md`](.claude/docs/git-workflow.md)） |
-| テンプレート更新の取り込み | リポジトリの Secrets に `TEMPLATE_SYNC_TOKEN`（PAT / App トークン）を登録する。`GITHUB_TOKEN` が起こしたイベントはワークフローを起動しないため、未登録だと作られた PR で CI が 1 つも走らない。取り込み対象外は `.templatesyncignore` で管理。`.github/workflows/template-sync.yml` |
+| テンプレート更新の取り込み | GitHub App（Variables に `TEMPLATE_SYNC_APP_CLIENT_ID`、Secrets に `TEMPLATE_SYNC_APP_PRIVATE_KEY`）か PAT（Secrets に `TEMPLATE_SYNC_TOKEN`）を登録する。`GITHUB_TOKEN` が起こしたイベントはワークフローを起動しないため、どちらも未登録だと作られた PR で CI が 1 つも走らない。App なら同期 PR の作成者が bot になり、個人アカウントにも PAT の期限にも縛られない。取り込み対象外は `.templatesyncignore` で管理。`.github/workflows/template-sync.yml` |
 | CI をテンプレート参照にする | 派生側は `uses: geckou/project-starter/.github/workflows/ci.yml@v1` の 1 行だけ持つ。チェック内容の修正が取り込み作業ゼロで届く（[`.claude/docs/git-workflow.md`](.claude/docs/git-workflow.md)） |
 | 依存更新（Renovate） | `renovate.json5` がテンプレートの preset を参照する。Renovate の GitHub App のインストールが前提（[`.claude/docs/dependencies.md`](.claude/docs/dependencies.md)） |
 
