@@ -537,7 +537,7 @@ GitHub App と PAT のどちらでも動く。**App を推奨**する。
 
 | | 同期 PR の作成者 | 紐づく先 | 期限 |
 | --- | --- | --- | --- |
-| GitHub App | bot | Organization（個人アカウント所有でも作れる） | 秘密鍵に期限なし |
+| GitHub App | bot | Organization / 個人アカウント | 秘密鍵に期限なし |
 | PAT | トークンの持ち主 | 個人アカウント | あり（切れると毎週失敗に戻る） |
 
 App のインストールトークンは 1 時間で失効するため Secrets には置けず、実行時に生成する。
@@ -553,11 +553,13 @@ PAT だと、詰まる／詰まらない以前に次の2つが常時ついて回
 
 ワークフローは同期 PR に `template-sync` ラベルを付ける（`pr_labels`）。
 `AndreasAugustin/actions-template-sync` は**ラベルが無ければ作りに行くが、失敗しても警告だけ出して
-先へ進み**、そのあとの `gh pr create --label` でラベルが見つからず PR の作成に失敗しうる
-（v2.5.3 のソースで確認）。ラベルの作成は Issues スコープなので、下で設定する権限
-（Contents / Pull requests）だけのトークンでは作れない可能性がある（**権限要件は未確認**）。
+先へ進み**、そのあとの `gh pr create --label` でラベルが見つからず PR の作成に失敗する
+（v2.5.3 のソースで確認）。
 
-scaffold 直後のリポジトリにこのラベルは無いので、先に作っておく。
+ラベル作成に必要な権限は**未確認**だが、下で設定する権限（Contents / Pull requests）だけの
+トークンでは作れない可能性がある。App 側に `Issues: Read and write` を足しても同じ問題を消せる。
+
+scaffold 直後のリポジトリにこのラベルは無いので、先に作っておくのが確実。
 
 ```bash
 gh label create template-sync
@@ -582,11 +584,20 @@ gh label create template-sync
    Client ID は Settings > Secrets and variables > Actions > **Variables** タブで
    `TEMPLATE_SYNC_APP_CLIENT_ID` として登録する（Secrets タブではない）。
 5. **確認する** — Actions > Template Sync > Run workflow
-   - **差分が無ければ PR は作られない。** 成功しても PR 0 件はありうるので、
-     ジョブが緑かどうかで判断する
    - PR ができたら、**作成者が bot になっていること**を見る
-   - 同期 PR の head は `chore/template_sync*` で、`branch-guard.yml` がこれを
+   - 同期 PR の head は `chore/template_sync_<ハッシュ>` で、`branch-guard.yml` がこれを
      `production` への PR の例外として明示的に許可している（だから guard が緑になる）
+
+   ⚠️ **ジョブが緑でも PR が 0 件のことがある。** 3 通りある（v2.5.3 のソースで確認）。
+
+   1. テンプレート側に新しいコミットが無い（取り込み済み）
+   2. 取り込んだ結果に差分が無い
+   3. **同名の同期ブランチが remote に残っている** — 前回の実行が PR の作成だけ失敗すると、
+      ブランチは push 済みで PR だけ無い状態になる。この状態では以降の実行が
+      「ブランチがあるので何もしない」で緑のまま終わり、テンプレート側の HEAD が動くまで
+      PR が作られない。残った `chore/template_sync_*` ブランチを消してから再実行する
+
+   1 と 2 は正常だが、3 は詰まっているので区別する。初回は PR ができるところまで見届ける。
 
 ⚠️ **Variables / Secrets を Organization に置くと、全リポジトリに継承される。** 落ち方が
 2 通りあるので、置く順番に注意する。
@@ -613,14 +624,14 @@ Repository access に対象リポジトリ、権限は **Contents: Read and writ
 gh secret set TEMPLATE_SYNC_TOKEN
 ```
 
-⚠️ Organization 所有のリポジトリでは、**組織側が fine-grained PAT を許可している必要がある**
-（ポリシーによっては組織オーナーの承認待ちになる）。「owner 権限が無いから App を作れない」
-という状況では、この代替も通らないことがある（**未確認**）。
+⚠️ **未確認**だが、Organization 所有のリポジトリでは組織側が fine-grained PAT を許可している
+必要があり、ポリシーによっては組織オーナーの承認待ちになる。そうだとすると
+「owner 権限が無いから App を作れない」という状況では、この代替も通らない。
 
 期限が切れると毎週の実行が失敗に戻る。更新を促す仕組みは無いので、期限を長めに取るか
-カレンダーに入れておく。App へ移るときは、秘密鍵を Secrets、Client ID を Variables に足せば
-切り替わる（ワークフローは App があればそちらを優先するので、`TEMPLATE_SYNC_TOKEN` は
-残っていても使われない）。
+カレンダーに入れておく。App へ移るときは、秘密鍵を Secrets、Client ID を Variables に
+**両方まとめて**足す（片方だけだと「App の設定が片方だけです」で落ちる）。ワークフローは
+App があればそちらを優先するので、`TEMPLATE_SYNC_TOKEN` は残っていても使われない。
 
 ### なぜ `GITHUB_TOKEN` では駄目か
 

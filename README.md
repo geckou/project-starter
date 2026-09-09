@@ -367,8 +367,8 @@ PR は DoD（type-check / lint / test）とセルフレビュー（`/review`）�
 | 依存更新（Renovate） | `renovate.json5` がテンプレートの preset を参照する。Renovate の GitHub App のインストールが前提（[`.claude/docs/dependencies.md`](.claude/docs/dependencies.md)） |
 
 ⚠️ Template Sync の App 設定を **Organization の Variables / Secrets に置くと全派生に継承され、
-まだ設定の揃っていない派生が落ちる。** 置く順番は
-[`.claude/docs/git-workflow.md`](.claude/docs/git-workflow.md)「Template Sync の有効化」を参照。
+まだ設定の揃っていない派生が落ちる。** リポジトリ単位で登録するぶんには他に影響しない。
+Org へ置く順番は [`.claude/docs/git-workflow.md`](.claude/docs/git-workflow.md)「Template Sync の有効化」を参照。
 
 ---
 
