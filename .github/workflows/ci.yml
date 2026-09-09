@@ -145,6 +145,13 @@ jobs:
         if: steps.changes.outputs.code == 'true' && hashFiles('scripts/test-deploy-targets.sh') != ''
         run: bash scripts/test-deploy-targets.sh
 
+      # デプロイ時に npm が実際に解決する package.json（Cloud Functions のソースと、
+      # SSR 関数の生成物）で解決が通るか。手元の yarn install が通ることとは別で、
+      # 依存の更新が入っただけで壊れる。npm レジストリに届かない環境ではスキップする
+      - name: Deploy Install Test
+        if: steps.changes.outputs.code == 'true' && hashFiles('scripts/test-deploy-install.sh') != ''
+        run: bash scripts/test-deploy-install.sh
+
       # use-env.sh がどのキーをどのファイルへ配るか。足りないと SSR / Functions が
       # undefined になり、多すぎると秘密が関数の環境変数として載る（#325）
       - name: Env Distribution Test

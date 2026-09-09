@@ -168,6 +168,31 @@ yarn deploy:production
 CI/CD: `.github/workflows/deploy.yml` が `release/*` / `hotfix/*`（→ staging）と `production` の push で自動デプロイ。
 develop は自動デプロイ対象外（複数人の feat/* push が互いに上書きし合うため）。各自 `yarn deploy:develop` で手動デプロイする。
 
+### デプロイ時の npm 解決は `.npmrc` で固定している
+
+`firebase deploy` は、リポジトリの `package.json` をそのまま使わない。**手元の
+`yarn install` が通ることと、デプロイ先で `npm` が解決できることは別**で、依存の
+更新が入っただけで後者だけが壊れる。実際、セキュリティ更新が 2 件入っただけで
+Cloud Functions と SSR 関数が別々の理由で解決に失敗し、デプロイが止まったことがある
+（CI は緑のまま。Hosting は配れるので気付きにくい）。
+
+そのため 2 か所に `.npmrc`（`legacy-peer-deps=true`）を置いている。**どちらも
+置き場所に意味がある。**
+
+| ファイル | どう届くか |
+|---|---|
+| `apps/functions/.npmrc` | `firebase.json` の `functions.source` がこのディレクトリで、中身がそのまま Cloud Functions のソースとして上がる。Cloud Build がそこで `npm install` する |
+| `apps/web/.npmrc` | framework-backed hosting のアダプタが `.firebase/<サイト>/functions/` へコピーする。コピー元は **`hosting.source`（`apps/web`）で、リポジトリのルートではない**（firebase-tools の `lib/frameworks/index.js` の `getProjectPath`）。コピー先はローカル / CI 側の `npm i` と Cloud Build 側の `npm ci` の両方が読む |
+
+`scripts/test-deploy-install.sh` が、この 2 つの形（`deploy.sh` が削ったあとの
+`apps/functions/package.json` と、アダプタが生成する SSR 関数の `package.json`）を
+再現して `npm` の解決を確かめる。`ci.yml` の Deploy Install Test が実行する。
+`npm install` は peer の衝突を黙って通すが Cloud Build が使う `npm ci` は拒否するので、
+両方を回している。
+
+> ⚠️ **`apps/` は `.templatesyncignore` の対象外なので、この 2 ファイルは Template Sync で
+> 届かない。** テンプレートより前に scaffold した派生プロジェクトは、自分で置く必要がある。
+
 ### `deploy.sh` を書き換えるときに保つ約束［派生専用］
 
 `scripts/deploy.sh` は `.templatesyncignore` で同期対象外なので、派生プロジェクトは自分の版を

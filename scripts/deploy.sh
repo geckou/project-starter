@@ -230,55 +230,29 @@ trap cleanup_deploy_state EXIT INT TERM HUP
 echo "[predeploy] workspace 依存を一時削除..."
 # 削除するのは「このリポジトリのワークスペース」だけ。スコープ前置き（@geckou/）で
 # 判定すると、npm へ公開しているパッケージ（@geckou/ui-react / @geckou/billing /
-# @geckou/firebase-server 等）まで消え、registry から取り直せなくなる。
-# ルート package.json の workspaces を展開して実在する name の集合を作るので、
-# 派生でスコープをリネームしても動く
+# @geckou/firebase-server 等）まで消え、registry から取り直せなくなる（#198）。
+# 実在する name の集合は scripts/lib/workspace-names.mjs が作る。
+# scripts/test-deploy-install.sh が同じものを使って、ここで作られる形を検査する
+#
+# 動的 import なので、失敗しても握り潰されないよう catch で明示的に落とす
 node -e "
   const fs = require('fs');
-  const path = require('path');
+  const targets = process.argv.slice(1);
 
-  const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
-  const root = readJson('package.json');
-  const patterns = Array.isArray(root.workspaces)
-    ? root.workspaces
-    : root.workspaces?.packages ?? [];
+  import('./scripts/lib/workspace-names.mjs')
+    .then(({ workspaceNames, withoutWorkspaceDependencies }) => {
+      const names = workspaceNames('.');
 
-  // 展開するのは 'apps/*' のような末尾 1 段のワイルドカードと、直接指定のパス
-  const directories = new Set();
-
-  for (const pattern of patterns) {
-    if (!pattern.includes('*')) {
-      directories.add(pattern);
-      continue;
-    }
-
-    // 末尾の / は付いたままでよい（existsSync も readdirSync も受け付ける）。
-    // ここで正規表現を書くと、シェルのエスケープを通った後の姿が読みにくくなる
-    const base = pattern.slice(0, pattern.indexOf('*'));
-    if (!fs.existsSync(base)) continue;
-
-    for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
-      if (entry.isDirectory()) directories.add(path.join(base, entry.name));
-    }
-  }
-
-  const workspaceNames = new Set();
-
-  for (const directory of directories) {
-    const manifest = path.join(directory, 'package.json');
-    if (!fs.existsSync(manifest)) continue;
-
-    const name = readJson(manifest).name;
-    if (name) workspaceNames.add(name);
-  }
-
-  process.argv.slice(1).forEach(p => {
-    const pkg = readJson(p);
-    for (const dep of Object.keys(pkg.dependencies || {})) {
-      if (workspaceNames.has(dep)) delete pkg.dependencies[dep];
-    }
-    fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
-  });
+      for (const target of targets) {
+        const pkg = JSON.parse(fs.readFileSync(target, 'utf8'));
+        pkg.dependencies = withoutWorkspaceDependencies(pkg.dependencies, names);
+        fs.writeFileSync(target, JSON.stringify(pkg, null, 2) + '\\n');
+      }
+    })
+    .catch((error) => {
+      console.error('[error] workspace 依存を落とせませんでした: ' + (error instanceof Error ? error.message : String(error)));
+      process.exit(1);
+    });
 " "${WORKSPACE_PACKAGE_JSONS[@]}"
 
 stash_local_env
