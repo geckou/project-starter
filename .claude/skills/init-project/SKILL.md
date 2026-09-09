@@ -257,6 +257,6 @@ PAT だと同期 PR の作成者が人になるため、履歴の帰属がずれ
 - [ ] CI を reusable workflow の参照に切り替え、`.templatesyncignore` に追加した
 - [ ] Copilot の自動レビュー ruleset（`.github/rulesets/copilot-review.json`）を取り込んだ
 - [ ] Renovate の GitHub App をインストールし、Silent mode を OFF にした
-- [ ] Template Sync の認証（App / PAT）を登録し、手動実行で PR ができることを確認した
+- [ ] Template Sync の認証（App / PAT）を登録し、`template-sync` ラベルを作り、手動実行で PR ができることを確認した
 - [ ] Dependency graph / Dependabot alerts を有効化した（脆弱性の PR が来るようにする）
 - [ ] `.claude/docs/` を初期化した

@@ -553,10 +553,13 @@ GitHub App と PAT のどちらでも動く。**App を推奨**する。
 
 | | 同期 PR の作成者 | 紐づく先 | 期限 |
 | --- | --- | --- | --- |
-| GitHub App | bot | Organization | 秘密鍵に期限なし |
+| GitHub App | bot | Organization / 個人アカウント | 秘密鍵に期限なし |
 | PAT | トークンの持ち主 | 個人アカウント | あり（切れると毎週失敗に戻る） |
 
-PAT だと、詰まる／詰まらない以前に次の3つが常時ついて回る。
+App のインストールトークンは 1 時間で失効するため Secrets には置けず、実行時に生成する。
+登録するのは秘密鍵と Client ID であって、トークンそのものではない。
+
+PAT だと、詰まる／詰まらない以前に次の2つが常時ついて回る。
 
 - **承認を必須にしていて、承認できる人が他にいないと詰まる。** 自分の PR は自分で承認できないため、
   `required_approving_review_count` を 1 以上へ上げていて、かつ承認者がトークンの持ち主しか
@@ -564,14 +567,32 @@ PAT だと、詰まる／詰まらない以前に次の3つが常時ついて回
   詰まりはしない。→「マージルールの強制」）
 - **帰属が嘘になる。** cron が取り込んだものが、人の判断として履歴に残る
 
+### 先に `template-sync` ラベルを作る
+
+ワークフローは同期 PR に `template-sync` ラベルを付ける（`pr_labels`）。
+`AndreasAugustin/actions-template-sync` は**ラベルが無ければ作りに行くが、失敗しても警告だけ出して
+先へ進み**、そのあとの `gh pr create --label` でラベルが見つからず PR の作成に失敗する
+（v2.5.3 のソースで確認）。
+
+ラベル作成に必要な権限は**未確認**だが、下で設定する権限（Contents / Pull requests）だけの
+トークンでは作れない可能性がある。そうだとすると、App 側に `Issues: Read and write` を足す形でも
+避けられるはず。
+
+scaffold 直後のリポジトリにこのラベルは無いので、先に作っておくのが確実。
+
+```bash
+gh label create template-sync
+```
+
 ### GitHub App を使う場合（推奨）
 
 1. **App を作る** — Organization settings > Developer settings > GitHub Apps > New GitHub App
+   （個人アカウント所有にするなら Settings > Developer settings > GitHub Apps）
    - Repository permissions: **Contents: Read and write** / **Pull requests: Read and write**
    - **Webhook の Active のチェックを外す**（このワークフローは webhook を使わない）
    - 親テンプレートは public なので、読み取り用の追加権限は要らない
 2. **Client ID を控え、Private key を生成する**（`.pem` がダウンロードされる）
-3. **インストールする** — 作った App を Organization にインストールし、対象を派生リポジトリに絞る
+3. **インストールする** — 作った App をインストールし、対象を派生リポジトリに絞る
 4. **登録する** — Client ID は Variables、秘密鍵は Secrets（置き場所が違う）
 
    ```bash
@@ -581,13 +602,31 @@ PAT だと、詰まる／詰まらない以前に次の3つが常時ついて回
 
    Client ID は Settings > Secrets and variables > Actions > **Variables** タブで
    `TEMPLATE_SYNC_APP_CLIENT_ID` として登録する（Secrets タブではない）。
-5. **確認する** — Actions > Template Sync > Run workflow。差分があれば
-   `chore: テンプレート更新の取り込み` の PR ができる。**作成者が bot になっていること**を見る
+5. **確認する** — Actions > Template Sync > Run workflow
+   - PR ができたら、**作成者が bot になっていること**を見る
+   - 同期 PR の head は `chore/template_sync_<ハッシュ>` で、`branch-guard.yml` がこれを
+     `production` への PR の例外として明示的に許可している（だから guard が緑になる）
 
-⚠️ **Variables / Secrets を Organization に置くと、全リポジトリに継承される。**
-`TEMPLATE_SYNC_APP_CLIENT_ID` だけを先に Org へ置くと、まだ秘密鍵の無いリポジトリが
-「App の設定が片方だけです」で落ちる（設定漏れを PAT で黙って隠さないための挙動）。
-Org へ置くのは、App を全リポジトリへインストールしてからにする。
+   ⚠️ **ジョブが緑でも PR が 0 件のことがある。** 3 通りある（v2.5.3 のソースで確認）。
+
+   1. テンプレート側に新しいコミットが無い（取り込み済み）
+   2. 取り込んだ結果に差分が無い
+   3. **同名の同期ブランチが remote に残っている** — 前回の実行が PR の作成だけ失敗すると、
+      ブランチは push 済みで PR だけ無い状態になる。この状態では以降の実行が
+      「ブランチがあるので何もしない」で緑のまま終わり、テンプレート側の HEAD が動くまで
+      PR が作られない。残った `chore/template_sync_*` ブランチを消してから再実行する
+
+   1 と 2 は正常だが、3 は詰まっているので区別する。初回は PR ができるところまで見届ける。
+
+⚠️ **Variables / Secrets を Organization に置くと、全リポジトリに継承される。** 落ち方が
+2 通りあるので、置く順番に注意する。
+
+- `TEMPLATE_SYNC_APP_CLIENT_ID` だけを先に Org へ置く → まだ秘密鍵の無いリポジトリが
+  「App の設定が片方だけです」で落ちる（設定漏れを PAT で黙って隠さないための挙動）
+- 両方を Org へ置く → App を未インストールのリポジトリで、トークン生成のステップが落ちる
+
+**App を対象リポジトリへインストールしてから、両方をまとめて置く。**
+リポジトリ単位で登録するぶんには、他のリポジトリに影響しない。
 
 **つまずきやすいところ**: 秘密鍵の改行が落ちていると、トークン生成のステップだけが落ちる。
 エラーメッセージからは鍵の問題だと読み取りにくいので、`gh secret set ... < file` の形で入れる。
@@ -604,15 +643,21 @@ Repository access に対象リポジトリ、権限は **Contents: Read and writ
 gh secret set TEMPLATE_SYNC_TOKEN
 ```
 
+⚠️ **未確認**だが、Organization 所有のリポジトリでは組織側が fine-grained PAT を許可している
+必要があり、ポリシーによっては組織オーナーの承認待ちになる。そうだとすると
+「owner 権限が無いから App を作れない」という状況では、この代替も通らない。
+
 期限が切れると毎週の実行が失敗に戻る。更新を促す仕組みは無いので、期限を長めに取るか
-カレンダーに入れておく。App を作れるようになったら、Secrets を入れ替えるだけで移行できる
-（ワークフローは App があればそちらを優先する）。
+カレンダーに入れておく。App へ移るときは、秘密鍵を Secrets、Client ID を Variables に
+**両方まとめて**足す（片方だけだと「App の設定が片方だけです」で落ちる）。ワークフローは
+App があればそちらを優先するので、`TEMPLATE_SYNC_TOKEN` は残っていても使われない。
 
 ### なぜ `GITHUB_TOKEN` では駄目か
 
 `GITHUB_TOKEN` が起こしたイベントは新しいワークフローを起動しない、という GitHub の仕様がある。
-そのままだと同期 PR で ci / branch-guard / docs-check が一切走らず、required status check が
-Expected のままマージできない PR になる。PR にワークフローを起こすために、外部のトークンが要る。
+そのままだと同期 PR で ci / branch-guard / docs-check が一切走らず、required status check
+（`guard` / `ci / ci`）が Expected のまま埋まらないため、マージできない PR になる。
+PR にワークフローを起こすために、外部のトークンが要る。
 
 なお、取り込み元（親テンプレート）の**読み取り**は `github.token` で行う。親は public で足りるうえ、
 App のインストールトークンは `owner` / `repositories` を指定しない限り自リポジトリにしか
