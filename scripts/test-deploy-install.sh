@@ -88,20 +88,16 @@ if [ ! -f "$REPO/apps/functions/package.json" ]; then
 else
   mkdir -p "$WORK/functions"
 
-  # scripts/deploy.sh と同じ削り方をする。ここがずれると、実際に上がるものと
-  # 違う形を検査してしまう
-  if ! node -e "
-    const fs = require('fs')
-    const pkg = JSON.parse(fs.readFileSync('$REPO/apps/functions/package.json', 'utf8'))
+  # 削り方は scripts/deploy.sh と**同じ実装**を使う（scripts/lib/workspace-names.mjs）。
+  # ここを別に書くと、実際に上がるものと違う形を検査することになる
+  if ! node --input-type=module -e "
+    import { readFileSync, writeFileSync } from 'node:fs'
+    import { workspaceNames, withoutWorkspaceDependencies } from '$REPO/scripts/lib/workspace-names.mjs'
 
-    for (const dep of Object.keys(pkg.dependencies || {})) {
-      if (dep.startsWith('@') && dep.includes('/')) {
-        const isWorkspace = (pkg.dependencies[dep] === '*' || pkg.dependencies[dep].startsWith('workspace:'))
-        if (isWorkspace) delete pkg.dependencies[dep]
-      }
-    }
+    const pkg = JSON.parse(readFileSync('$REPO/apps/functions/package.json', 'utf8'))
+    pkg.dependencies = withoutWorkspaceDependencies(pkg.dependencies, workspaceNames('$REPO'))
 
-    fs.writeFileSync('$WORK/functions/package.json', JSON.stringify(pkg, null, 2))
+    writeFileSync('$WORK/functions/package.json', JSON.stringify(pkg, null, 2))
   " 2>"$WORK/gen.log"; then
     fail "apps/functions/package.json を読めない" "$(cat "$WORK/gen.log")"
   else
@@ -146,20 +142,17 @@ elif [ ! -f "$REPO/$HOSTING_SOURCE/package.json" ]; then
 else
   mkdir -p "$WORK/ssr"
 
-  node -e "
-    const fs = require('fs')
-    const app = JSON.parse(fs.readFileSync('$REPO/$HOSTING_SOURCE/package.json', 'utf8'))
-    const dependencies = { ...(app.dependencies || {}) }
+  # アダプタが読むのは、deploy.sh が workspace 依存を落としたあとの package.json
+  node --input-type=module -e "
+    import { readFileSync, writeFileSync } from 'node:fs'
+    import { workspaceNames, withoutWorkspaceDependencies } from '$REPO/scripts/lib/workspace-names.mjs'
 
-    for (const dep of Object.keys(dependencies)) {
-      if (dependencies[dep] === '*' || String(dependencies[dep]).startsWith('workspace:')) {
-        delete dependencies[dep]
-      }
-    }
+    const app = JSON.parse(readFileSync('$REPO/$HOSTING_SOURCE/package.json', 'utf8'))
+    const dependencies = withoutWorkspaceDependencies(app.dependencies, workspaceNames('$REPO'))
 
     dependencies['firebase-frameworks'] = '$FRAMEWORKS_DEP'
 
-    fs.writeFileSync(
+    writeFileSync(
       '$WORK/ssr/package.json',
       JSON.stringify({ name: 'ssr', version: '1.0.0', dependencies }, null, 2)
     )
