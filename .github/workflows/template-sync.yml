@@ -9,9 +9,11 @@ name: Template Sync
 # 3. 書き込み権限のある認証情報を登録する。GitHub App と PAT のどちらでも動く（App を推奨）
 #
 #    App: Variables に TEMPLATE_SYNC_APP_CLIENT_ID、Secrets に TEMPLATE_SYNC_APP_PRIVATE_KEY
-#         （App 側の権限は Contents / Pull requests / Workflows をいずれも Read and write。
-#           Workflows は同期の対象に .github/workflows/ が入るため要る）
-#    PAT: Secrets に TEMPLATE_SYNC_TOKEN
+#    PAT: Secrets に TEMPLATE_SYNC_TOKEN（fine-grained）
+#
+#    どちらも権限は Contents / Pull requests / Workflows をいずれも Read and write。
+#    Workflows が要るのは同期の対象に .github/workflows/ が入るためで、無いと取り込みまで
+#    進んで最後の push だけが弾かれる
 #
 #    App があればそちらを使う。App は Organization が持つので個人アカウントに紐づかず、
 #    同期 PR の作成者が bot になる。PAT だと作成者がトークンの持ち主になるため、レビュー承認を
