@@ -168,6 +168,18 @@ yarn deploy:production
 CI/CD: `.github/workflows/deploy.yml` が `release/*` / `hotfix/*`（→ staging）と `production` の push で自動デプロイ。
 develop は自動デプロイ対象外（複数人の feat/* push が互いに上書きし合うため）。各自 `yarn deploy:develop` で手動デプロイする。
 
+### `deploy.sh` を書き換えるときに保つ約束［派生専用］
+
+`scripts/deploy.sh` は `.templatesyncignore` で同期対象外なので、派生プロジェクトは自分の版を
+持てる。ただし**同期される側がこのスクリプトの入口に依存している**ため、書き換えても次は残すこと。
+
+- **`SKIP_CHECKS=1` でデプロイ前チェック（type-check / lint / test / build）を省略できること**
+
+依存しているのは 2 つ。`.github/workflows/deploy.yml` は同じチェックをワークフローの step で
+済ませてから `SKIP_CHECKS=1` を渡す（残さないと CI で二重に走る）。`scripts/test-env-distribution.sh`
+の [6] は `node_modules` の無い一時ツリーで `deploy.sh` を回すので、省略できないと
+`yarn type-check` で止まり、**env の配り方とは無関係な理由でテストが赤くなる**（#341）。
+
 ### Hosting のターゲットは環境名に合わせる
 
 既定は 1 環境 = 1 Firebase プロジェクトで、`firebase.json` の `hosting` も 1 つ。この構成では

@@ -2,6 +2,16 @@
 set -e
 
 # 使い方: bash scripts/deploy.sh [develop|staging|production] [--only functions|hosting]
+#
+# **派生プロジェクトがこのファイルを書き換えるときも保つ約束**（`.templatesyncignore` で
+# 同期対象外なので、書き換えた版がそのまま使われる）:
+#
+#   - `SKIP_CHECKS=1` でデプロイ前チェック（type-check / lint / test / build）を省略できること
+#
+# 同期される側がこれに依存している。`.github/workflows/deploy.yml` は同じチェックを
+# ワークフローの step で済ませたうえで `SKIP_CHECKS=1` を渡し（二重実行の回避）、
+# `scripts/test-env-distribution.sh` の [6] は node_modules の無い一時ツリーで
+# このスクリプトを回すため、省略できないとそこで止まる。
 
 cd "$(dirname "$0")/.."
 
