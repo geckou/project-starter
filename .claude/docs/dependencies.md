@@ -37,7 +37,7 @@
 - **GitHub Actions のメジャーは対象に残す。** 失敗すれば CI が即座に赤くなり検知できる
 - **サードパーティ Action はコミット SHA で固定する（`pinDigests`）。** タグは差し替え可能で、
   乗っ取られると書き込み権限のトークンごと持っていかれる（`template-sync.yml` は
-  `TEMPLATE_SYNC_TOKEN`、`claude.yml` は `contents: write` を渡している）。
+  App のインストールトークンか `TEMPLATE_SYNC_TOKEN`、`claude.yml` は `contents: write` を渡している）。
   Renovate が SHA を追跡し、`# v2.5.3` のバージョン注釈ごと更新 PR を出す
 - **`@geckou/*` の 0.x はレンジを上げないと届かない。** `^0.6.0` は 0.7.0 を含まない
   （0.x では minor が破壊的変更を持ちうるという semver の規定）。Renovate はこれを

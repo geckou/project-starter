@@ -217,6 +217,22 @@ Dependency Dashboard も作らないモードで、組織の既定が Silent に
 Dependabot の設定ファイルが残っていれば削除する（PR が二重に立つため）。
 詳細は `.claude/docs/dependencies.md`。
 
+**Template Sync（テンプレート更新の取り込み）**
+
+`.github/workflows/template-sync.yml` は同梱されているが、**認証情報を登録するまで動かない**
+（未登録のまま動くと、CI が 1 つも走らない PR を毎週作ることになるため、最初のステップで落とす）。
+
+**GitHub App を作る**のが既定。Client ID を Variables に `TEMPLATE_SYNC_APP_CLIENT_ID`、
+秘密鍵を Secrets に `TEMPLATE_SYNC_APP_PRIVATE_KEY` として登録する。App を作れない場合
+（Organization の owner 権限が無い等）は Fine-grained PAT を `TEMPLATE_SYNC_TOKEN` に登録する。
+PAT だと同期 PR の作成者が人になり、承認必須の ruleset と噛み合わない・通知が来ない・
+履歴の帰属がずれる、という副作用がある。手順と落とし穴は
+`.claude/docs/git-workflow.md`「Template Sync の有効化」を参照。
+
+登録したら **Actions > Template Sync > Run workflow で一度手動実行**し、PR ができること
+（App なら作成者が bot になること）を確認する。ここまでやらないと、動いていないことに
+気付くのが数週間後になる。
+
 ### 8. ドキュメントの初期化
 
 - `.claude/docs/planning.md` / `spec.md` / `roadmap.md` のプレースホルダ
@@ -241,5 +257,6 @@ Dependabot の設定ファイルが残っていれば削除する（PR が二重
 - [ ] CI を reusable workflow の参照に切り替え、`.templatesyncignore` に追加した
 - [ ] Copilot の自動レビュー ruleset（`.github/rulesets/copilot-review.json`）を取り込んだ
 - [ ] Renovate の GitHub App をインストールし、Silent mode を OFF にした
+- [ ] Template Sync の認証（App / PAT）を登録し、手動実行で PR ができることを確認した
 - [ ] Dependency graph / Dependabot alerts を有効化した（脆弱性の PR が来るようにする）
 - [ ] `.claude/docs/` を初期化した

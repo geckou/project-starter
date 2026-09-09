@@ -527,6 +527,81 @@ gh api repos/{owner}/{repo}/rulesets \
 使えるプラン・組織設定でない場合は取り込みが失敗する（その場合は `.github/workflows/claude.yml`
 の auto-review だけで運用する。両方入れて二重にレビューさせてもよい）。
 
+## Template Sync の有効化（派生プロジェクト）
+
+親テンプレートの更新を週次で PR として取り込む（`.github/workflows/template-sync.yml`）。
+ワークフローは同梱されているが、**認証情報を登録するまで動かない**。未登録のまま動かすと
+CI が 1 つも走らない PR を作り続けることになるため、最初のステップで明示的に落としてある。
+
+GitHub App と PAT のどちらでも動く。**App を推奨**する。
+
+| | 同期 PR の作成者 | 紐づく先 | 期限 |
+| --- | --- | --- | --- |
+| GitHub App | bot | Organization | 秘密鍵に期限なし |
+| PAT | トークンの持ち主 | 個人アカウント | あり（切れると毎週失敗に戻る） |
+
+PAT だと、詰まる／詰まらない以前に次の3つが常時ついて回る。
+
+- **承認 1 件必須の ruleset と噛み合わない。** 自分の PR は自分で承認できないため、
+  `required_approving_review_count` を 1 以上にすると毎週マージできない PR ができる
+- **同期 PR が来たことに気付けない。** GitHub は既定で自分の操作による通知を送らない
+  （Settings > Notifications の "Include your own updates"）
+- **帰属が嘘になる。** cron が取り込んだものが、人の判断として履歴に残る
+
+### GitHub App を使う場合（推奨）
+
+1. **App を作る** — Organization settings > Developer settings > GitHub Apps > New GitHub App
+   - Repository permissions: **Contents: Read and write** / **Pull requests: Read and write**
+   - **Webhook の Active のチェックを外す**（このワークフローは webhook を使わない）
+   - 親テンプレートは public なので、読み取り用の追加権限は要らない
+2. **Client ID を控え、Private key を生成する**（`.pem` がダウンロードされる）
+3. **インストールする** — 作った App を Organization にインストールし、対象を派生リポジトリに絞る
+4. **登録する** — Client ID は Variables、秘密鍵は Secrets（置き場所が違う）
+
+   ```bash
+   # 秘密鍵。改行ごと渡す必要があるので、貼り付けずにファイルから読ませる
+   gh secret set TEMPLATE_SYNC_APP_PRIVATE_KEY < path/to/key.pem
+   ```
+
+   Client ID は Settings > Secrets and variables > Actions > **Variables** タブで
+   `TEMPLATE_SYNC_APP_CLIENT_ID` として登録する（Secrets タブではない）。
+5. **確認する** — Actions > Template Sync > Run workflow。差分があれば
+   `chore: テンプレート更新の取り込み` の PR ができる。**作成者が bot になっていること**を見る
+
+⚠️ **Variables / Secrets を Organization に置くと、全リポジトリに継承される。**
+`TEMPLATE_SYNC_APP_CLIENT_ID` だけを先に Org へ置くと、まだ秘密鍵の無いリポジトリが
+「App の設定が片方だけです」で落ちる（設定漏れを PAT で黙って隠さないための挙動）。
+Org へ置くのは、App を全リポジトリへインストールしてからにする。
+
+**つまずきやすいところ**: 秘密鍵の改行が落ちていると、トークン生成のステップだけが落ちる。
+エラーメッセージからは鍵の問題だと読み取りにくいので、`gh secret set ... < file` の形で入れる。
+
+### PAT を使う場合
+
+App を作れないとき（Organization の owner 権限が無い、個人リポジトリで scaffold した等）の代替。
+
+Settings > Developer settings > Personal access tokens > **Fine-grained tokens** で作る。
+Repository access に対象リポジトリ、権限は **Contents: Read and write** と
+**Pull requests: Read and write**（Metadata は自動で付く）。
+
+```bash
+gh secret set TEMPLATE_SYNC_TOKEN
+```
+
+期限が切れると毎週の実行が失敗に戻る。更新を促す仕組みは無いので、期限を長めに取るか
+カレンダーに入れておく。App を作れるようになったら、Secrets を入れ替えるだけで移行できる
+（ワークフローは App があればそちらを優先する）。
+
+### なぜ `GITHUB_TOKEN` では駄目か
+
+`GITHUB_TOKEN` が起こしたイベントは新しいワークフローを起動しない、という GitHub の仕様がある。
+そのままだと同期 PR で ci / branch-guard / docs-check が一切走らず、required status check が
+Expected のままマージできない PR になる。PR にワークフローを起こすために、外部のトークンが要る。
+
+なお、取り込み元（親テンプレート）の**読み取り**は `github.token` で行う。親は public で足りるうえ、
+App のインストールトークンは `owner` / `repositories` を指定しない限り自リポジトリにしか
+スコープされないため、別リポジトリを読む経路には使えない。
+
 ## ブランチ名とコミットメッセージの補足
 
 CLAUDE.md には規則そのものを置き、その理由と例外の扱いをここに書く。
