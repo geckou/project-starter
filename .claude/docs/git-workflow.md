@@ -588,9 +588,16 @@ gh label create template-sync
 
 1. **App を作る** — Organization settings > Developer settings > GitHub Apps > New GitHub App
    （個人アカウント所有にするなら Settings > Developer settings > GitHub Apps）
-   - Repository permissions: **Contents: Read and write** / **Pull requests: Read and write**
+   - Repository permissions: **Contents: Read and write** / **Pull requests: Read and write** /
+     **Workflows: Read and write**
    - **Webhook の Active のチェックを外す**（このワークフローは webhook を使わない）
    - 親テンプレートは public なので、読み取り用の追加権限は要らない
+
+   `Workflows` が要るのは、同期の対象に `.github/workflows/` が入るため。無いと取り込み自体は
+   進んで、最後の push だけが
+   `refusing to allow a GitHub App to create or update workflow ... without 'workflows' permission`
+   で弾かれる。**権限を後から足した場合は、インストール側で変更を承認するまで反映されない**
+   （Organization settings > GitHub Apps に「Review request」が出る）。
 2. **Client ID を控え、Private key を生成する**（`.pem` がダウンロードされる）
 3. **インストールする** — 作った App をインストールし、対象を派生リポジトリに絞る
 4. **登録する** — Client ID は Variables、秘密鍵は Secrets（置き場所が違う）
@@ -636,8 +643,9 @@ gh label create template-sync
 App を作れないとき（Organization の owner 権限が無い、個人リポジトリで scaffold した等）の代替。
 
 Settings > Developer settings > Personal access tokens > **Fine-grained tokens** で作る。
-Repository access に対象リポジトリ、権限は **Contents: Read and write** と
-**Pull requests: Read and write**（Metadata は自動で付く）。
+Repository access に対象リポジトリ、権限は **Contents: Read and write**、
+**Pull requests: Read and write**、**Workflows: Read and write**（Metadata は自動で付く）。
+`Workflows` は App と同じ理由で要る（同期の対象に `.github/workflows/` が入る）。
 
 ```bash
 gh secret set TEMPLATE_SYNC_TOKEN
