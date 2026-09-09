@@ -25,10 +25,11 @@
   自動マージしたい構成（`production` への push が本番デプロイに繋がらない、あるいは
   その形で流してよいと判断した場合）は `renovate.json5` の `extends` に
   `github>geckou/project-starter//renovate/automerge` を足す。
-  **ただしそれだけでは完了しない**: `.github/rulesets/production.json` はレビュー承認を
-  1件必須にしており、Renovate はブランチ保護の条件が満たされるまで待つ。自動マージを
-  実際に効かせるには、ruleset で Renovate を bypass actor に加えるか、
-  そのリポジトリのレビュー要件自体を見直す
+  **レビュー承認を必須にしている場合は、それだけでは完了しない**:
+  `.github/rulesets/production.json` の `required_approving_review_count` は既定 0 なので
+  素通りするが、複数人でレビューを回すために 1 以上へ上げている構成では、Renovate は
+  ブランチ保護の条件が満たされるまで待つ。その場合は ruleset で Renovate を
+  bypass actor に加えるか、レビュー要件自体を見直す
 - **メジャーは自動では PR を作らない。** CI が緑でも壊れていることがあるため
   （NativeWind と Tailwind の組み合わせは CI で検証されない）。Dependency Dashboard
   （Renovate が自動生成する Issue）に承認待ちで並ぶので、必要なタイミングでチェックを入れて上げる。

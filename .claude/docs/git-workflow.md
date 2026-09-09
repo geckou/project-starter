@@ -269,8 +269,19 @@ gh api repos/{owner}/{repo}/rulesets \
   --input .github/rulesets/production.json
 ```
 
-内容: production の削除・force push 禁止、PR 必須（レビュー1件）、Required status checks（`guard` / `ci / ci`）。
+内容: production の削除・force push 禁止、PR 必須（**承認は 0 件**）、Required status checks（`guard` / `ci / ci`）。
 `hotfix/*` の緊急セルフマージを許す場合は、取り込み後に UI で bypass 設定を調整する。
+
+⚠️ **承認を既定で 0 件にしている理由。** このテンプレートは「PR を出すのは AI、マージの判断は人」
+（CLAUDE.md）というモデルで、**マージボタンを押す人間が既にゲートになっている**。ここを 1 件以上に
+すると、もう 1 人の人間を要求することになり、レビュー担当が実質 1 人の構成では**自分の PR を自分で
+承認できない**（GitHub の仕様）ため、出した PR が軒並みマージできなくなる。Template Sync や
+Renovate の PR も同じ理由で毎週詰まる。
+
+承認 0 件でも、**PR 必須（直接 push 禁止）と Required status checks は効く** — この ruleset の
+主目的である「赤い PR をマージできなくする」は保たれる。複数人でレビューを回すプロジェクトは、
+取り込み後に UI で 1 以上へ上げる（`hotfix/*` の bypass 設定と同じ扱い）。上げた場合は
+`.claude/docs/dependencies.md`「Renovate の自動マージ」も併せて読むこと。
 
 `release/*` / `hotfix/*` も同じ仕組みで塞ぐ:
 
@@ -542,8 +553,9 @@ GitHub App と PAT のどちらでも動く。**App を推奨**する。
 
 PAT だと、詰まる／詰まらない以前に次の3つが常時ついて回る。
 
-- **承認 1 件必須の ruleset と噛み合わない。** 自分の PR は自分で承認できないため、
-  `required_approving_review_count` を 1 以上にすると毎週マージできない PR ができる
+- **レビュー承認を必須にすると噛み合わない。** 自分の PR は自分で承認できないため、
+  `required_approving_review_count` を 1 以上へ上げた構成では毎週マージできない PR ができる
+  （既定は 0 なので、上げていなければ詰まりはしない。→「マージルールの強制」）
 - **同期 PR が来たことに気付けない。** GitHub は既定で自分の操作による通知を送らない
   （Settings > Notifications の "Include your own updates"）
 - **帰属が嘘になる。** cron が取り込んだものが、人の判断として履歴に残る
