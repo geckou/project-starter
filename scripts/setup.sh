@@ -329,3 +329,9 @@ echo "  yarn deploy:develop     → develop にデプロイ"
 echo "  yarn deploy:staging     → staging にデプロイ"
 echo "  yarn deploy:production  → production にデプロイ"
 echo ""
+# ruleset と違い、値を人が用意するため自動化できない。未登録だと Template Sync が
+# 一度も動かないまま気付かれないので、セットアップの最後に案内だけ出す
+echo "GitHub 側の設定（派生プロジェクトのみ）:"
+echo "  Template Sync の認証を登録する。未登録だとテンプレートの更新が一度も届かない"
+echo "  GitHub App（推奨）か PAT。手順は .claude/docs/git-workflow.md「Template Sync の有効化」"
+echo ""
