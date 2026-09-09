@@ -13,8 +13,8 @@ name: Template Sync
 #    PAT: Secrets に TEMPLATE_SYNC_TOKEN
 #
 #    App があればそちらを使う。App は Organization が持つので個人アカウントに紐づかず、
-#    同期 PR の作成者が bot になる。PAT だと作成者がトークンの持ち主になるため、承認 1 件必須の
-#    ruleset を入れている場合は自分の PR を承認できず毎週詰まる（GitHub の仕様）。
+#    同期 PR の作成者が bot になる。PAT だと作成者がトークンの持ち主になるため、レビュー承認を
+#    必須にしている場合は自分の PR を承認できず毎週詰まる（GitHub の仕様。同梱 ruleset の既定は 0 件）。
 #    App のインストールトークンは 1 時間で失効して Secrets に置けないので、実行時に生成する
 #
 # 親テンプレートは public なので読み取り自体は github.token でもできるが、

@@ -275,13 +275,18 @@ gh api repos/{owner}/{repo}/rulesets \
 ⚠️ **承認を既定で 0 件にしている理由。** このテンプレートは「PR を出すのは AI、マージの判断は人」
 （CLAUDE.md）というモデルで、**マージボタンを押す人間が既にゲートになっている**。ここを 1 件以上に
 すると、もう 1 人の人間を要求することになり、レビュー担当が実質 1 人の構成では**自分の PR を自分で
-承認できない**（GitHub の仕様）ため、出した PR が軒並みマージできなくなる。Template Sync や
-Renovate の PR も同じ理由で毎週詰まる。
+承認できない**（GitHub の仕様）ため、出した PR が軒並みマージできなくなる。
 
 承認 0 件でも、**PR 必須（直接 push 禁止）と Required status checks は効く** — この ruleset の
 主目的である「赤い PR をマージできなくする」は保たれる。複数人でレビューを回すプロジェクトは、
-取り込み後に UI で 1 以上へ上げる（`hotfix/*` の bypass 設定と同じ扱い）。上げた場合は
-`.claude/docs/dependencies.md`「Renovate の自動マージ」も併せて読むこと。
+取り込み後に UI で 1 以上へ上げる（`hotfix/*` の bypass 設定と同じ扱い）。そのとき
+**`require_last_push_approval` を同時に有効にしないこと** — 「最後の push を pusher 以外が
+承認していること」を要求するルールで、承認者が 1 人しかいない構成では同じデッドロックが再発する。
+自動マージとの噛み合わせは `.claude/docs/dependencies.md`「決めていること」を参照。
+
+**既に `1` で取り込んでいるリポジトリは、この JSON を直しても変わらない**（ruleset は
+リポジトリ外の状態。`yarn setup` も同名の ruleset があれば skip する）。UI か、この節の後半の
+`gh api repos/{owner}/{repo}/rulesets/{id} --method PUT` で下げる。
 
 `release/*` / `hotfix/*` も同じ仕組みで塞ぐ:
 
@@ -325,7 +330,7 @@ CI を参照形へ移行したら（`scripts/adopt-references.mjs`）、GitHub �
 `ci / ci` へ更新する必要がある。
 
 ```bash
-# 取り込み済みの ruleset を確認して、required_status_checks の context を直す
+# 取り込み済みの ruleset を確認して、中身（required check の名前、承認数など）を直す
 gh api repos/{owner}/{repo}/rulesets
 gh api repos/{owner}/{repo}/rulesets/{id} --method PUT --input -
 ```
