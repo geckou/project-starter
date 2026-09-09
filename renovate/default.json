@@ -26,7 +26,7 @@
       "automerge": false
     },
     {
-      "description": "サードパーティ Action（GitHub 公式の actions/* 以外）はコミット SHA で固定する。タグは差し替え可能なので、乗っ取られると書き込み権限のトークン（TEMPLATE_SYNC_TOKEN や contents: write）ごと持っていかれる。pinDigests を有効にすると Renovate が SHA を追跡し、コメントのバージョン注釈ごと更新 PR を出す",
+      "description": "サードパーティ Action（GitHub 公式の actions/* 以外）はコミット SHA で固定する。タグは差し替え可能なので、乗っ取られると書き込み権限のトークン（template-sync.yml が渡す App のインストールトークンや TEMPLATE_SYNC_TOKEN、claude.yml の contents: write）ごと持っていかれる。pinDigests を有効にすると Renovate が SHA を追跡し、コメントのバージョン注釈ごと更新 PR を出す",
       "matchManagers": ["github-actions"],
       "matchDepNames": ["!/^actions//"],
       "matchDepTypes": ["action"],

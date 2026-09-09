@@ -366,6 +366,11 @@ PR は DoD（type-check / lint / test）とセルフレビュー（`/review`）�
 | CI をテンプレート参照にする | 派生側は `uses: geckou/project-starter/.github/workflows/ci.yml@v1` の 1 行だけ持つ。チェック内容の修正が取り込み作業ゼロで届く（[`.claude/docs/git-workflow.md`](.claude/docs/git-workflow.md)） |
 | 依存更新（Renovate） | `renovate.json5` がテンプレートの preset を参照する。Renovate の GitHub App のインストールが前提（[`.claude/docs/dependencies.md`](.claude/docs/dependencies.md)） |
 
+⚠️ Template Sync の App 設定を **Organization の Variables / Secrets に置くと全派生に継承される。**
+`TEMPLATE_SYNC_APP_CLIENT_ID` だけを先に Org へ置くと、まだ秘密鍵の無い派生（PAT で回っているもの）が
+「App の設定が片方だけです」で落ちる。Org へ置くのは App を全派生にインストールしてからにする。
+リポジトリ単位で設定するぶんには他の派生に影響しない。
+
 ---
 
 ## Scripts

@@ -93,8 +93,13 @@ jobs:
           #                    target_gh_token のフォールバック先ではない
           #
           # PR 作成に効くのは target_gh_token だけ。ここを渡さないと PR が
-          # GITHUB_TOKEN 名義で作られ、CI が 1 つも走らない
-          source_gh_token: ${{ steps.app-token.outputs.token || secrets.TEMPLATE_SYNC_TOKEN }}
+          # GITHUB_TOKEN 名義で作られ、CI が 1 つも走らない。
+          #
+          # source は取り込み元の読み取りだけで、テンプレートは public なので
+          # github.token で足りる（action の既定値と同じ）。App のインストールトークンは
+          # owner / repositories を指定しない限り派生リポジトリにしかスコープされないため、
+          # 別リポジトリを読む経路には使わない
+          source_gh_token: ${{ github.token }}
           target_gh_token: ${{ steps.app-token.outputs.token || secrets.TEMPLATE_SYNC_TOKEN }}
           pr_title: 'chore: テンプレート更新の取り込み'
           pr_labels: template-sync
@@ -109,9 +114,13 @@ jobs:
         if: steps.sync.outputs.pr_branch != ''
         env:
           # gh を使うのは下のフォールバック（テンプレートの layers.json を読む）だけで、
-          # 相手は public リポジトリなので github.token で足りる。App のインストール先を
-          # 派生リポジトリだけに絞っていても通るよう、同期用のトークンは渡さない。
-          # PR ブランチへの push は checkout が埋め込んだ同期用トークンで行われる
+          # 相手は public リポジトリなので github.token で足りる。同期用トークンは前段の
+          # action が gh auth setup-git を呼ぶ関係で runner の gh 設定に残っているが、
+          # GH_TOKEN の env がそれより優先されるので、このステップは github.token で読む。
+          #
+          # PR ブランチへの push は checkout が埋め込んだ credential（同期用トークン）で行う。
+          # checkout の persist-credentials を切ると push が github.token に落ち、
+          # ワークフローを起こさない = CI の付かない PR に戻るので、切らないこと
           GH_TOKEN: ${{ github.token }}
           PR_BRANCH: ${{ steps.sync.outputs.pr_branch }}
           TEMPLATE_GIT_HASH: ${{ steps.sync.outputs.template_git_hash }}
