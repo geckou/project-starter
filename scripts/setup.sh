@@ -225,7 +225,7 @@ setup_branch_protection() {
     --input - > /dev/null; then
     echo "[done] production ブランチに保護ルール（$RULESET_NAME）を設定しました"
     echo "  - Required status checks: guard / $CI_CONTEXT"
-    echo "  - PR 必須 + 1名以上のレビュー承認"
+    echo "  - PR 必須（レビュー承認は 0 件。複数人で回すなら UI で増やす）"
     echo "  - force push 禁止"
     echo "  - ブランチ削除禁止"
   else

@@ -228,7 +228,7 @@ PR・マージしてよい。以下は派生プロジェクトに適用する。
 - **`release/*` への直接コミット・push は禁止**（staging への自動デプロイを発火するため）。
   QA で見つかった修正も `fix/*` を切って `release/*` へ PR でマージする。例外はブランチ作成時の
   push と PR マージによる更新のみ
-- `release/*` → `production` は PR + レビュー必須。`hotfix/*` → `production` は PR 必須（緊急時はセルフマージ可）
+- `release/*` → `production` は PR 必須（同梱 ruleset の承認要求は既定 0 件。複数人で回すなら上げる）。`hotfix/*` → `production` も PR 必須（緊急時はセルフマージ可）
 - `feat/*` → `release/*` へのマージは自由。**`feat/*` 同士のマージは禁止**
 
 分岐元の理由・命名の例外・リリースフロー・マルチ環境構成は `.claude/docs/git-workflow.md`。

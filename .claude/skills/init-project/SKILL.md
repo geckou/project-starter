@@ -225,8 +225,8 @@ Dependabot の設定ファイルが残っていれば削除する（PR が二重
 **GitHub App を作る**のが既定。Client ID を Variables に `TEMPLATE_SYNC_APP_CLIENT_ID`、
 秘密鍵を Secrets に `TEMPLATE_SYNC_APP_PRIVATE_KEY` として登録する。App を作れない場合
 （Organization の owner 権限が無い等）は Fine-grained PAT を `TEMPLATE_SYNC_TOKEN` に登録する。
-PAT だと同期 PR の作成者が人になり、承認必須の ruleset と噛み合わない・通知が来ない・
-履歴の帰属がずれる、という副作用がある。手順と落とし穴は
+PAT だと同期 PR の作成者が人になるため、履歴の帰属がずれる。加えて、レビュー承認を必須にしていて
+承認できる人が他にいない構成では、同期 PR が毎週マージできずに詰まる。手順と落とし穴は
 `.claude/docs/git-workflow.md`「Template Sync の有効化」を参照。
 
 登録したら **Actions > Template Sync > Run workflow で一度手動実行**し、PR ができること
