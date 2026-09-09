@@ -45,9 +45,21 @@ PREFIXES='apps|packages|scripts|tests|\.claude|\.github'
 # テンプレート本体では実在するので、通常どおり検査対象になる
 TEMPLATE_ONLY=''
 
+# `.templatesyncignore` の除外のうち、template-only の範囲**以外**。こちらは
+# 「派生プロジェクトが自分の版を持つファイル」で、同期では届かない（apps/ packages/、
+# プロダクト固有ドキュメント、layers.json 等）。
+SYNC_IGNORED=''
+
 if [ -f .templatesyncignore ]; then
   TEMPLATE_ONLY=$(
     sed -n '/^# template-only:start$/,/^# template-only:end$/p' .templatesyncignore |
+      grep -v '^#' | grep -v '^[[:space:]]*$'
+  )
+
+  # end が無いとレンジは末尾まで読む。ここでは削除側なので、そのぶん SYNC_IGNORED が
+  # 減る（＝検査が厳しくなる）方向に転ぶ。緩む方向には壊れない
+  SYNC_IGNORED=$(
+    sed '/^# template-only:start$/,/^# template-only:end$/d' .templatesyncignore |
       grep -v '^#' | grep -v '^[[:space:]]*$'
   )
 fi
@@ -70,6 +82,92 @@ is_template_only() {
   printf '%s\n' "$TEMPLATE_ONLY" | grep -qxF "$1"
 }
 
+# テンプレート本体では、除外に載っているファイルも（ALLOW_MISSING のものを除いて）
+# 全て実在する。そこで下の見逃しを切って**全部を検査する**モード。テンプレート本体でだけ立てる
+# （scripts/test-docs-downstream.sh が立てて回す。派生プロジェクトへは同期されない）。
+#
+# 「実在するファイルの一覧から本体かどうかを推測する」書き方はやめた。派生プロジェクトは
+# `.templatesyncignore` の template-only の範囲に自分の分を足すため、推測が外れる。
+#
+# 値は 1 だけを有効とする。CHECK_DOCS_STRICT=0 を「切っているつもり」で書いたときに
+# 本体扱いになって派生の CI が赤くなるのを避ける
+STRICT=${CHECK_DOCS_STRICT:-0}
+
+# `.templatesyncignore` の除外に当たるか。
+#
+# 本来は gitignore 形式だが、ここで効かせるのは「完全一致」「ディレクトリ配下」
+# 「.env* のような単純なグロブ」と `!` の否定だけ。`**` は扱わない（除外に使われていない）。
+#
+# `!` を素通しにすると危ない。否定は「除外から戻す＝同期される」意味なので、無視すると
+# 親の除外（apps/）だけが残り、**同期されるパスまで見逃す**側に倒れる。gitignore と同じく
+# 最後に一致した行を採る
+matches_sync_ignore() {
+  [ -n "$SYNC_IGNORED" ] || return 1
+
+  # 1 = 除外に当たらない
+  ignored=1
+
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+
+    hit=0
+
+    case "$entry" in
+      '!'*)
+        hit=1
+        entry=${entry#!}
+        ;;
+    esac
+
+    entry=${entry%/}
+
+    case "$1" in
+      # shellcheck disable=SC2254 -- entry はグロブとして評価させる
+      $entry | $entry/*) ignored=$hit ;;
+    esac
+  done <<EOF
+$SYNC_IGNORED
+EOF
+
+  return "$ignored"
+}
+
+# 相対リンクを解決した結果をリポジトリ相対のパスに直す（./ と ../ を畳む）
+normalize_path() {
+  printf '%s' "$1" | awk -F/ '{
+    n = 0
+    for (i = 1; i <= NF; i++) {
+      if ($i == "" || $i == ".") continue
+      if ($i == "..") { if (n > 0) n--; continue }
+      out[++n] = $i
+    }
+    s = ""
+    for (i = 1; i <= n; i++) s = s (i > 1 ? "/" : "") out[i]
+    print s
+  }'
+}
+
+# **同期されるドキュメントが、同期されないパスを指している**場合は参照切れにしない。
+#
+# `apps/` `packages/` は `.templatesyncignore` で丸ごと除外されているため、
+# テンプレートの参照実装（apps/web/src/lib/billing.ts 等）は派生へ届かない。
+# 同じく workflow.md が指す planning.md / spec.md / roadmap.md も派生の持ち物で、
+# Notion 等で管理していれば存在しない。どちらも**同期では埋められない**ので、
+# 派生でこれを参照切れと数えると、取り込んだだけで docs-check が赤くなる（#338）。
+#
+# テンプレート本体は CHECK_DOCS_STRICT を立てて回すので、綴り違いや移動漏れは
+# 今までどおり検出される（scripts/test-docs-downstream.sh）。
+#
+# ドキュメント側が除外に載っている（＝派生が自分で書き換えるもの。questions.md や
+# CLAUDE.md）なら、書いたのは派生自身なので厳格に見る
+is_unsynced_reference() {
+  [ "$STRICT" = 1 ] && return 1
+
+  matches_sync_ignore "$1" && return 1
+
+  matches_sync_ignore "$2"
+}
+
 # **採用していない層への言及**は参照切れにしない。
 #
 # 同期されるドキュメントは全部入りの構成を前提に書いてあるため、mobile 層を持たない
@@ -79,7 +177,11 @@ is_template_only() {
 # 見逃すのは**ここに挙げたワークスペースが丸ごと無いとき**だけ。
 # 「apps/ 配下が無ければ全部見逃す」にすると、apps/wev/… のような綴り違いや
 # ワークスペースのリネーム漏れまで黙って通る（検出したいものが検出できなくなる）。
-# 層として外せるワークスペースは限られているので、一覧で持つほうが安全
+# 層として外せるワークスペースは限られているので、一覧で持つほうが安全。
+#
+# なお `.claude/docs/*.md` からの言及は、下の is_unsynced_reference のほうが先に
+# （より広く）見逃すため、非 strict ではここまで来ない。ここが効くのは除外一覧に載る
+# ドキュメント（README.md 等）からの言及と、CHECK_DOCS_STRICT=1 のとき
 OPTIONAL_WORKSPACES='
 apps/mobile
 apps/functions
@@ -135,6 +237,7 @@ while IFS= read -r -d '' doc; do
       is_template_only "$path" && continue
       is_absent_workspace "$path" && continue
       [ -e "$path" ] && continue
+      is_unsynced_reference "$doc" "$path" && continue
 
       printf '%s:%s\t%s\n' "$doc" "$line" "$path" >>"$findings"
     done
@@ -152,6 +255,7 @@ while IFS= read -r -d '' doc; do
       is_template_only "$target" && continue
       is_absent_workspace "$target" && continue
       [ -e "$(dirname "$doc")/$target" ] && continue
+      is_unsynced_reference "$doc" "$(normalize_path "$(dirname "$doc")/$target")" && continue
 
       printf '%s:%s\tリンク先 %s\n' "$doc" "$line" "$target" >>"$findings"
     done
@@ -178,6 +282,8 @@ if [ "$fail" -gt 0 ]; then
     echo 'scripts/check-docs.sh の ALLOW_MISSING に追加してください。'
     echo 'テンプレート本体にしか無いファイルなら .templatesyncignore の'
     echo 'template-only:start / :end の範囲に追加してください。'
+    echo '（.templatesyncignore で除外されたパスへの言及は、同期では埋められないものとして'
+    echo '見逃します。CHECK_DOCS_STRICT を立てるとその見逃しも切れます）'
   } >&2
   exit 1
 fi
