@@ -76,6 +76,23 @@ git -C "$DERIVED" init -q .
 echo "=== 派生プロジェクトでの docs-check ==="
 echo ""
 
+# --- 0. テンプレート本体を全部検査する ---
+#
+# check-docs.sh は「同期されるドキュメントが、同期されないパス（apps/ packages/、
+# プロダクト固有ドキュメント）を指している」場合を参照切れに数えない。派生では
+# 同期でその実体を埋められないため（#338）。ただしテンプレート本体では実体が揃って
+# いるので、その見逃しを切って回す。これをやらないと、apps/ を指す言及の綴り違いや
+# 移動漏れが本体でも黙って通る。
+#
+# 本体でだけ回せばよいので、本体しか持たないこのスクリプトに置く
+if strict_output=$(CHECK_DOCS_STRICT=1 bash "$REPO/scripts/check-docs.sh" 2>&1); then
+  pass "テンプレート本体では全ての言及が実在する（CHECK_DOCS_STRICT=1）"
+else
+  fail "テンプレート本体に参照切れがある（CHECK_DOCS_STRICT=1）" "$strict_output"
+fi
+
+echo ""
+
 # --- 1. テンプレート本体だけが持つファイルを消す ---
 TEMPLATE_ONLY=$(
   sed -n '/^# template-only:start$/,/^# template-only:end$/p' "$REPO/.templatesyncignore" |

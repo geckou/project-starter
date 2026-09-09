@@ -45,10 +45,22 @@ PREFIXES='apps|packages|scripts|tests|\.claude|\.github'
 # テンプレート本体では実在するので、通常どおり検査対象になる
 TEMPLATE_ONLY=''
 
+# `.templatesyncignore` の除外のうち、template-only の範囲**以外**。こちらは
+# 「派生プロジェクトが自分の版を持つファイル」で、同期では届かない（apps/ packages/、
+# プロダクト固有ドキュメント、layers.json 等）。
+SYNC_IGNORED=''
+
 if [ -f .templatesyncignore ]; then
   TEMPLATE_ONLY=$(
     sed -n '/^# template-only:start$/,/^# template-only:end$/p' .templatesyncignore |
       grep -v '^#' | grep -v '^[[:space:]]*$'
+  )
+
+  # end が無いとレンジは末尾まで読む。ここでは削除側なので、そのぶん SYNC_IGNORED が
+  # 減る（＝検査が厳しくなる）方向に転ぶ。緩む方向には壊れない
+  SYNC_IGNORED=$(
+    sed '/^# template-only:start$/,/^# template-only:end$/d' .templatesyncignore |
+      grep -v '^#' | grep -v '^[[:space:]]*$' | grep -v '^!'
   )
 fi
 
@@ -68,6 +80,74 @@ is_template_only() {
   [ -e "$1" ] && return 1
 
   printf '%s\n' "$TEMPLATE_ONLY" | grep -qxF "$1"
+}
+
+# テンプレート本体では、除外に載っているファイルも全て実在する。そこで下の見逃しを
+# 切って**全部を検査する**モード。テンプレート本体でだけ立てる
+# （scripts/test-docs-downstream.sh が立てて回す。派生プロジェクトへは同期されない）。
+#
+# 「実在するファイルの一覧から本体かどうかを推測する」書き方はやめた。派生プロジェクトは
+# `.templatesyncignore` の template-only の範囲に自分の分を足すため、推測が外れる
+STRICT=${CHECK_DOCS_STRICT:-}
+
+# `.templatesyncignore` の除外に当たるか。
+#
+# 本来は gitignore 形式だが、ここで効かせるのは「完全一致」「ディレクトリ配下」
+# 「.env* のような単純なグロブ」だけ。`!` の否定と `**` は扱わない（除外に使われていない）。
+# 扱えない書き方が増えたら、ここが黙って false を返して検査が厳しくなる側に倒れる
+matches_sync_ignore() {
+  [ -n "$SYNC_IGNORED" ] || return 1
+
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+
+    entry=${entry%/}
+
+    case "$1" in
+      # shellcheck disable=SC2254 -- entry はグロブとして評価させる
+      $entry | $entry/*) return 0 ;;
+    esac
+  done <<EOF
+$SYNC_IGNORED
+EOF
+
+  return 1
+}
+
+# 相対リンクを解決した結果をリポジトリ相対のパスに直す（./ と ../ を畳む）
+normalize_path() {
+  printf '%s' "$1" | awk -F/ '{
+    n = 0
+    for (i = 1; i <= NF; i++) {
+      if ($i == "" || $i == ".") continue
+      if ($i == "..") { if (n > 0) n--; continue }
+      out[++n] = $i
+    }
+    s = ""
+    for (i = 1; i <= n; i++) s = s (i > 1 ? "/" : "") out[i]
+    print s
+  }'
+}
+
+# **同期されるドキュメントが、同期されないパスを指している**場合は参照切れにしない。
+#
+# `apps/` `packages/` は `.templatesyncignore` で丸ごと除外されているため、
+# テンプレートの参照実装（apps/web/src/lib/billing.ts 等）は派生へ届かない。
+# 同じく workflow.md が指す planning.md / spec.md / roadmap.md も派生の持ち物で、
+# Notion 等で管理していれば存在しない。どちらも**同期では埋められない**ので、
+# 派生でこれを参照切れと数えると、取り込んだだけで docs-check が赤くなる（#338）。
+#
+# テンプレート本体は CHECK_DOCS_STRICT を立てて回すので、綴り違いや移動漏れは
+# 今までどおり検出される（scripts/test-docs-downstream.sh）。
+#
+# ドキュメント側が除外に載っている（＝派生が自分で書き換えるもの。questions.md や
+# CLAUDE.md）なら、書いたのは派生自身なので厳格に見る
+is_unsynced_reference() {
+  [ -z "$STRICT" ] || return 1
+
+  matches_sync_ignore "$1" && return 1
+
+  matches_sync_ignore "$2"
 }
 
 # **採用していない層への言及**は参照切れにしない。
@@ -135,6 +215,7 @@ while IFS= read -r -d '' doc; do
       is_template_only "$path" && continue
       is_absent_workspace "$path" && continue
       [ -e "$path" ] && continue
+      is_unsynced_reference "$doc" "$path" && continue
 
       printf '%s:%s\t%s\n' "$doc" "$line" "$path" >>"$findings"
     done
@@ -152,6 +233,7 @@ while IFS= read -r -d '' doc; do
       is_template_only "$target" && continue
       is_absent_workspace "$target" && continue
       [ -e "$(dirname "$doc")/$target" ] && continue
+      is_unsynced_reference "$doc" "$(normalize_path "$(dirname "$doc")/$target")" && continue
 
       printf '%s:%s\tリンク先 %s\n' "$doc" "$line" "$target" >>"$findings"
     done
@@ -178,6 +260,8 @@ if [ "$fail" -gt 0 ]; then
     echo 'scripts/check-docs.sh の ALLOW_MISSING に追加してください。'
     echo 'テンプレート本体にしか無いファイルなら .templatesyncignore の'
     echo 'template-only:start / :end の範囲に追加してください。'
+    echo '（.templatesyncignore で除外されたパスへの言及は、同期では埋められないものとして'
+    echo '見逃します。CHECK_DOCS_STRICT を立てるとその見逃しも切れます）'
   } >&2
   exit 1
 fi
