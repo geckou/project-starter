@@ -873,7 +873,8 @@ assert_flag_requires_value() {
   shift 2
   local output status
 
-  output=$(cd "$REPO_ROOT" && node "$REPO_ROOT/scripts/$script" "$flag" "$@" 2>&1)
+  # bash 3.2（macOS の既定）は set -u 下で引数ゼロの "$@" を unbound として扱う
+  output=$(cd "$REPO_ROOT" && node "$REPO_ROOT/scripts/$script" "$flag" "${@+"$@"}" 2>&1)
   status=$?
 
   if [ "$status" -eq 0 ]; then
@@ -896,6 +897,42 @@ assert_flag_requires_value sync-layers.mjs --template --dry-run
 assert_flag_requires_value remove-layer.mjs --target
 assert_flag_requires_value add-layer.mjs --from
 assert_flag_requires_value sync-layers.mjs --template
+
+# 空文字・空白のみの形。`--target "$dir"` の $dir が未設定で展開されるとこれになるので、
+# ラッパースクリプトや CI 経由では書き忘れより起きやすい
+assert_flag_requires_value remove-layer.mjs --target ""
+assert_flag_requires_value add-layer.mjs --from ""
+assert_flag_requires_value sync-layers.mjs --template "  "
+
+# 実際にファイルが消える並び（層名が先・フラグが末尾）を、使い捨ての複製の中から実行する。
+# 上のケースは「エラーになること」しか見ておらず、カレントディレクトリを触らないことは
+# 見ていない。ここだけはツリーが変わっていないことまで確かめる
+# <ラベル> を表示名にして `remove-layer.mjs mobile --target [値]` を variant の中で実行する
+assert_target_keeps_cwd() {
+  local label=$1
+  shift
+  local variant before after output status
+
+  variant=$(make_variant)
+  before=$(tree_checksum "$variant")
+  output=$(cd "$variant" && node "$REPO_ROOT/scripts/remove-layer.mjs" mobile --target "${@+"$@"}" 2>&1)
+  status=$?
+  after=$(tree_checksum "$variant")
+
+  if [ "$status" -eq 0 ]; then
+    fail "${label}の --target が末尾にあると減算が走る" "$output"
+  elif [ "$before" != "$after" ]; then
+    fail "${label}の --target でカレントディレクトリが書き換わった" "$output"
+  else
+    pass "${label}の --target はカレントディレクトリを対象にしない"
+  fi
+
+  rm -rf "$variant"
+}
+
+assert_target_keeps_cwd "値なし"
+assert_target_keeps_cwd "空文字" ""
+assert_target_keeps_cwd "空白のみ" "  "
 
 echo ""
 
