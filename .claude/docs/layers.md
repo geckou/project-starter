@@ -151,8 +151,13 @@ import { AuthProvider } from '@/components/auth/AuthProvider'
 
 ```bash
 node scripts/check-layers.mjs   # マニフェストと実態の一致（CI で実行）
-bash scripts/test-layers.sh     # 減算スクリプトの回帰テスト（CI で実行）
 ```
+
+減算・加算スクリプト自体の回帰テスト（`scripts/test-layers.sh`）は**テンプレート本体専用**で、
+派生プロジェクトには配られない。アサーションが本体のリポジトリの形を直に見るため、
+派生では必ず落ちるのと、検証しているのが同期されてくるスクリプト自身の振る舞いだから
+（→ `.templatesyncignore` の `template-only` の範囲）。派生でマニフェストと実態が
+合っているかは `check-layers.mjs` が見る。
 
 `check-layers.mjs` は `.github/workflows/docs-check.yml` が**全ての PR**で実行する。
 層マーカーは `apps/README.md` / `packages/README.md` にも入っており、`ci.yml` は `.md` だけの

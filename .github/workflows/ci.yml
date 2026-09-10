@@ -103,14 +103,22 @@ jobs:
         if: steps.changes.outputs.code == 'true' && hashFiles('scripts/test-hooks.sh') != ''
         run: bash scripts/test-hooks.sh
 
-      # 層マニフェスト（layers.json）と実態の一致、および減算スクリプトの回帰テスト。
-      # これも node_modules に依存しない
+      # 層マニフェスト（layers.json）と実態の一致。これも node_modules に依存しない
       - name: Layer Manifest Check
         if: steps.changes.outputs.code == 'true' && hashFiles('scripts/check-layers.mjs') != ''
         run: node scripts/check-layers.mjs
 
+      # 減算・加算スクリプトの回帰テストは**テンプレート本体の形**を直に見るため、
+      # 派生プロジェクトでは必ず落ちる（#326）。同期の対象からも外してあるが、
+      # 既に配られた版が残っている派生でも走らないようにリポジトリで判定する。
+      # reusable workflow でも github コンテキストは**呼び出し元**のものなので、
+      # 派生から呼ばれたときは派生のリポジトリ名になる（ワークフロー定義側を指すのは
+      # job.workflow_repository のほう）
       - name: Layer Test
-        if: steps.changes.outputs.code == 'true' && hashFiles('scripts/test-layers.sh') != ''
+        if: >-
+          steps.changes.outputs.code == 'true'
+          && github.repository == 'geckou/project-starter'
+          && hashFiles('scripts/test-layers.sh') != ''
         run: bash scripts/test-layers.sh
 
       # 派生プロジェクトを参照方式へ移行するスクリプトの回帰テスト。
