@@ -33,6 +33,23 @@ export const SELF_DOCUMENTING = new Set([
   '.claude/docs/layers.md',
 ])
 
+/**
+ * 値を取るフラグ（`--target <パス>` 等）の値を検証してパスへ解決する。
+ *
+ * 値を省略すると `path.resolve(undefined ?? '')` がカレントディレクトリを返すため、
+ * 検査しないと **書き忘れた `--target` が「今いるリポジトリを対象にする」という意味になる**。
+ * remove-layer.mjs は層の実体を消すので、タイプミスが自分のリポジトリからの減算になる（#324）。
+ *
+ * 次のフラグ（`-` 始まり）を値として食べてしまう形も同じ事故なので弾く。
+ */
+export function requireFlagValue(flag, value) {
+  if (value === undefined || value.startsWith('-')) {
+    throw new Error(`${flag} には値が必要です`)
+  }
+
+  return path.resolve(value)
+}
+
 /** マーカーの構文: <コメント記号> layer:<層名>[,<層名>...]:start | :end */
 export const MARKER_PATTERN = /layer:([a-zA-Z0-9,_-]+):(start|end)/
 

@@ -9,6 +9,7 @@ set -u
 #   3. 減算後も残ったファイルが構文として壊れていないこと
 #   4. 減算後のリポジトリに、外した層への参照が残っていないこと
 #   5. add-layer.mjs が減算を打ち消すこと（外して足すと元に戻る＝往復）
+#   6. 値を取るフラグ（--target 等）が、値の省略をエラーにすること
 #
 # このスクリプトが検証するのは「全部入りのテンプレートからの減算」なので、
 # 各層が揃っていることを前提にする。減算済みの構成や、層マニフェストを持たない
@@ -820,13 +821,6 @@ else
   fail "層を外していない構成でファイルが変わった"
 fi
 
-# フラグの値を省略したら分かりやすく落ちる（カレントディレクトリ扱いにしない）
-if node "$REPO_ROOT/scripts/sync-layers.mjs" --template > /dev/null 2>&1; then
-  fail "--template の値を省略してもエラーにならない"
-else
-  pass "--template の値を省略するとエラーになる"
-fi
-
 # layers.json を持たない派生ではスキップする（CI から無条件に呼ばれるため）
 rm -f "$variant/layers.json"
 if node "$variant/scripts/sync-layers.mjs" --target "$variant" \
@@ -865,6 +859,44 @@ else
 fi
 
 rm -rf "$variant"
+echo ""
+
+# --- 9. 値を取るフラグの値省略 ---
+# 値を書き忘れた --target が path.resolve('') 経由でカレントディレクトリになると、
+# 別のディレクトリのつもりの実行が自分のリポジトリからの減算になる（#324）
+echo "[9] フラグの値"
+
+# <スクリプト> <フラグ> <フラグの後ろに続く引数...> を実行し、非ゼロ終了を期待する
+assert_flag_requires_value() {
+  local script=$1
+  local flag=$2
+  shift 2
+  local output status
+
+  output=$(cd "$REPO_ROOT" && node "$REPO_ROOT/scripts/$script" "$flag" "$@" 2>&1)
+  status=$?
+
+  if [ "$status" -eq 0 ]; then
+    fail "${script} の ${flag} が値なしで成功する" "$output"
+  elif ! printf '%s' "$output" | grep -q -- "${flag} には値が必要です"; then
+    fail "${script} の ${flag} が値なしで別の理由で落ちる" "$output"
+  else
+    pass "${script} の ${flag} は値が必要"
+  fi
+}
+
+# 値の位置に次のフラグが来る形（--target が --dry-run を食べる）
+assert_flag_requires_value remove-layer.mjs --target --dry-run mobile
+assert_flag_requires_value add-layer.mjs --target --dry-run mobile
+assert_flag_requires_value add-layer.mjs --from --dry-run mobile
+assert_flag_requires_value sync-layers.mjs --target --dry-run
+assert_flag_requires_value sync-layers.mjs --template --dry-run
+
+# 値がそもそも無い形（引数の末尾）
+assert_flag_requires_value remove-layer.mjs --target
+assert_flag_requires_value add-layer.mjs --from
+assert_flag_requires_value sync-layers.mjs --template
+
 echo ""
 
 echo "=== 結果: ${passed} 件成功 / ${failed} 件失敗 ==="

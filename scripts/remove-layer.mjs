@@ -17,6 +17,7 @@ import {
   applyRemoval,
   loadManifest,
   pruneManifest,
+  requireFlagValue,
   resolveRemoval,
   writeJson,
 } from './lib/layers.mjs'
@@ -29,7 +30,7 @@ function parseArguments(argv) {
 
     if (argument === '--target') {
       index += 1
-      options.target = path.resolve(argv[index] ?? '')
+      options.target = requireFlagValue('--target', argv[index])
     } else if (argument === '--dry-run') {
       options.dryRun = true
     } else if (argument === '--help' || argument === '-h') {
