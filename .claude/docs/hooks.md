@@ -47,8 +47,8 @@ Stop フックは 4 つとも同じ `stop_hook_active` を受け取る。DoD が
 `layers.json` を変えたら `node scripts/check-layers.mjs`（実態との一致）を実行する。
 node_modules に依存しないので `yarn install` なしで走る。CI でも実行される。
 
-減算の回帰テスト（`bash scripts/test-layers.sh`）は**テンプレート本体専用**で、
-派生プロジェクトには配られない（→「本体保守で使うスクリプト」）。
+減算・加算スクリプト自体の回帰テスト（`bash scripts/test-layers.sh`）は
+**テンプレート本体専用**で、派生プロジェクトには配られない。
 
 ## フックを変更したら
 
@@ -153,13 +153,11 @@ CI でも実行される。
 
 ## 本体保守で使うスクリプト
 
-派生プロジェクトでは使わない（テンプレート本体の検証・公開まわり）。
+テンプレート本体の検証・公開まわり。ここに挙げるものは派生プロジェクトへ配られないので、
+`/init-project` は**この節ごと**派生から削除する。
 
 ```bash
-node scripts/check-layers.mjs        # 層マニフェストと実態の一致を検証
 bash scripts/test-layers.sh          # 層スクリプトの回帰テスト（減算・加算・往復）
-node scripts/remove-layer.mjs <層>   # 層を外す（--dry-run で確認のみ）
-node scripts/add-layer.mjs <層>      # 層を足す（テンプレートから取り寄せる）
 
 node scripts/adopt-references.mjs --repo <派生のパス>  # 既存の派生を参照方式へ移行する
 bash scripts/test-adopt-references.sh                 # 上記スクリプトの回帰テスト

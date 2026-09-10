@@ -98,7 +98,8 @@ rm -f .github/workflows/publish.yml .github/workflows/layer-matrix.yml \
   .github/workflows/smoke-test.yml .github/workflows/release-tag.yml
 rm -f scripts/release.sh scripts/geckou-release scripts/install-release-command.sh \
   scripts/test-release-command.sh scripts/check-api-diff.mjs scripts/test-api-diff.sh \
-  scripts/check-workspace-ranges.mjs scripts/test-workspace-ranges.sh
+  scripts/check-workspace-ranges.mjs scripts/test-workspace-ranges.sh \
+  scripts/test-layers.sh
 ```
 
 `ci.yml` の該当ステップは `hashFiles` で存在を見ているため、消しても CI は緑のまま通る。
