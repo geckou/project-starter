@@ -9,6 +9,7 @@ set -u
 #   3. 減算後も残ったファイルが構文として壊れていないこと
 #   4. 減算後のリポジトリに、外した層への参照が残っていないこと
 #   5. add-layer.mjs が減算を打ち消すこと（外して足すと元に戻る＝往復）
+#   6. 値を取るフラグ（--target 等）が、値の省略をエラーにすること
 #
 # **テンプレート本体専用**。アサーションが本体のリポジトリの形（全部入りの構成、
 # renovate/*.json や packages/*-config の実体、ci.yml の中身）を直に見るため、
@@ -825,13 +826,6 @@ else
   fail "層を外していない構成でファイルが変わった"
 fi
 
-# フラグの値を省略したら分かりやすく落ちる（カレントディレクトリ扱いにしない）
-if node "$REPO_ROOT/scripts/sync-layers.mjs" --template > /dev/null 2>&1; then
-  fail "--template の値を省略してもエラーにならない"
-else
-  pass "--template の値を省略するとエラーになる"
-fi
-
 # layers.json を持たない派生ではスキップする（CI から無条件に呼ばれるため）
 rm -f "$variant/layers.json"
 if node "$variant/scripts/sync-layers.mjs" --target "$variant" \
@@ -870,6 +864,81 @@ else
 fi
 
 rm -rf "$variant"
+echo ""
+
+# --- 9. 値を取るフラグの値省略 ---
+# 値を書き忘れた --target が path.resolve('') 経由でカレントディレクトリになると、
+# 別のディレクトリのつもりの実行が自分のリポジトリからの減算になる（#324）
+echo "[9] フラグの値"
+
+# <スクリプト> <フラグ> <フラグの後ろに続く引数...> を実行し、非ゼロ終了を期待する
+assert_flag_requires_value() {
+  local script=$1
+  local flag=$2
+  shift 2
+  local output status
+
+  # bash 3.2（macOS の既定）は set -u 下で引数ゼロの "$@" を unbound として扱う
+  output=$(cd "$REPO_ROOT" && node "$REPO_ROOT/scripts/$script" "$flag" "${@+"$@"}" 2>&1)
+  status=$?
+
+  if [ "$status" -eq 0 ]; then
+    fail "${script} の ${flag} が値なしで成功する" "$output"
+  elif ! printf '%s' "$output" | grep -q -- "${flag} には値が必要です"; then
+    fail "${script} の ${flag} が値なしで別の理由で落ちる" "$output"
+  else
+    pass "${script} の ${flag} は値が必要"
+  fi
+}
+
+# 値の位置に次のフラグが来る形（--target が --dry-run を食べる）
+assert_flag_requires_value remove-layer.mjs --target --dry-run mobile
+assert_flag_requires_value add-layer.mjs --target --dry-run mobile
+assert_flag_requires_value add-layer.mjs --from --dry-run mobile
+assert_flag_requires_value sync-layers.mjs --target --dry-run
+assert_flag_requires_value sync-layers.mjs --template --dry-run
+
+# 値がそもそも無い形（引数の末尾）
+assert_flag_requires_value remove-layer.mjs --target
+assert_flag_requires_value add-layer.mjs --from
+assert_flag_requires_value sync-layers.mjs --template
+
+# 空文字・空白のみの形。`--target "$dir"` の $dir が未設定で展開されるとこれになるので、
+# ラッパースクリプトや CI 経由では書き忘れより起きやすい
+assert_flag_requires_value remove-layer.mjs --target ""
+assert_flag_requires_value add-layer.mjs --from ""
+assert_flag_requires_value sync-layers.mjs --template "  "
+
+# 実際にファイルが消える並び（層名が先・フラグが末尾）を、使い捨ての複製の中から実行する。
+# 上のケースは「エラーになること」しか見ておらず、カレントディレクトリを触らないことは
+# 見ていない。ここだけはツリーが変わっていないことまで確かめる
+# <ラベル> を表示名にして `remove-layer.mjs mobile --target [値]` を variant の中で実行する
+assert_target_keeps_cwd() {
+  local label=$1
+  shift
+  local variant before after output status
+
+  variant=$(make_variant)
+  before=$(tree_checksum "$variant")
+  output=$(cd "$variant" && node "$REPO_ROOT/scripts/remove-layer.mjs" mobile --target "${@+"$@"}" 2>&1)
+  status=$?
+  after=$(tree_checksum "$variant")
+
+  if [ "$status" -eq 0 ]; then
+    fail "${label}の --target が末尾にあると減算が走る" "$output"
+  elif [ "$before" != "$after" ]; then
+    fail "${label}の --target でカレントディレクトリが書き換わった" "$output"
+  else
+    pass "${label}の --target はカレントディレクトリを対象にしない"
+  fi
+
+  rm -rf "$variant"
+}
+
+assert_target_keeps_cwd "値なし"
+assert_target_keeps_cwd "空文字" ""
+assert_target_keeps_cwd "空白のみ" "  "
+
 echo ""
 
 echo "=== 結果: ${passed} 件成功 / ${failed} 件失敗 ==="
