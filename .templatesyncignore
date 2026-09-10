@@ -67,4 +67,12 @@ scripts/test-adopt-references.sh
 # 派生プロジェクトへ同期された状態を再現して docs-check を回す検査（テンプレート本体専用）
 scripts/test-docs-downstream.sh
 
+# 減算・加算スクリプトの回帰テスト。アサーションが**テンプレート本体の形**
+# （全部入りの構成、renovate/*.json や packages/*-config の実体、ci.yml の中身）を
+# 直に見るため、参照方式の派生や層を外した構成では必ず落ちる。
+# 派生が持つ理由も薄い — 検証しているのは同期されてくるスクリプト自身の振る舞いで、
+# それはここ（本体）の CI が見る。派生側で層マニフェストと実態が合っているかは
+# check-layers.mjs が引き続き見る（#326）
+scripts/test-layers.sh
+
 # template-only:end
