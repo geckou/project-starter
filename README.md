@@ -187,7 +187,8 @@ yarn setup
 
 これで以下が自動的に行われる:
 
-- `.firebaserc` の Firebase Project ID 設定（対話で入力）
+- `.firebaserc` の Firebase Project ID 設定（対話で入力。**環境ごとにプロジェクトを分けるか、
+  1 つのプロジェクトに相乗りさせるかもここで選ぶ** → `.claude/docs/git-workflow.md`）
 - 環境別 env ファイル（`.env.develop` / `.env.staging` / `.env.production`）を
   `.env.example` から作成
 - `.env.local` の作成（`.env.develop` からコピー = 既定は develop 環境）

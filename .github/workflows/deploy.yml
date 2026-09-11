@@ -184,7 +184,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.ref_name }}
           HEAD_SHA: ${{ github.sha }}
+          DEPLOY_ENV: ${{ steps.env.outputs.name }}
         run: |
+          # 1 つの Firebase プロジェクトに環境を相乗りさせる構成では、
+          # functions / firestore / storage が環境で分かれない（#358）。
+          # CI の自動デプロイでそれらを配ってよいのは、そのプロジェクトを共有する
+          # 環境のうち最も本番側の 1 つだけ。判定は deploy.sh と同じものを使う
+          filter_targets() {
+            node scripts/lib/deploy-targets.mjs "$DEPLOY_ENV" "$1"
+          }
+
           ALL="hosting"
           # layer:firebase:start
           ALL="firestore,storage,${ALL}"
@@ -234,7 +243,7 @@ jobs:
               echo "::warning::成功した run はあるが '${DEPLOY_STEP}' が success の run が見つかりません"
             fi
             echo "前回デプロイに成功したコミットが特定できないため、全ターゲットをデプロイします"
-            echo "targets=$ALL" >> $GITHUB_OUTPUT
+            echo "targets=$(filter_targets "$ALL")" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -302,8 +311,14 @@ jobs:
           # layer:firebase:end
           if [ "$NEED_HOSTING" = true ]; then TARGETS="${TARGETS},hosting"; fi
           TARGETS="${TARGETS#,}"
+          REQUESTED_TARGETS="$TARGETS"
+          TARGETS=$(filter_targets "$TARGETS")
 
-          if [ -z "$TARGETS" ]; then
+          if [ -z "$TARGETS" ] && [ -n "$REQUESTED_TARGETS" ]; then
+            # 変更はあったが、この環境が配る側ではなかった（相乗り構成）。
+            # 「変更なし」と区別できるようにする
+            echo "この環境から配るものはありません（${REQUESTED_TARGETS} は環境で分けられないため除外）"
+          elif [ -z "$TARGETS" ]; then
             echo "デプロイが必要な変更はありません"
           else
             echo "デプロイ対象: $TARGETS"

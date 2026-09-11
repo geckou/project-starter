@@ -104,12 +104,52 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 
 ## マルチ環境（develop / staging / production）
 
-Firebase プロジェクトを3つ作成し、環境ごとに使い分ける。
-**環境とブランチは 1対1 ではない。**ブランチの種類に応じてデプロイ先が決まる。
+環境は `develop` / `staging` / `production` の3つ。**環境とブランチは 1対1 ではない。**
+ブランチの種類に応じてデプロイ先が決まる。
+
+### Firebase プロジェクトの持ち方は2通りある
+
+環境をどう Firebase プロジェクトへ割り当てるかは、**プロジェクトの規模で選ぶ**。
+どちらも `.firebaserc` の `projects` で表す（`yarn setup` が対話で聞く）。
+
+| | **A: 環境ごとにプロジェクトを分ける** | **B: 1 プロジェクトに相乗りさせる** |
+| --- | --- | --- |
+| Firebase プロジェクト | 3つ | 1つ（Hosting サイトだけ環境ごとに分ける）|
+| 本番データ・本番ユーザー | 触れない | develop / staging から**触れる** |
+| Auth のユーザープール | 環境ごとに分断（本番と同じアカウントで開発時の確認ができない）| 共通 |
+| Functions / Firestore ルール | 環境ごとに検証できる | **環境で分けられない**（全環境で同じもの）|
+| モバイルの `GoogleService-Info.plist` / `google-services.json` | 環境ごとに必要（Expo の設定と配信構成も分岐する）| 1セット |
+| サービスアカウント発行と IAM 付与（→「先にサービスアカウントへ IAM ロールを付与する」）| プロジェクトごとに繰り返す | 1回 |
+| Blaze の課金先・予算アラート・GCP API 有効化 | 3つ | 1つ |
+| Firestore のデータ投入・インデックス作成 | 環境ごと | 1回 |
+
+**A が既定**（`.firebaserc` のプレースホルダも A）。本番データを壊しうる操作を仕組みで
+遮断できるため、本番に実ユーザーのデータが乗るなら A を選ぶ。**B は、その遮断を
+「Functions / Firestore を環境で検証できない」というトレードオフと引き換えに手放す代わりに、
+上表の右列ぶんの初期構築・維持コストを 1/3 にする。** LP・社内ツール・PoC のように
+関数とルールがほとんど動かないものでは、A のコストが機能開発より重くなることがある。
+
+```jsonc
+// A: 環境ごとにプロジェクトを分ける（既定）
+"projects": { "default": "myapp-develop", "develop": "myapp-develop", "staging": "myapp-staging", "production": "myapp-production" }
+
+// B: 1 プロジェクトに相乗りさせる（Hosting サイトで分ける。→「Hosting のターゲットは環境名に合わせる」）
+"projects": { "default": "myapp", "develop": "myapp", "staging": "myapp", "production": "myapp" }
+```
+
+> ⚠️ **B では `functions` / `firestore` / `storage` が環境で分かれない。** `deploy.sh` は
+> `.firebaserc` を読んでこれを検出し、**同じプロジェクトを共有する環境のうち最も本番側の
+> 1つ（通常は `production`）以外では、この3つを既定のデプロイ対象から外す**
+> （→「デプロイ対象は `.firebaserc` の構成から決まる」）。`yarn deploy:develop` が
+> 本番の関数とルールを上書きしないのは、この絞り込みのおかげ。**外した対象は
+> `--only` で明示すれば配れる**ので、遮断ではなく「既定を安全側に倒す」だけ。
+
+後から A へ移行することはできる（プロジェクトを作り、`.firebaserc` を書き換え、
+データと Auth を移す）。移行のコストは、そのとき本番に溜まっているデータの量で決まる。
 
 ### 環境
 
-| 環境         | Firebase プロジェクト     | 用途                   |
+| 環境         | Firebase プロジェクト（A の場合） | 用途                   |
 | ------------ | ------------------------- | ---------------------- |
 | `develop`    | `your-project-develop`    | 開発中の動作確認       |
 | `staging`    | `your-project-staging`    | リリース前 QA          |
@@ -234,6 +274,33 @@ DEPLOY_HOSTING_TARGETS='web admin' yarn deploy:staging
 
 判定は `scripts/lib/hosting-targets.mjs` にあり、`scripts/test-deploy-targets.sh` が回帰テストする。
 
+### デプロイ対象は `.firebaserc` の構成から決まる
+
+`--only` を付けずに `deploy.sh` を実行したときのデプロイ対象（既定のターゲット）は、
+層構成（`firestore` / `storage` / `functions` を持つか）と **`.firebaserc` の `projects`** から決まる。
+
+`projects` で複数の環境が**同じ Firebase プロジェクト ID** を指している場合（→「Firebase
+プロジェクトの持ち方は2通りある」の B）、`functions` / `firestore` / `storage` は環境で
+分けられない。そこで **同じプロジェクトを共有する環境のうち、最も本番側の 1つだけ**
+（`develop` < `staging` < `production` の順。全部が同じプロジェクトなら `production`）が
+既定でそれらを配り、**他の環境では既定から外す**。
+
+```
+$ bash scripts/deploy.sh develop      # B の構成（3環境が同じプロジェクト）
+[warn] develop は staging / production と同じ Firebase プロジェクト（myapp）を指しています。
+[warn]   環境で分けられない functions / firestore / storage は既定のデプロイ対象から外しました。
+[warn]   この環境から配るなら明示してください: bash scripts/deploy.sh develop --only functions,firestore,storage
+```
+
+外した対象は **`--only` で明示すれば配れる**（止めはしない。ただし他の環境にも同じものが
+配られることを警告する）。CI（`.github/workflows/deploy.yml`）も同じ判定を通すため、
+B の構成では `release/*` への push で関数やルールが自動デプロイされることはない。
+
+A の構成（環境ごとにプロジェクトを分ける）では何も変わらない — 共有している環境が無いため、
+既定のターゲットはそのまま使われる。
+
+判定は `scripts/lib/deploy-targets.mjs` にあり、`scripts/test-deploy-targets.sh` が回帰テストする。
+
 ### CI 用 GitHub Secrets の登録
 
 `deploy.yml` はデプロイ時に環境別の env をシークレットから `.env.<環境名>` に書き出す（`secrets[format('ENV_FILE_{0}', name)]`）。
@@ -272,7 +339,7 @@ lacks IAM permission "cloudscheduler.jobs.update"
 
 どちらもワークフローが数分走ってから落ちるため、ロールを 1 つずつ足して再実行する往復になる。
 **CI からデプロイする Firebase プロジェクトごとに同じ作業を繰り返す**ので、
-初回デプロイの前に以下をまとめて付与しておく。
+初回デプロイの前に以下をまとめて付与しておく（1 プロジェクトに環境を相乗りさせる構成なら 1 回で済む）。
 
 ```bash
 SA=firebase-adminsdk-xxxxx@<project-id>.iam.gserviceaccount.com
@@ -299,7 +366,8 @@ done
 
 **対象はプロジェクトごと。** CI からデプロイするのは staging と production の 2 つ
 （develop は CI からデプロイしないため不要）で、**`FIREBASE_SERVICE_ACCOUNT` は 1 つの鍵を
-両環境で共用する**。つまり既定では、**1 つの SA に対して staging / production の各プロジェクトで
+両環境で共用する**。相乗り構成（B）では staging と production が同じプロジェクトなので、
+このループは 1 回だけ実行する。つまり既定では、**1 つの SA に対して staging / production の各プロジェクトで
 上のループを実行する**（`add-iam-policy-binding` のメンバーには別プロジェクトの SA も指定できる）。
 環境ごとに鍵を分ける構成にした場合（この節の後半の GitHub Environment）は、それぞれの SA に
 それぞれのプロジェクトで付与する。

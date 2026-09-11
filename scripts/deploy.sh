@@ -306,7 +306,19 @@ fi
 DEFAULT_TARGETS="functions,${DEFAULT_TARGETS}"
 # layer:functions:end
 
-TARGETS="${DEPLOY_ONLY:-$DEFAULT_TARGETS}"
+# 既定のターゲットは .firebaserc の構成から導出する。
+#
+# 1 つの Firebase プロジェクトに環境を相乗りさせる構成（→ .claude/docs/git-workflow.md）では
+# functions / firestore / storage が環境で分かれないため、既定のまま配ると
+# `deploy.sh develop` が本番の関数とルールを --force で上書きする（#358）。
+# 判定は scripts/lib/deploy-targets.mjs にあり、scripts/test-deploy-targets.sh が回帰テストする。
+#
+# --only での明示指定は止めない（他の環境にも配ることを警告するだけ）
+if [ -n "$DEPLOY_ONLY" ]; then
+  TARGETS=$(node scripts/lib/deploy-targets.mjs "$ENV" "$DEPLOY_ONLY" --explicit)
+else
+  TARGETS=$(node scripts/lib/deploy-targets.mjs "$ENV" "$DEFAULT_TARGETS")
+fi
 
 DEPLOY_HOSTING=false
 DEPLOY_STORAGE=false

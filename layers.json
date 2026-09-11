@@ -32,6 +32,7 @@
         "packages/shared/src/i18n/index.ts",
         "scripts/deploy.sh",
         "scripts/lib/hosting-targets.mjs",
+        "scripts/lib/deploy-targets.mjs",
         "scripts/lib/workspace-names.mjs",
         "scripts/test-deploy-targets.sh",
         "scripts/test-deploy-install.sh",
