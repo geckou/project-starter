@@ -60,6 +60,8 @@ production へのデプロイは `production` ブランチからのみ実行で�
    `firebase experiments:enable webframeworks` は deploy.sh が自動実行するため手動での有効化は不要。
 3. `yarn deploy:<env>` を実行する
 4. 失敗したら `/troubleshoot` の手順で診断する
+   - `403, The caller does not have permission` / `lacks IAM permission ...` は
+     サービスアカウントのロール不足（→ 下の「CI 経由のデプロイ」）
 
 ## CI 経由のデプロイ
 
@@ -73,6 +75,12 @@ production へのデプロイは `production` ブランチからのみ実行で�
 develop は CI から自動デプロイしない（複数人の feat/* push が互いに上書きし合うため）。各自 `yarn deploy:develop` で手動デプロイする。
 
 CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウント JSON）と `ENV_FILE_STAGING` / `ENV_FILE_PRODUCTION`（.env の内容）が必要。
+
+⚠️ **鍵を作る前に、そのサービスアカウントへ IAM ロールを付与する。** Firebase Console が
+自動生成する `firebase-adminsdk-*` は既定では Admin SDK 分の権限しか持たず、そのまま CI に
+入れるとデプロイが 403 で止まる（しかも足りないロールが段階的に出るため往復になる）。
+付与するロールの一覧と `gcloud` のコマンドは `.claude/docs/git-workflow.md`
+「CI 用 GitHub Secrets の登録」の「先にサービスアカウントへ IAM ロールを付与する」にある。
 
 ### Actions 分の節約
 

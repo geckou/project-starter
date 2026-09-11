@@ -251,7 +251,75 @@ develop 用のシークレットは不要（CI からデプロイしないため
 # 環境別 env の全文をそのまま登録（ローカルにファイルがある前提）
 gh secret set ENV_FILE_STAGING < .env.staging
 gh secret set ENV_FILE_PRODUCTION < .env.production
+```
 
+#### 先にサービスアカウントへ IAM ロールを付与する
+
+⚠️ **鍵を作る前にやること。** Firebase Console が自動生成する `firebase-adminsdk-*`
+サービスアカウントは、既定では Admin SDK の実行に必要な権限しか持たない。この鍵をそのまま
+`FIREBASE_SERVICE_ACCOUNT` に入れて `deploy.yml` を回すと **403 でデプロイが止まる。**
+
+厄介なのは**一度に全部はわからず、段階的に落ちる**こと。足りないロールを 1 つ直すと次が出る。
+
+```
+# 1回目 — firestore.rules のコンパイル検証で停止
+Error: Request to https://firebaserules.googleapis.com/v1/projects/<project>:test
+had HTTP Error: 403, The caller does not have permission
+
+# 2回目 — Rules・Hosting・Functions 本体は通り、スケジュール実行の関数だけ失敗
+lacks IAM permission "cloudscheduler.jobs.update"
+```
+
+どちらもワークフローが数分走ってから落ちるため、ロールを 1 つずつ足して再実行する往復になる。
+**環境が 3 つある構成では Firebase プロジェクトごとに同じ作業を繰り返す**ので、
+初回デプロイの前に以下をまとめて付与しておく。
+
+```bash
+SA=firebase-adminsdk-xxxxx@<project-id>.iam.gserviceaccount.com
+
+for role in \
+  roles/firebase.admin \
+  roles/cloudfunctions.admin \
+  roles/run.admin \
+  roles/artifactregistry.admin \
+  roles/iam.serviceAccountUser \
+  roles/serviceusage.serviceUsageConsumer \
+  roles/cloudscheduler.admin
+do
+  gcloud projects add-iam-policy-binding <project-id> \
+    --member="serviceAccount:$SA" --role="$role" --condition=None
+done
+```
+
+| ロール | 何のため |
+|---|---|
+| `firebase.admin` | Rules API の `:test`（ルールのコンパイル検証）、Hosting・Firestore ルール / インデックスのデプロイ |
+| `cloudfunctions.admin` | Functions のデプロイ |
+| `run.admin` | 第2世代 Functions の実体が Cloud Run |
+| `artifactregistry.admin` | Functions のコンテナイメージ push |
+| `iam.serviceAccountUser` | 関数のランタイム SA を引き受ける |
+| `serviceusage.serviceUsageConsumer` | `ensuring required API ... is enabled` のチェック |
+| `cloudscheduler.admin` | `onSchedule` の関数（`cloudscheduler.jobs.update`） |
+
+- `cloudscheduler.admin` は `onSchedule` の関数を持つ構成でのみ必要。テンプレート同梱の
+  `apps/functions` にスケジュール実行の関数は無いが、`/new-function` が `onSchedule` の
+  雛形を持つため、**1 つでも足したらこのロールが要る**（足りないと Rules・Hosting・
+  Functions 本体まで通ってから、その関数だけが落ちる）。
+- **付与する側に `resourcemanager.projectIamAdmin`（または Owner）が要る。** IAM の変更は
+  権限昇格にあたるため `scripts/setup.sh` では自動実行せず、手順として残している。
+- `firebase.admin` は広いロールだが、Rules API の `:test` を含む最小の組み合わせを特定する
+  コストが高いため、**CI 専用の SA であること**を前提に admin ロールで妥協している。
+- 付与済みか確認する:
+
+```bash
+gcloud projects get-iam-policy <project-id> \
+  --flatten="bindings[].members" \
+  --filter="bindings.members:$SA" --format="value(bindings.role)"
+```
+
+#### 鍵を作って登録する
+
+```bash
 # サービスアカウント鍵を登録
 # （Firebase Console > プロジェクトの設定 > サービスアカウント > 新しい秘密鍵の生成）
 gh secret set FIREBASE_SERVICE_ACCOUNT < service-account.json
