@@ -60,8 +60,10 @@ production へのデプロイは `production` ブランチからのみ実行で�
    `firebase experiments:enable webframeworks` は deploy.sh が自動実行するため手動での有効化は不要。
 3. `yarn deploy:<env>` を実行する
 4. 失敗したら `/troubleshoot` の手順で診断する
-   - `403, The caller does not have permission` / `lacks IAM permission ...` は
-     サービスアカウントのロール不足（→ 下の「CI 経由のデプロイ」）
+   - `403, The caller does not have permission` / `lacks IAM permission ...` は権限不足。
+     **どのアカウントの権限かは実行経路で違う** — ローカル実行なら `firebase login` の
+     ユーザー（または ADC）、CI なら `FIREBASE_SERVICE_ACCOUNT` のサービスアカウント。
+     CI で出た場合は下の「CI 経由のデプロイ」のロール一覧を見る
 
 ## CI 経由のデプロイ
 

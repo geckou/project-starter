@@ -271,7 +271,7 @@ lacks IAM permission "cloudscheduler.jobs.update"
 ```
 
 どちらもワークフローが数分走ってから落ちるため、ロールを 1 つずつ足して再実行する往復になる。
-**環境が 3 つある構成では Firebase プロジェクトごとに同じ作業を繰り返す**ので、
+**CI からデプロイする Firebase プロジェクトごとに同じ作業を繰り返す**ので、
 初回デプロイの前に以下をまとめて付与しておく。
 
 ```bash
@@ -282,9 +282,7 @@ for role in \
   roles/cloudfunctions.admin \
   roles/run.admin \
   roles/artifactregistry.admin \
-  roles/iam.serviceAccountUser \
-  roles/serviceusage.serviceUsageConsumer \
-  roles/cloudscheduler.admin
+  roles/serviceusage.serviceUsageConsumer
 do
   gcloud projects add-iam-policy-binding <project-id> \
     --member="serviceAccount:$SA" --role="$role" --condition=None
@@ -293,23 +291,63 @@ done
 
 | ロール | 何のため |
 |---|---|
-| `firebase.admin` | Rules API の `:test`（ルールのコンパイル検証）、Hosting・Firestore ルール / インデックスのデプロイ |
-| `cloudfunctions.admin` | Functions のデプロイ |
-| `run.admin` | 第2世代 Functions の実体が Cloud Run |
-| `artifactregistry.admin` | Functions のコンテナイメージ push |
-| `iam.serviceAccountUser` | 関数のランタイム SA を引き受ける |
-| `serviceusage.serviceUsageConsumer` | `ensuring required API ... is enabled` のチェック |
-| `cloudscheduler.admin` | `onSchedule` の関数（`cloudscheduler.jobs.update`） |
+| `roles/firebase.admin` | Rules API の `:test`（ルールのコンパイル検証）、Hosting・Firestore ルール / インデックスのデプロイ |
+| `roles/cloudfunctions.admin` | Functions のデプロイ |
+| `roles/run.admin` | 第2世代 Functions の実体が Cloud Run |
+| `roles/artifactregistry.admin` | Functions のコンテナイメージ push |
+| `roles/serviceusage.serviceUsageConsumer` | `ensuring required API ... is enabled` のチェック |
 
-- `cloudscheduler.admin` は `onSchedule` の関数を持つ構成でのみ必要。テンプレート同梱の
-  `apps/functions` にスケジュール実行の関数は無いが、`/new-function` が `onSchedule` の
-  雛形を持つため、**1 つでも足したらこのロールが要る**（足りないと Rules・Hosting・
-  Functions 本体まで通ってから、その関数だけが落ちる）。
-- **付与する側に `resourcemanager.projectIamAdmin`（または Owner）が要る。** IAM の変更は
+**対象はプロジェクトごと。** CI からデプロイするのは staging と production の 2 つ
+（develop は CI からデプロイしないため不要）で、**`FIREBASE_SERVICE_ACCOUNT` は 1 つの鍵を
+両環境で共用する**。つまり既定では、**1 つの SA に対して staging / production の各プロジェクトで
+上のループを実行する**（`add-iam-policy-binding` のメンバーには別プロジェクトの SA も指定できる）。
+環境ごとに鍵を分ける構成にした場合（この節の後半の GitHub Environment）は、それぞれの SA に
+それぞれのプロジェクトで付与する。
+
+#### 残り 2 つのロールは対象を絞って付ける
+
+上のループに混ぜていない 2 つがある。**プロジェクト全体に付けると過剰になる**ため。
+
+**`roles/iam.serviceAccountUser`**（関数のランタイム SA を引き受ける）は、**プロジェクト全体に
+付けると CI の SA がプロジェクト内の任意の SA を `actAs` できてしまう** — より強い SA を実行主体に
+選べる状態になる。ランタイム SA 1 つに絞って付ける。
+
+```bash
+# デプロイ済みなら実物を引く
+RUNTIME_SA=$(gcloud functions describe api --gen2 --region=asia-northeast1 \
+  --project=<project-id> --format='value(serviceConfig.serviceAccountEmail)')
+
+gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
+  --project=<project-id> \
+  --member="serviceAccount:$SA" --role=roles/iam.serviceAccountUser
+```
+
+初回デプロイ前は引くべき関数がまだ無い。その場合は既定のランタイム SA
+（`<project-number>-compute@developer.gserviceaccount.com` か
+`<project-id>@appspot.gserviceaccount.com` のどちらか。プロジェクトによって変わるので
+**どちらかは確認してから**）に付け、外したら **403 のメッセージが `actAs` に失敗した SA を
+名指しする**ので、それに合わせて付け直す。
+
+**`roles/cloudscheduler.admin`** は `onSchedule` の関数を持つ構成でのみ必要
+（`cloudscheduler.jobs.update`）。テンプレート同梱の `apps/functions/src/index.ts` は
+スケジュール関数の export がコメントアウトされた状態なので、**既定構成では要らない**。
+`/new-function` で `onSchedule` を足したときに、そのプロジェクトへ追加する。
+
+```bash
+gcloud projects add-iam-policy-binding <project-id> \
+  --member="serviceAccount:$SA" --role=roles/cloudscheduler.admin --condition=None
+```
+
+足りないと、Rules・Hosting・Functions 本体まで通ってからその関数だけが落ちる。
+
+#### 付与するときの補足
+
+- **付与する側に `roles/resourcemanager.projectIamAdmin`（または Owner）が要る。** IAM の変更は
   権限昇格にあたるため `scripts/setup.sh` では自動実行せず、手順として残している。
-- `firebase.admin` は広いロールだが、Rules API の `:test` を含む最小の組み合わせを特定する
+- `roles/firebase.admin` は広いロールだが、Rules API の `:test` を含む最小の組み合わせを特定する
   コストが高いため、**CI 専用の SA であること**を前提に admin ロールで妥協している。
-- 付与済みか確認する:
+- 付与済みか確認する（プロジェクト単位の付与のみ。ランタイム SA に絞ったぶんは
+  `gcloud iam service-accounts get-iam-policy "$RUNTIME_SA"` で見る）:
 
 ```bash
 gcloud projects get-iam-policy <project-id> \
