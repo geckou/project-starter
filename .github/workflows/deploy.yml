@@ -243,7 +243,11 @@ jobs:
               echo "::warning::成功した run はあるが '${DEPLOY_STEP}' が success の run が見つかりません"
             fi
             echo "前回デプロイに成功したコミットが特定できないため、全ターゲットをデプロイします"
-            echo "targets=$(filter_targets "$ALL")" >> $GITHUB_OUTPUT
+            # コマンド置換を echo の引数に置くと、node が落ちても終了ステータスが
+            # echo のものになり、`targets=` 空のまま緑で終わる（デプロイが黙って消える）。
+            # 代入で受けて set -e に拾わせる
+            ALL=$(filter_targets "$ALL")
+            echo "targets=$ALL" >> $GITHUB_OUTPUT
             exit 0
           fi
 

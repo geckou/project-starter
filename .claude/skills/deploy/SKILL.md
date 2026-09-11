@@ -36,7 +36,17 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
 2. `type-check` / `lint` / `test` / `build` の事前チェック（`SKIP_CHECKS=1` を渡したときのみ省略。CI 専用の抜け道で、ローカルでは使わない）
 3. workspace 依存（`@geckou/*`）を package.json から一時削除（Cloud Build が npm registry から取得しようとして失敗するため。終了時に自動復元）
 4. `apps/web/.env.*` を退避（framework-backed hosting はこれらを関数のソースへ同梱するため、全文コピーの `.env.local` が入るとサーバー秘密まで載る。終了時に自動復元。中断で取りこぼしても次回のデプロイで戻す）
-5. functions / firestore → storage → framework hosting の順にデプロイ
+5. **既定のデプロイ対象を `.firebaserc` から導出する**（`--only` 未指定のとき）
+   - 複数の環境が同じ Firebase プロジェクト ID を指す構成（1 プロジェクトに環境を
+     相乗りさせる → `.claude/docs/git-workflow.md`）では、`functions` / `firestore` /
+     `storage` は環境で分けられない。**共有する環境のうち最も本番側の 1 つ**
+     （通常は `production`）以外では、既定のデプロイ対象から外す
+   - `firebase.json` の `hosting` に `target` / `site` の宣言が無い相乗り構成では
+     `hosting` も外す（配ると他の環境 = 本番のサイトを上書きするため）。
+     この場合、配るものが無いのでエラーで終了する
+   - 外した対象は `--only` で明示すれば配れる（`hosting` を除く）
+   - 環境ごとに Firebase プロジェクトを分ける構成では何も変わらない
+6. functions / firestore → storage → framework hosting の順にデプロイ
    - hosting は複数同梱だと next build がハングするため、ターゲットごとに個別デプロイする
    - **配る先は環境名と一致する hosting ターゲットだけ**（`firebase.json` に複数ある場合）。
      ターゲット名が環境名と無関係な構成では絞り込めず全部に配るので、
@@ -92,9 +102,14 @@ CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウ�
 デプロイ対象は push の変更差分から判定し、必要なターゲットだけを `--only` で渡す。
 `apps/web/` だけの変更なら hosting だけ、`firestore.rules` だけなら firestore だけがデプロイされる。
 影響範囲を特定できないファイル（ルート設定・`packages/` 等）が含まれる場合は全ターゲットをデプロイする。
+ただし CI も `deploy.sh` と同じ絞り込み（上の 5.）を通すため、**1 プロジェクトに環境を相乗りさせる
+構成では、配る側でない環境（通常は staging）から `functions` / `firestore` / `storage` は配られない。**
 
 **デプロイが失敗した回の変更は、次の push では再送されない。** 取りこぼしたときは
 `workflow_dispatch`（Actions タブから手動実行）で全ターゲットをデプロイして回復する。
+相乗り構成では、この経路でも絞り込みが効く（staging から関数やルールは配られない）。
+その2つを配る必要があるなら `production` へのデプロイか、手元からの
+`bash scripts/deploy.sh <環境名> --only functions,firestore` で配る。
 
 ## ルール
 

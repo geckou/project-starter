@@ -161,13 +161,20 @@ unset DEPLOY_HOSTING_TARGETS
 #  12. 相乗り構成では、本番側でない環境の既定から functions / firestore / storage が外れる
 #  13. 相乗り構成でも、共有する環境のうち最も本番側の 1 つは配る
 #  14. default エイリアスは環境として数えない
-#  15. 外したときは理由と --only の案内を出す
+#  15. 相乗り構成で Hosting サイトも分けていなければ hosting も外れる
 #  16. --explicit（明示指定）は素通しし、他の環境にも配ることを警告する
 #  17. .firebaserc が読めなくてもデプロイを止めない
 
-# $1: .firebaserc の projects（JSON）、$2: 環境名、$3: 候補ターゲット、$4: 追加フラグ
+# 環境ごとにサイトを分けてある firebase.json（相乗り構成の前提）。
+# 既定でこれを置き、hosting の扱いを見るときだけ差し替える
+HOSTING_SPLIT='[{ "target": "develop", "source": "apps/web" }, { "target": "staging", "source": "apps/web" }, { "target": "production", "source": "apps/web" }]'
+HOSTING_SINGLE='{ "source": "apps/web" }'
+
+# $1: .firebaserc の projects（JSON）、$2: 環境名、$3: 候補ターゲット、
+# $4: 追加フラグ（--explicit）、$5: firebase.json の hosting（既定は環境ごとに分けたもの）
 run_deploy_targets() {
   printf '{ "projects": %s }\n' "$1" >"$WORK/.firebaserc"
+  printf '{ "hosting": %s }\n' "${5:-$HOSTING_SPLIT}" >"$WORK/firebase.json"
 
   RUN_STDERR=$(mktemp)
   RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" "$2" "$3" "$WORK/.firebaserc" ${4:-} 2>"$RUN_STDERR")
@@ -176,9 +183,10 @@ run_deploy_targets() {
   rm -f "$RUN_STDERR"
 }
 
-# $1: 説明、$2: 期待する標準出力、$3: projects、$4: 環境名、$5: 候補ターゲット
+# $1: 説明、$2: 期待する標準出力、$3: projects、$4: 環境名、$5: 候補ターゲット、
+# $6: firebase.json の hosting
 expect_deploy_targets() {
-  run_deploy_targets "$3" "$4" "$5"
+  run_deploy_targets "$3" "$4" "$5" "" "${6:-}"
 
   if [ "$RUN_STATUS" -ne 0 ]; then
     fail "$1（異常終了した）" "$RUN_ERR"
@@ -198,6 +206,7 @@ echo ""
 echo "[5] 環境ごとに Firebase プロジェクトを分ける構成"
 expect_deploy_targets "既定のターゲットをそのまま使う" "$ALL_TARGETS" "$SEPARATE" develop "$ALL_TARGETS"
 expect_deploy_targets "production でも変わらない" "$ALL_TARGETS" "$SEPARATE" production "$ALL_TARGETS"
+expect_deploy_targets "サイトが 1 つでも絞り込まない" "$ALL_TARGETS" "$SEPARATE" develop "$ALL_TARGETS" "$HOSTING_SINGLE"
 
 run_deploy_targets "$SEPARATE" develop "$ALL_TARGETS"
 if [ -z "$RUN_ERR" ]; then
@@ -216,7 +225,10 @@ expect_deploy_targets "一部だけ共有: develop は外れる" "hosting" "$PAR
 expect_deploy_targets "一部だけ共有: staging は配る側" "$ALL_TARGETS" "$PARTIAL" staging "$ALL_TARGETS"
 expect_deploy_targets "一部だけ共有: 独立した production は影響を受けない" "$ALL_TARGETS" "$PARTIAL" production "$ALL_TARGETS"
 
-expect_deploy_targets "default エイリアスは環境として数えない" "$ALL_TARGETS" "$SEPARATE" develop "$ALL_TARGETS"
+# default を環境として数えると qa と共有していることになり、どちらも rank -1 で
+# 「誰も配らない」に落ちる。除外できていれば qa は単独の環境として全部配る
+expect_deploy_targets "default エイリアスは環境として数えない" "$ALL_TARGETS" \
+  '{ "default": "app", "qa": "app" }' qa "$ALL_TARGETS"
 
 run_deploy_targets "$SHARED" develop "$ALL_TARGETS"
 if printf '%s' "$RUN_ERR" | grep -q -- '--only functions,firestore,storage'; then
@@ -230,7 +242,29 @@ expect_deploy_targets "未知の環境名だけで共有しているときは配
 expect_deploy_targets ".firebaserc に無い環境名は絞り込まない" "$ALL_TARGETS" "$SHARED" preview "$ALL_TARGETS"
 
 echo ""
-echo "[7] 明示指定（--only）と異常系"
+echo "[7] 相乗り構成で Hosting サイトを分けていない場合"
+expect_deploy_targets "hosting も既定から外す（本番のサイトを上書きするため）" "" \
+  "$SHARED" develop "$ALL_TARGETS" "$HOSTING_SINGLE"
+expect_deploy_targets "配る側（production）は hosting も配る" "$ALL_TARGETS" \
+  "$SHARED" production "$ALL_TARGETS" "$HOSTING_SINGLE"
+expect_deploy_targets "サイトを分けてあれば hosting は残る" "hosting" \
+  "$SHARED" develop "$ALL_TARGETS" "$HOSTING_SPLIT"
+
+run_deploy_targets "$SHARED" develop "$ALL_TARGETS" "" "$HOSTING_SINGLE"
+if printf '%s' "$RUN_ERR" | grep -q 'Hosting サイトを分けて'; then
+  pass "hosting を外した理由と直し方を出す"
+else
+  fail "hosting を黙って外している" "$RUN_ERR"
+fi
+
+if printf '%s' "$RUN_ERR" | grep -q -- '--only functions,firestore,storage,hosting'; then
+  fail "hosting を --only で配るよう案内している（本番のサイトを上書きする）" "$RUN_ERR"
+else
+  pass "hosting は --only での回避を案内しない"
+fi
+
+echo ""
+echo "[8] 明示指定（--only）と異常系"
 run_deploy_targets "$SHARED" develop "functions,hosting" --explicit
 if [ "$RUN_OUT" = "functions,hosting" ]; then
   pass "明示指定は素通しする"
@@ -251,6 +285,20 @@ else
   fail "個別指定が警告から漏れた" "$RUN_ERR"
 fi
 
+run_deploy_targets "$SHARED" develop "hosting" --explicit "$HOSTING_SINGLE"
+if printf '%s' "$RUN_ERR" | grep -q '同じサイトへ配ります'; then
+  pass "サイトを分けていない構成の --only hosting を警告する"
+else
+  fail "--only hosting が他の環境のサイトを黙って上書きする" "$RUN_ERR"
+fi
+
+run_deploy_targets "$SHARED" develop "hosting" --explicit "$HOSTING_SPLIT"
+if [ -z "$RUN_ERR" ]; then
+  pass "サイトを分けてあれば --only hosting は警告しない"
+else
+  fail "サイトを分けてあるのに警告が出た" "$RUN_ERR"
+fi
+
 run_deploy_targets "$SEPARATE" develop "functions,hosting" --explicit
 if [ -z "$RUN_ERR" ]; then
   pass "分離構成の明示指定では警告しない"
@@ -259,7 +307,7 @@ else
 fi
 
 RUN_STDERR=$(mktemp)
-RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" develop "$ALL_TARGETS" "$WORK/missing.json" 2>"$RUN_STDERR")
+RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" develop "$ALL_TARGETS" "$WORK/missing.firebaserc" 2>"$RUN_STDERR")
 RUN_STATUS=$?
 RUN_ERR=$(cat "$RUN_STDERR")
 rm -f "$RUN_STDERR"
@@ -268,6 +316,17 @@ if [ "$RUN_STATUS" -eq 0 ] && [ "$RUN_OUT" = "$ALL_TARGETS" ] && [ -n "$RUN_ERR"
   pass ".firebaserc が読めないときは警告して素通しする"
 else
   fail ".firebaserc が読めないとデプロイが止まる" "status=$RUN_STATUS / out='$RUN_OUT' / $RUN_ERR"
+fi
+
+# firebase.json だけ読めない場合は hosting を外さない（判断材料が無いため）
+rm -f "$WORK/firebase.json"
+printf '{ "projects": %s }\n' "$SHARED" >"$WORK/.firebaserc"
+RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" develop "$ALL_TARGETS" "$WORK/.firebaserc" 2>/dev/null)
+
+if [ "$RUN_OUT" = "hosting" ]; then
+  pass "firebase.json が無いときは hosting を外さない"
+else
+  fail "firebase.json が無いと hosting の扱いが変わる" "実際: '$RUN_OUT'"
 fi
 
 echo ""

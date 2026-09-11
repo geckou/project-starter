@@ -318,6 +318,16 @@ if [ -n "$DEPLOY_ONLY" ]; then
   TARGETS=$(node scripts/lib/deploy-targets.mjs "$ENV" "$DEPLOY_ONLY" --explicit)
 else
   TARGETS=$(node scripts/lib/deploy-targets.mjs "$ENV" "$DEFAULT_TARGETS")
+
+  # 絞り込みで全部落ちた（相乗り構成で、Hosting サイトも分けていない）。
+  # 「対象が空」と同じ文言で終えると --only の指定ミスに見えるので、ここで分ける
+  if [ -z "$TARGETS" ]; then
+    echo ""
+    echo "[error] この環境から既定で配れるものがありません（上の警告を参照）"
+    echo "  → 環境ごとに Hosting サイトを分ける（.claude/docs/git-workflow.md）か、"
+    echo "     --only で配る対象を明示してください"
+    exit 1
+  fi
 fi
 
 DEPLOY_HOSTING=false

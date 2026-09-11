@@ -70,7 +70,9 @@ if grep -q "your-project-develop" .firebaserc 2>/dev/null; then
 
   echo "[done] .firebaserc を更新しました"
 
-  if [ "$PROJECT_LAYOUT" = "2" ]; then
+  # 相乗り構成を選んでも Project ID が空なら .firebaserc はプレースホルダのまま
+  # （= 分離構成）。実態と違う案内を出さない
+  if [ "$PROJECT_LAYOUT" = "2" ] && [ -n "$SHARED_ID" ]; then
     echo ""
     echo "[next] 相乗り構成では、環境ごとに Hosting サイトを分けます:"
     echo "  1. Firebase コンソールで環境ぶんの Hosting サイトを作る"
