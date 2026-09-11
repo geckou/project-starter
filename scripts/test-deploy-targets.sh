@@ -6,7 +6,7 @@ set -u
 # deploy.sh 本体は firebase CLI と実プロジェクトが無いと流せないため、
 # 「どのターゲットに配るか」の判断だけを切り出して検証する。
 #
-# 前半（[1]〜[4]）は hosting のターゲット選び、後半（[5]〜[7]）は
+# 前半（[1]〜[4]）は hosting のターゲット選び、後半（[5]〜[8]）は
 # .firebaserc の構成から既定のデプロイ対象を導く部分。
 #
 # hosting-targets.mjs で検証するもの:
@@ -161,7 +161,7 @@ unset DEPLOY_HOSTING_TARGETS
 #  12. 相乗り構成では、本番側でない環境の既定から functions / firestore / storage が外れる
 #  13. 相乗り構成でも、共有する環境のうち最も本番側の 1 つは配る
 #  14. default エイリアスは環境として数えない
-#  15. 相乗り構成で Hosting サイトも分けていなければ hosting も外れる
+#  15. 相乗り構成で、この環境名の Hosting ターゲットが無ければ hosting も外れる
 #  16. --explicit（明示指定）は素通しし、他の環境にも配ることを警告する
 #  17. .firebaserc が読めなくてもデプロイを止めない
 
@@ -169,6 +169,8 @@ unset DEPLOY_HOSTING_TARGETS
 # 既定でこれを置き、hosting の扱いを見るときだけ差し替える
 HOSTING_SPLIT='[{ "target": "develop", "source": "apps/web" }, { "target": "staging", "source": "apps/web" }, { "target": "production", "source": "apps/web" }]'
 HOSTING_SINGLE='{ "source": "apps/web" }'
+HOSTING_NAMED_SINGLE='[{ "target": "web", "source": "apps/web" }]'
+HOSTING_PARTIAL='[{ "target": "staging", "source": "apps/web" }, { "target": "production", "source": "apps/web" }]'
 
 # $1: .firebaserc の projects（JSON）、$2: 環境名、$3: 候補ターゲット、
 # $4: 追加フラグ（--explicit）、$5: firebase.json の hosting（既定は環境ごとに分けたもの）
@@ -237,27 +239,42 @@ else
   fail "外したことを黙って行っている" "$RUN_ERR"
 fi
 
-expect_deploy_targets "未知の環境名だけで共有しているときは配らない" "hosting" \
+expect_deploy_targets "未知の環境名だけで共有しているときは配らない" "" \
   '{ "qa": "app", "qa2": "app" }' qa "$ALL_TARGETS"
 expect_deploy_targets ".firebaserc に無い環境名は絞り込まない" "$ALL_TARGETS" "$SHARED" preview "$ALL_TARGETS"
 
 echo ""
-echo "[7] 相乗り構成で Hosting サイトを分けていない場合"
-expect_deploy_targets "hosting も既定から外す（本番のサイトを上書きするため）" "" \
+echo "[7] 相乗り構成で、この環境の Hosting ターゲットが無い場合"
+expect_deploy_targets "サイトが 1 つなら hosting も外す（本番のサイトを上書きするため）" "" \
   "$SHARED" develop "$ALL_TARGETS" "$HOSTING_SINGLE"
+expect_deploy_targets "名前付きでもサイトが 1 つなら外す" "" \
+  "$SHARED" develop "$ALL_TARGETS" "$HOSTING_NAMED_SINGLE"
+expect_deploy_targets "環境名のターゲットが無ければ外す（全ターゲットに配られるため）" "" \
+  "$SHARED" develop "$ALL_TARGETS" "$HOSTING_PARTIAL"
+expect_deploy_targets "同じ宣言でも、自分のターゲットがある環境は配る" "$ALL_TARGETS" \
+  "$SHARED" production "$ALL_TARGETS" "$HOSTING_PARTIAL"
 expect_deploy_targets "配る側（production）は hosting も配る" "$ALL_TARGETS" \
   "$SHARED" production "$ALL_TARGETS" "$HOSTING_SINGLE"
 expect_deploy_targets "サイトを分けてあれば hosting は残る" "hosting" \
   "$SHARED" develop "$ALL_TARGETS" "$HOSTING_SPLIT"
+expect_deploy_targets "hosting を持たない構成では hosting を外さない" "$ALL_TARGETS" \
+  "$SEPARATE" develop "$ALL_TARGETS" "null"
+
+# 配る先を人が明示しているなら、その判断を尊重する
+DEPLOY_HOSTING_TARGETS='web'
+export DEPLOY_HOSTING_TARGETS
+expect_deploy_targets "DEPLOY_HOSTING_TARGETS があれば hosting を外さない" "hosting" \
+  "$SHARED" develop "$ALL_TARGETS" "$HOSTING_NAMED_SINGLE"
+unset DEPLOY_HOSTING_TARGETS
 
 run_deploy_targets "$SHARED" develop "$ALL_TARGETS" "" "$HOSTING_SINGLE"
-if printf '%s' "$RUN_ERR" | grep -q 'Hosting サイトを分けて'; then
+if printf '%s' "$RUN_ERR" | grep -q 'Hosting ターゲットを用意'; then
   pass "hosting を外した理由と直し方を出す"
 else
   fail "hosting を黙って外している" "$RUN_ERR"
 fi
 
-if printf '%s' "$RUN_ERR" | grep -q -- '--only functions,firestore,storage,hosting'; then
+if printf '%s' "$RUN_ERR" | grep -qE -- '--only[^ ]*hosting'; then
   fail "hosting を --only で配るよう案内している（本番のサイトを上書きする）" "$RUN_ERR"
 else
   pass "hosting は --only での回避を案内しない"
@@ -299,6 +316,13 @@ else
   fail "サイトを分けてあるのに警告が出た" "$RUN_ERR"
 fi
 
+run_deploy_targets "$SHARED" production "functions,hosting" --explicit
+if [ -z "$RUN_ERR" ]; then
+  pass "配る側（production）の明示指定では警告しない"
+else
+  fail "配る側の明示指定で毎回警告が出る" "$RUN_ERR"
+fi
+
 run_deploy_targets "$SEPARATE" develop "functions,hosting" --explicit
 if [ -z "$RUN_ERR" ]; then
   pass "分離構成の明示指定では警告しない"
@@ -324,7 +348,7 @@ printf '{ "projects": %s }\n' "$SHARED" >"$WORK/.firebaserc"
 RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" develop "$ALL_TARGETS" "$WORK/.firebaserc" 2>/dev/null)
 
 if [ "$RUN_OUT" = "hosting" ]; then
-  pass "firebase.json が無いときは hosting を外さない"
+  pass "firebase.json が読めないときは hosting を外さない"
 else
   fail "firebase.json が無いと hosting の扱いが変わる" "実際: '$RUN_OUT'"
 fi

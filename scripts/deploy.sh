@@ -35,6 +35,55 @@ fi
 echo "=== デプロイ: ${ENV} 環境 ==="
 echo ""
 
+# firebase.json が storage を宣言しているか。
+# 宣言がないプロジェクトで firebase deploy --only storage を実行すると
+# 対象が見つからず失敗するため、既定・明示指定の双方でここを見る
+storage_configured() {
+  node -e "process.exit(require('./firebase.json').storage ? 0 : 1)" 2>/dev/null
+}
+
+# デプロイ対象（カンマ区切り）。
+# CI は変更差分から必要なターゲットだけを渡してくる（.github/workflows/deploy.yml）
+#
+# **ここで決めるのは意図的。** 型チェック・ビルド・env の退避を全部走らせてから
+# 「配れるものがありません」で落ちると、数分ぶんが毎回無駄になる
+DEFAULT_TARGETS="hosting"
+# layer:firebase:start
+DEFAULT_TARGETS="firestore,${DEFAULT_TARGETS}"
+
+if storage_configured; then
+  DEFAULT_TARGETS="firestore,storage,hosting"
+fi
+# layer:firebase:end
+# layer:functions:start
+DEFAULT_TARGETS="functions,${DEFAULT_TARGETS}"
+# layer:functions:end
+
+# 既定のターゲットは .firebaserc の構成から導出する。
+#
+# 1 つの Firebase プロジェクトに環境を相乗りさせる構成（→ .claude/docs/git-workflow.md）では
+# functions / firestore / storage が環境で分かれないため、既定のまま配ると
+# `deploy.sh develop` が本番の関数とルールを --force で上書きする（#358）。
+# 判定は scripts/lib/deploy-targets.mjs にあり、scripts/test-deploy-targets.sh が回帰テストする。
+#
+# --only での明示指定は止めない（他の環境にも配ることを警告するだけ）
+if [ -n "$DEPLOY_ONLY" ]; then
+  TARGETS=$(node scripts/lib/deploy-targets.mjs "$ENV" "$DEPLOY_ONLY" --explicit)
+else
+  TARGETS=$(node scripts/lib/deploy-targets.mjs "$ENV" "$DEFAULT_TARGETS")
+
+  # 絞り込みで全部落ちた（相乗り構成で、Hosting サイトも分けていない）。
+  # 「対象が空」と同じ文言で終えると --only の指定ミスに見えるので、ここで分ける
+  if [ -z "$TARGETS" ]; then
+    echo ""
+    echo "[error] この環境から既定で配れるものがありません（上の警告を参照）"
+    echo "  → hosting を配るには、この環境名の Hosting ターゲットを用意してください"
+    echo "     （.claude/docs/git-workflow.md「Hosting のターゲットは環境名に合わせる」）"
+    echo "  → functions / firestore / storage だけを配るなら --only で明示してください"
+    exit 1
+  fi
+fi
+
 # 退避先はリポジトリ内の決まった場所にする（.gitignore 済み）。
 #
 # **trap では取りこぼす。** 本物の Ctrl-C はフォアグラウンドのプロセスグループ全体に
@@ -285,50 +334,6 @@ deploy_hosting_per_target() {
   fi
 }
 
-# firebase.json が storage を宣言しているか。
-# 宣言がないプロジェクトで firebase deploy --only storage を実行すると
-# 対象が見つからず失敗するため、既定・明示指定の双方でここを見る
-storage_configured() {
-  node -e "process.exit(require('./firebase.json').storage ? 0 : 1)" 2>/dev/null
-}
-
-# デプロイ対象（カンマ区切り）。
-# CI は変更差分から必要なターゲットだけを渡してくる（.github/workflows/deploy.yml）
-DEFAULT_TARGETS="hosting"
-# layer:firebase:start
-DEFAULT_TARGETS="firestore,${DEFAULT_TARGETS}"
-
-if storage_configured; then
-  DEFAULT_TARGETS="firestore,storage,hosting"
-fi
-# layer:firebase:end
-# layer:functions:start
-DEFAULT_TARGETS="functions,${DEFAULT_TARGETS}"
-# layer:functions:end
-
-# 既定のターゲットは .firebaserc の構成から導出する。
-#
-# 1 つの Firebase プロジェクトに環境を相乗りさせる構成（→ .claude/docs/git-workflow.md）では
-# functions / firestore / storage が環境で分かれないため、既定のまま配ると
-# `deploy.sh develop` が本番の関数とルールを --force で上書きする（#358）。
-# 判定は scripts/lib/deploy-targets.mjs にあり、scripts/test-deploy-targets.sh が回帰テストする。
-#
-# --only での明示指定は止めない（他の環境にも配ることを警告するだけ）
-if [ -n "$DEPLOY_ONLY" ]; then
-  TARGETS=$(node scripts/lib/deploy-targets.mjs "$ENV" "$DEPLOY_ONLY" --explicit)
-else
-  TARGETS=$(node scripts/lib/deploy-targets.mjs "$ENV" "$DEFAULT_TARGETS")
-
-  # 絞り込みで全部落ちた（相乗り構成で、Hosting サイトも分けていない）。
-  # 「対象が空」と同じ文言で終えると --only の指定ミスに見えるので、ここで分ける
-  if [ -z "$TARGETS" ]; then
-    echo ""
-    echo "[error] この環境から既定で配れるものがありません（上の警告を参照）"
-    echo "  → 環境ごとに Hosting サイトを分ける（.claude/docs/git-workflow.md）か、"
-    echo "     --only で配る対象を明示してください"
-    exit 1
-  fi
-fi
 
 DEPLOY_HOSTING=false
 DEPLOY_STORAGE=false

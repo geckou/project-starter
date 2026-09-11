@@ -80,27 +80,49 @@ export function ownsProjectScopedTargets(projects, env) {
   return rank(env) === topRank
 }
 
-// 相乗り構成で hosting も外すかどうか。
+// 相乗り構成で、この環境に配ってよい Hosting の宣言があるかどうか。
 //
-// firebase.json の hosting に target / site の宣言が無い = サイトが 1 つしかない構成では、
-// develop も production も**同じサイト**を指す。そこへ `deploy.sh develop` が配ると
-// 本番のサイトが develop のビルドで上書きされる（#323 と同じ壊れ方）。
-// サイトを分けてあれば hosting-targets.mjs が環境名で絞り込むので、ここでは外さない
-export function hostingSplitByEnvironment(hosting) {
-  return declaredTargets(hosting).length > 0
+// 基準は「**この環境名のターゲット（target / site）が firebase.json にあること**」。
+// hosting-targets.mjs が環境名で絞り込める形と同じで、それ以外は配る先が
+// 他の環境（= 本番）と同じサイトになる:
+//
+//   - 宣言が無い / 単一（{ "source": "apps/web" } や { "site": "app" }）→ 全環境が同じサイト
+//   - 複数あるが環境名が無い（staging と production だけ、web / admin のような役割分割）
+//     → hosting-targets.mjs は絞り込めず全ターゲットに配る
+//
+// そこへ `deploy.sh develop` が配ると本番サイトが develop のビルドで上書きされる
+// （#323 と同じ壊れ方）。DEPLOY_HOSTING_TARGETS で配る先を明示している場合は、
+// 選んだのが人なのでそちらを尊重する
+export function hostingSplitForEnvironment(
+  hosting,
+  env,
+  explicitHostingTargets
+) {
+  if (explicitHostingTargets && explicitHostingTargets.trim() !== '')
+    return true
+
+  return declaredTargets(hosting).includes(env)
 }
 
-// hosting を省略した場合は「サイトは分かれている」とみなし、hosting を外さない
-export function selectDefaultTargets(candidates, projects, env, hosting) {
+// hosting を省略した場合（firebase.json を読めなかった場合）は判断材料が無いので
+// hosting を外さない
+export function selectDefaultTargets(
+  candidates,
+  projects,
+  env,
+  hosting,
+  explicitHostingTargets
+) {
   const sharedWith = sharingEnvironments(projects, env)
 
   if (sharedWith.length === 0 || ownsProjectScopedTargets(projects, env)) {
     return { targets: candidates, dropped: [], sharedWith }
   }
 
-  // 相乗り構成で、サイトも分けていない場合は hosting も配れない
+  // 相乗り構成で、この環境のサイトが無い場合は hosting も配れない
   const dropHosting =
-    hosting !== undefined && !hostingSplitByEnvironment(hosting)
+    hosting !== undefined &&
+    !hostingSplitForEnvironment(hosting, env, explicitHostingTargets)
 
   const shouldDrop = (target) =>
     isProjectScoped(target) ||
@@ -142,9 +164,9 @@ export function defaultTargetWarnings(
   // 配ると、他の環境のサイト（= 本番）をこの環境のビルドで上書きするため
   if (droppedHosting) {
     lines.push(
-      '  hosting は配れないため外しました: firebase.json の hosting に target / site の宣言が無く、',
-      `  ${env} と ${sharedWith.join(' / ')} が同じサイトを指すためです。`,
-      '  配るには環境ごとに Hosting サイトを分けてください',
+      `  hosting も外しました: firebase.json の hosting に "${env}" のターゲット（target / site）が無く、`,
+      `  配る先が ${sharedWith.join(' / ')} と同じサイトになるためです。`,
+      `  配るには "${env}" という名前の Hosting ターゲットを用意してください`,
       '  （→ .claude/docs/git-workflow.md「Hosting のターゲットは環境名に合わせる」）。'
     )
   }
@@ -154,7 +176,13 @@ export function defaultTargetWarnings(
 
 // 明示指定（--only）は止めない。ただし相乗り構成では、それが他の環境にも
 // 同じものを配る操作であることを知らせる
-export function explicitTargetWarnings(projects, env, targets, hosting) {
+export function explicitTargetWarnings(
+  projects,
+  env,
+  targets,
+  hosting,
+  explicitHostingTargets
+) {
   const sharedWith = sharingEnvironments(projects, env)
 
   if (sharedWith.length === 0) return []
@@ -162,7 +190,9 @@ export function explicitTargetWarnings(projects, env, targets, hosting) {
   const scoped = targets.filter(isProjectScoped)
   const lines = []
 
-  if (scoped.length > 0) {
+  // 配る側（共有グループで最も本番側の環境）にとっては、それを配るのが既定の動作。
+  // 毎回警告を出しても意味が無い（CI の production デプロイが毎回ノイズを出す）
+  if (scoped.length > 0 && !ownsProjectScopedTargets(projects, env)) {
     lines.push(
       `  --only に含まれる ${scoped.join(' / ')} は ${sharedWith.join(' / ')} にも同じものが配られます。`
     )
@@ -173,11 +203,11 @@ export function explicitTargetWarnings(projects, env, targets, hosting) {
   if (
     targets.some((target) => target.split(':')[0] === 'hosting') &&
     hosting !== undefined &&
-    !hostingSplitByEnvironment(hosting)
+    !hostingSplitForEnvironment(hosting, env, explicitHostingTargets)
   ) {
     lines.push(
       `  --only の hosting は ${sharedWith.join(' / ')} と同じサイトへ配ります`,
-      '  （firebase.json の hosting に target / site の宣言が無く、サイトが 1 つしかありません）。'
+      `  （firebase.json の hosting に "${env}" のターゲットがありません）。`
     )
   }
 
@@ -190,11 +220,12 @@ export function readProjects(manifestPath) {
   return JSON.parse(readFileSync(manifestPath, 'utf8')).projects || {}
 }
 
-// firebase.json の hosting 宣言。読めなければ undefined を返す
-// （「分かれているか分からない」＝ hosting を外さない側に倒す）
+// firebase.json の hosting 宣言。読めない場合と、hosting を持たない構成
+// （functions だけの派生など）はどちらも undefined を返す。
+// どちらも「hosting の配り先を判断する材料が無い」ケースで、hosting は外さない
 function readHosting(manifestPath) {
   try {
-    return JSON.parse(readFileSync(manifestPath, 'utf8')).hosting ?? null
+    return JSON.parse(readFileSync(manifestPath, 'utf8')).hosting ?? undefined
   } catch {
     return undefined
   }
@@ -240,14 +271,21 @@ if (invokedDirectly) {
       projects,
       env,
       targets,
-      readHosting(firebaseJson)
+      readHosting(firebaseJson),
+      process.env.DEPLOY_HOSTING_TARGETS
     )) {
       console.error(`[warn] ${line}`)
     }
     process.stdout.write(targets.join(','))
   } else {
     const hosting = readHosting(firebaseJson)
-    const selected = selectDefaultTargets(targets, projects, env, hosting)
+    const selected = selectDefaultTargets(
+      targets,
+      projects,
+      env,
+      hosting,
+      process.env.DEPLOY_HOSTING_TARGETS
+    )
 
     for (const line of defaultTargetWarnings(
       projects,

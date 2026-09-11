@@ -145,11 +145,12 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 > 本番の関数とルールを上書きしないのは、この絞り込みのおかげ。**外した対象は
 > `--only` で明示すれば配れる**ので、遮断ではなく「既定を安全側に倒す」だけ。
 
-> ⚠️ **B では Hosting サイトを環境ごとに分けるまで、どの環境も配れない。** サイトが 1 つの
-> ままだと `develop` も `production` も同じサイトを指すため、`yarn deploy:develop` が
-> 本番サイトを develop のビルドで上書きする。`deploy.sh` は `firebase.json` の `hosting` に
-> `target` / `site` の宣言が無いことを検出して **`hosting` も既定から外し**、配る前に止まる。
-> サイトの分け方は「Hosting のターゲットは環境名に合わせる」。
+> ⚠️ **B では Hosting サイトを分けるまで、配る側以外の環境は hosting も配れない。** サイトが
+> 1 つのままだと `develop` も `production` も同じサイトを指すため、`yarn deploy:develop` が
+> 本番サイトを develop のビルドで上書きする。`deploy.sh` は **`firebase.json` の `hosting` に
+> その環境名のターゲット（`target` / `site`）があるか**を見て、無ければ `hosting` も既定から
+> 外し、配る前に止まる（配る側 = `production` は止まらない）。サイトの分け方は
+> 「Hosting のターゲットは環境名に合わせる」。
 
 後から A へ移行することはできる（プロジェクトを作り、`.firebaserc` を書き換え、
 データと Auth を移す）。移行のコストは、そのとき本番に溜まっているデータの量で決まる。
@@ -293,7 +294,7 @@ DEPLOY_HOSTING_TARGETS='web admin' yarn deploy:staging
 既定でそれらを配り、**他の環境では既定から外す**。
 
 ```
-$ bash scripts/deploy.sh develop      # B の構成（3環境が同じプロジェクト）
+$ bash scripts/deploy.sh develop      # B の構成（3環境が同じプロジェクト・サイトは分けてある）
 [warn] develop は staging / production と同じ Firebase プロジェクト（myapp）を指しています。
 [warn]   環境で分けられない functions / firestore / storage は既定のデプロイ対象から外しました。
 [warn]   この環境から配るなら明示してください: bash scripts/deploy.sh develop --only functions,firestore,storage
@@ -303,11 +304,15 @@ $ bash scripts/deploy.sh develop      # B の構成（3環境が同じプロジ�
 配られることを警告する）。CI（`.github/workflows/deploy.yml`）も同じ判定を通すため、
 B の構成では `release/*` への push で関数やルールが自動デプロイされることはない。
 
-**`hosting` だけは扱いが違う。** サイトを分けてあれば環境ごとに配れるので既定に残るが、
-`firebase.json` の `hosting` に `target` / `site` の宣言が無い（サイトが 1 つしかない）
-相乗り構成では、配る先が他の環境と同じサイトになるため**既定から外し、`--only` での回避も
-案内しない**（`--only hosting` を明示すれば配れてしまうので、そのときは警告を出す）。
-この状態で `deploy.sh` を実行すると、配るものが無いことを告げて終了する。
+**`hosting` だけは扱いが違う。** 判定の基準は「**`firebase.json` の `hosting` にその環境名の
+ターゲット（`target` / `site`）があるか**」で、`hosting-targets.mjs` が環境名で絞り込める形と
+同じ。無い場合（サイトが 1 つしかない、`web` / `admin` のような役割で分けている、一部の環境
+だけ宣言している）は配る先が他の環境と同じサイトになるため、**既定から外し、`--only` での
+回避も案内しない**（`--only hosting` を明示すれば配れてしまうので、そのときは警告を出す）。
+配る先を `DEPLOY_HOSTING_TARGETS` で明示しているときは、選んだのが人なので外さない。
+
+配る側でない環境で、既定の対象が全て外れた場合、`deploy.sh` は配るものが無いことを告げて
+終了する（配る側 = 通常 `production` はこの絞り込みを受けないので、そこからは配れる）。
 
 A の構成（環境ごとにプロジェクトを分ける）では何も変わらない — 共有している環境が無いため、
 既定のターゲットはそのまま使われる。

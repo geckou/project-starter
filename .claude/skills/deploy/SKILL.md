@@ -41,10 +41,12 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
      相乗りさせる → `.claude/docs/git-workflow.md`）では、`functions` / `firestore` /
      `storage` は環境で分けられない。**共有する環境のうち最も本番側の 1 つ**
      （通常は `production`）以外では、既定のデプロイ対象から外す
-   - `firebase.json` の `hosting` に `target` / `site` の宣言が無い相乗り構成では
-     `hosting` も外す（配ると他の環境 = 本番のサイトを上書きするため）。
-     この場合、配るものが無いのでエラーで終了する
-   - 外した対象は `--only` で明示すれば配れる（`hosting` を除く）
+   - 同じ条件で、`firebase.json` の `hosting` に**その環境名のターゲット（`target` / `site`）が
+     無い**場合は `hosting` も外す（配ると他の環境 = 本番のサイトを上書きするため）。
+     配る対象が全て外れた環境では、配るものが無いのでエラーで終了する
+     （配る側 = 通常 `production` はこの絞り込みを受けない）
+   - 外した対象は `--only` で明示すれば配れる。`hosting` も止めはしないが、他の環境の
+     サイトを上書きするため**警告が出る**（サイトを分けてから配ること）
    - 環境ごとに Firebase プロジェクトを分ける構成では何も変わらない
 6. functions / firestore → storage → framework hosting の順にデプロイ
    - hosting は複数同梱だと next build がハングするため、ターゲットごとに個別デプロイする
@@ -108,8 +110,8 @@ CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウ�
 **デプロイが失敗した回の変更は、次の push では再送されない。** 取りこぼしたときは
 `workflow_dispatch`（Actions タブから手動実行）で全ターゲットをデプロイして回復する。
 相乗り構成では、この経路でも絞り込みが効く（staging から関数やルールは配られない）。
-その2つを配る必要があるなら `production` へのデプロイか、手元からの
-`bash scripts/deploy.sh <環境名> --only functions,firestore` で配る。
+その3つを配る必要があるなら `production` へのデプロイか、手元からの
+`bash scripts/deploy.sh <環境名> --only functions,firestore,storage` で配る。
 
 ## ルール
 
