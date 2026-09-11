@@ -116,7 +116,9 @@ CI でも実行される。
 サイトにも出していた。
 
 判断は `scripts/lib/hosting-targets.mjs` に切り出してあり、`bash scripts/test-deploy-targets.sh`
-（`yarn test:deploy-targets`）が検証する。`deploy.sh` 本体は firebase CLI と実プロジェクトが
+（`yarn test:deploy-targets`）が検証する。同じテストが `scripts/lib/deploy-targets.mjs`
+（`.firebaserc` の構成から既定のデプロイ対象を導く部分。1 プロジェクトに環境を相乗りさせる
+構成で、環境で分けられないターゲットを既定から外す）も見る。`deploy.sh` 本体は firebase CLI と実プロジェクトが
 無いと流せないため、**選び方だけを切り出してテスト可能にしている。** ターゲットの選び方を
 変えるときはこのテストも足す。CI では `ci.yml` の Deploy Target Test が実行する。
 
