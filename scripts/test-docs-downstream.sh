@@ -148,7 +148,11 @@ fi
 # 独立した規則で押さえる: `.templatesyncignore` に載っている scripts/ と
 # .github/workflows/ のファイルは、派生プロジェクトが自分で作るものではなく
 # 同期でしか届かない。つまり載っている時点で「テンプレート本体だけが持つ」ので、
-# マーカーの外にあってはいけない
+# マーカーの外にあってはいけない。
+#
+# 見ているのは**テンプレート本体の** .templatesyncignore。派生プロジェクトが自分で
+# 書き換えたファイル（scripts/deploy.sh 等）を足す先はマーカーの外で、そちらは
+# この検査の対象にならない（→ .claude/docs/git-workflow.md「取り込み対象外にする」）
 outside=$(
   grep -v '^#' "$REPO/.templatesyncignore" | grep -v '^[[:space:]]*$' |
     grep -E '^(scripts/|\.github/workflows/)' |
