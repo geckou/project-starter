@@ -3,8 +3,7 @@ set -e
 
 # 使い方: bash scripts/deploy.sh [develop|staging|production] [--only functions|hosting]
 #
-# **派生プロジェクトがこのファイルを書き換えるときも保つ約束**（`.templatesyncignore` で
-# 同期対象外なので、書き換えた版がそのまま使われる）:
+# **派生プロジェクトがこのファイルを書き換えるときも保つ約束**:
 #
 #   - `SKIP_CHECKS=1` でデプロイ前チェック（type-check / lint / test / build）を省略できること
 #
@@ -12,6 +11,11 @@ set -e
 # ワークフローの step で済ませたうえで `SKIP_CHECKS=1` を渡し（二重実行の回避）、
 # `scripts/test-env-distribution.sh` の [6] は node_modules の無い一時ツリーで
 # このスクリプトを回すため、省略できないとそこで止まる。
+#
+# **このファイル自体は Template Sync の対象**（テンプレート同梱の `.templatesyncignore` に
+# 載っていない）。
+# 書き換えた版を残したい派生プロジェクトは、自分の `.templatesyncignore` に
+# `scripts/deploy.sh` を足すこと（→ .claude/docs/git-workflow.md）。
 
 cd "$(dirname "$0")/.."
 

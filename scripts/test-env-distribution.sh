@@ -344,9 +344,10 @@ printf 'LEAK_CHECK=%s\n' "$SECRET_VALUE" >"$WORK/apps/web/.env.production.local"
 # 事前チェック（type-check / lint / test / build）は node_modules が要るので飛ばす。
 # 検証したいのは env ファイルの出し入れだけ。
 #
-# deploy.sh は `.templatesyncignore` で同期対象外なので、派生プロジェクトは自分の版を持つ。
-# その版が SKIP_CHECKS を落としていると事前チェックに入って `yarn type-check` で止まり、
-# 「env の配り方が壊れている」ように見える失敗になる。原因を名指しできるよう先に見る（#341）
+# deploy.sh は派生プロジェクトが自分の版に書き換えることがある（`.templatesyncignore` に
+# `scripts/deploy.sh` を足した場合は、その版が同期後も残る）。その版が SKIP_CHECKS を
+# 落としていると事前チェックに入って `yarn type-check` で止まり、「env の配り方が壊れている」
+# ように見える失敗になる。原因を名指しできるよう先に見る（#341）
 # ファイルが無いのか、契約が無いのかを分ける。grep 直呼びだと、対象が無いときも
 # 「SKIP_CHECKS に対応していない」と報告してしまう（grep はエラー時も非ゼロを返す）
 if ! require_file "$WORK/scripts/deploy.sh" "scripts/deploy.sh がある"; then

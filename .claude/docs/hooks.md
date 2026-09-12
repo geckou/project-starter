@@ -72,8 +72,10 @@ CI でも実行される。
 - gitignore 対象など意図的に存在しないパスは `ALLOW_MISSING` に追加する
 - **テンプレート本体だけが持つファイル**（`scripts/adopt-references.mjs` 等）への言及は
   参照切れにしない。一覧は `.templatesyncignore` の `template-only:start` / `:end` の範囲が正で、
-  `check-docs.sh` はそこを読むだけ。同期されないファイルを `scripts/` や
-  `.github/workflows/` に足して除外するときは、この範囲の中に書く
+  `check-docs.sh` はそこを読むだけ。**テンプレート本体で** `scripts/` や
+  `.github/workflows/` のファイルを除外に足すときは、この範囲の中に書く
+  （派生プロジェクトが自分の版を持つファイルを足す先は範囲の外。
+  → `.claude/docs/git-workflow.md`「取り込み対象外にする」）
 - **採用していない層への言及**も参照切れにしない。`apps/mobile/` のように入れ物ごと
   無ければ「その層を持たない構成」とみなす。入れ物があって中のファイルだけ無い場合は
   従来どおり参照切れになる

@@ -243,8 +243,12 @@ Cloud Functions と SSR 関数が別々の理由で解決に失敗し、デプ�
 
 ### `deploy.sh` を書き換えるときに保つ約束［派生専用］
 
-`scripts/deploy.sh` は `.templatesyncignore` で同期対象外なので、派生プロジェクトは自分の版を
-持てる。ただし**同期される側がこのスクリプトの入口に依存している**ため、書き換えても次は残すこと。
+> ⚠️ **`scripts/deploy.sh` は Template Sync の対象**（テンプレート同梱の `.templatesyncignore` に
+> 載っていない）。書き換えた版を残したいなら、**自分の `.templatesyncignore` に
+> `scripts/deploy.sh` を足すこと**（→「取り込み対象外にする」）。足さないと、同期 PR が
+> テンプレートの版を持ってくる。
+
+書き換えるときは、**同期される側がこのスクリプトの入口に依存している**ことに注意する。
 
 - **`SKIP_CHECKS=1` でデプロイ前チェック（type-check / lint / test / build）を省略できること**
 
@@ -252,6 +256,10 @@ Cloud Functions と SSR 関数が別々の理由で解決に失敗し、デプ�
 済ませてから `SKIP_CHECKS=1` を渡す（残さないと CI で二重に走る）。`scripts/test-env-distribution.sh`
 の [6] は `node_modules` の無い一時ツリーで `deploy.sh` を回すので、省略できないと
 `yarn type-check` で止まり、**env の配り方とは無関係な理由でテストが赤くなる**（#341）。
+どちらも同期で配られるので、除外して自分の版を持つ場合も約束のほうは保つ。
+
+**逆に、書き換えないなら除外しないほうがよい。** デプロイ対象の絞り込み（→「デプロイ対象は
+`.firebaserc` の構成から決まる」）や env の退避のような、テンプレート側の修正が届かなくなる。
 
 ### Hosting のターゲットは環境名に合わせる
 
@@ -899,6 +907,42 @@ PR にワークフローを起こすために、外部のトークンが要る�
 なお、取り込み元（親テンプレート）の**読み取り**は `github.token` で行う。親は public で足りるうえ、
 App のインストールトークンは `owner` / `repositories` を指定しない限り自リポジトリにしか
 スコープされないため、別リポジトリを読む経路には使えない。
+
+### 取り込み対象外にする
+
+**派生プロジェクトで書き換えたファイルは、自分の `.templatesyncignore` に足す。**
+テンプレート同梱の `.templatesyncignore` には「プロジェクトごとに違うもの」（`apps/` `packages/`・
+Firebase 設定・`layers.json`・`.claude/hooks/config.sh` ほか）が入っているが、
+**そこに無いファイルは全て同期される。** 書き換えたまま足さないでいると、同期 PR が
+テンプレートの版を持ってくる（`scripts/deploy.sh` がこれに当たる）。
+
+```
+# .templatesyncignore の**末尾**（`# template-only:end` より後ろ）に足す
+scripts/deploy.sh
+```
+
+`# template-only:start` / `:end` の内側は**テンプレート本体だけが持つファイル**の一覧で、
+`scripts/check-docs.sh` と `scripts/test-docs-downstream.sh` がその意味で読む。派生が
+自分の版を持つファイルは外側（末尾）に置く。`.github/workflows/ci.yml` を参照方式にした派生では
+`scripts/adopt-references.mjs` が同じ場所へ自動で足すので、こちらは手作業が要らない
+（→「切り替え手順（派生プロジェクト側）」）。
+
+**効き始めるのは `production` に入ってから。** ワークフローの `actions/checkout` は ref 未指定＝
+デフォルトブランチを見るため、作業ブランチに足しただけでは次の同期に効かない（リリースに載せる）。
+すでに開いている同期 PR にも遡って効かないので、そちらは PR 上で戻す。
+
+一度入れば残る。`AndreasAugustin/actions-template-sync` は同期のたびに**除外ファイル自体を
+派生側の版へ戻してから**除外を適用する（`template-sync.yml` がピン留めしている v2.5.3 のソース
+`src/sync_template.sh` の `restore_templatesyncignore_file` で確認）。
+
+> ⚠️ **同じ理由で、テンプレート側が `.templatesyncignore` に足した行は派生に届かない。**
+> 除外の追加（`template-only` に入る本体専用スクリプト等）は同期で配られないため、
+> 古い派生には本体だけが持つファイルが流れ込み、`ci.yml` がそれを検出して実行してしまう。
+> テンプレートの `.templatesyncignore` と自分のものを、ときどき突き合わせること。
+
+**書き換えていないなら足さない。** テンプレート側の修正が届かなくなるうえ、
+`check-docs.sh` がそのパスへの言及を参照切れとして検査しなくなる
+（同期では埋めようがないパス、という扱いになるため → `.claude/docs/hooks.md`）。
 
 ## ブランチ名とコミットメッセージの補足
 
