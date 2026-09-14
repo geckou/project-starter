@@ -25,6 +25,7 @@ import {
   DEPENDENCY_FIELDS,
   applyRemoval,
   ensureJsonPath,
+  findBlocks,
   layerByName,
   loadManifest,
   pruneManifest,
@@ -275,6 +276,10 @@ function copyRecursive(from, to, rename) {
  * の 3-way マージ。ローカルに手が入っていなければ theirs がそのまま採用される。
  */
 function mergeWithLayer(localContent, sourceContent, addition, additionLayers) {
+  // 手本側のマーカーが壊れていると、stripBlocks が範囲を閉じられず base が
+  // 途中で切れる。3-way マージの基準がずれるので、先に構文を検証する（#355）
+  findBlocks(sourceContent)
+
   let base = stripBlocks(sourceContent, addition)
 
   // 減算が置換で消していた箇所（replace）も base 側に反映しておく
@@ -572,15 +577,26 @@ function main() {
     // 層の交点（billing の RevenueCat 等）で削られていた項目をテンプレートから補う。
     // 最後に実態へ合わせて刈り込む
     if (!options.dryRun) {
-      const merged = sourceManifest.layers
-        .filter(
-          (layer) => present.has(layer.name) || addition.includes(layer.name)
-        )
-        .map((layer) => {
-          const local = layerByName(localManifest, layer.name)
+      const sourceNames = new Set(
+        sourceManifest.layers.map((layer) => layer.name)
+      )
 
-          return local ? mergeLayerDefinition(local, layer) : layer
-        })
+      const merged = [
+        ...sourceManifest.layers
+          .filter(
+            (layer) => present.has(layer.name) || addition.includes(layer.name)
+          )
+          .map((layer) => {
+            const local = layerByName(localManifest, layer.name)
+
+            return local ? mergeLayerDefinition(local, layer) : layer
+          }),
+        // 手本に無い層（派生プロジェクトが自分で足した層）はここで拾わないと消える。
+        // 消えると、その層のマーカーが「未定義の層のマーカー」になり、
+        // remove-layer でも外せなくなる（#356）。sync-layers.mjs は同じ状況を
+        // 既に救っているので、加算側だけが漏れていた
+        ...localManifest.layers.filter((layer) => !sourceNames.has(layer.name)),
+      ]
 
       writeJson(
         path.join(root, 'layers.json'),

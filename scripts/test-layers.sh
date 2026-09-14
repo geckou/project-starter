@@ -939,6 +939,128 @@ assert_target_keeps_cwd "値なし"
 assert_target_keeps_cwd "空文字" ""
 assert_target_keeps_cwd "空白のみ" "  "
 
+
+# --- 10. マーカーの構文 ---
+echo "[10] マーカーの構文"
+
+marker_case() {
+  local label=$1 script=$2
+  local output
+  if output=$(node --input-type=module -e "$script" 2>&1); then
+    pass "$label"
+  else
+    fail "$label" "$output"
+  fi
+}
+
+# 同一行に start と end が並ぶマーカー。先頭 1 件しか見ないと end を読み飛ばし、
+# 範囲が閉じないぶんがファイル末尾まで消える（#355）
+marker_case "同一行で閉じたマーカーは、その行だけを消す" "
+  import { stripBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const before = ['keep1', '<!-- layer:mobile:start --> x <!-- layer:mobile:end -->', 'keep2', 'keep3'].join('\n')
+  const after = stripBlocks(before, ['mobile'])
+  if (after !== ['keep1', 'keep2', 'keep3'].join('\n')) {
+    console.error(JSON.stringify(after))
+    process.exit(1)
+  }
+"
+
+marker_case "同一行のマーカーを findBlocks が 1 つの範囲として数える" "
+  import { findBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const blocks = findBlocks('<!-- layer:mobile:start --> x <!-- layer:mobile:end -->')
+  if (blocks.length !== 1 || blocks[0].startLine !== 0 || blocks[0].endLine !== 0) {
+    console.error(JSON.stringify(blocks))
+    process.exit(1)
+  }
+"
+
+# 層名の区切りに空白を入れた書式。マッチしないと start / end の両方が
+# 不可視になり、層の中身が減算されずに残る（#355 の関連）
+marker_case "層指定の空白（layer:mobile, billing）を解釈する" "
+  import { stripBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const before = ['a', '# layer:mobile, billing:start', 'x', '# layer:mobile, billing:end', 'b'].join('\n')
+  if (stripBlocks(before, ['billing']) !== 'a\nb') {
+    console.error(JSON.stringify(stripBlocks(before, ['billing'])))
+    process.exit(1)
+  }
+"
+
+marker_case "マーカーに見えて解釈できない書式は findBlocks が落とす" "
+  import { findBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  try {
+    findBlocks('a\n# layer:mobile+billing:start\nb')
+  } catch {
+    process.exit(0)
+  }
+  process.exit(1)
+"
+
+# 壊れたマーカーを持つファイルがあるとき、減算は黙って切り詰めずに落ちる
+variant=$(make_variant)
+printf 'keep1\n# layer:mobile:start\nkeep2\n' > "$variant/broken-marker.md"
+if remove_layers "$variant" billing > /dev/null 2>&1; then
+  fail "閉じていないマーカーがあっても減算が通ってしまう"
+else
+  pass "閉じていないマーカーがあれば減算を止める"
+fi
+if [ "$(cat "$variant/broken-marker.md")" = "$(printf 'keep1\n# layer:mobile:start\nkeep2')" ]; then
+  pass "止めたときにファイルを書き換えない"
+else
+  fail "止めたはずのファイルが書き換わった" "$(cat "$variant/broken-marker.md")"
+fi
+rm -rf "$variant"
+
+echo ""
+
+# --- 11. 派生プロジェクト側の情報を落とさない ---
+echo "[11] マニフェストの保全"
+
+# 派生が自分で足した層（テンプレートに無い層）を、加算が落とさないこと（#356）
+variant=$(make_variant)
+pristine=$(make_variant)
+remove_layers "$variant" mobile > /dev/null 2>&1
+node -e "
+  const fs = require('node:fs');
+  const file = process.argv[1];
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  manifest.layers.push({
+    name: 'analytics',
+    title: '派生独自の層',
+    requires: 'core',
+    removable: true,
+    summary: 'テンプレートに存在しない、派生プロジェクトだけの層',
+  });
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+" "$variant/layers.json"
+add_layers "$variant" "$pristine" mobile > /dev/null 2>&1
+if grep -q '"analytics"' "$variant/layers.json"; then
+  pass "加算しても派生独自の層の定義が残る"
+else
+  fail "加算で派生独自の層の定義が消えた"
+fi
+rm -rf "$variant" "$pristine"
+
+# layers 以外（source 等）は派生側を正にすること（#356）
+variant=$(make_variant)
+pristine=$(make_variant)
+remove_layers "$variant" mobile > /dev/null 2>&1
+node -e "
+  const fs = require('node:fs');
+  const file = process.argv[1];
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  manifest.source.repository = 'https://example.invalid/derived/template';
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+" "$variant/layers.json"
+cp "$pristine/renovate.json5" "$variant/renovate.json5"
+node "$variant/scripts/sync-layers.mjs" --target "$variant" \
+  --template "$pristine/layers.json" > /dev/null 2>&1
+if grep -q 'derived/template' "$variant/layers.json"; then
+  pass "外し直しても source は派生側の値のまま残る"
+else
+  fail "外し直しで source がテンプレートの値に巻き戻った"
+fi
+rm -rf "$variant" "$pristine"
+
 echo ""
 
 echo "=== 結果: ${passed} 件成功 / ${failed} 件失敗 ==="

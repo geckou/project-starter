@@ -55,8 +55,35 @@ export function requireFlagValue(flag, value) {
   return path.resolve(value)
 }
 
-/** マーカーの構文: <コメント記号> layer:<層名>[,<層名>...]:start | :end */
-export const MARKER_PATTERN = /layer:([a-zA-Z0-9,_-]+):(start|end)/
+/**
+ * マーカーの構文: <コメント記号> layer:<層名>[,<層名>...]:start | :end
+ *
+ * 走査は必ず markerMatches() を通す（この正規表現は /g なので lastIndex を持ち、
+ * test() や match() に直接渡すと呼ぶたびに結果が変わる）。1 行に複数のマーカーが
+ * 並ぶ形（同じ行で start と end を閉じる）があるため、先頭 1 件だけを見ると
+ * end を読み飛ばし、stripBlocks がそこからファイル末尾まで削除する（#355）。
+ *
+ * 層名の区切りに空白を許すのは `layer:mobile, billing:start` と書けるようにするため。
+ * 許さないとマッチが 0 件になり、start / end の両方が不可視のまま
+ * 層の中身が減算されずに残る。
+ */
+export const MARKER_PATTERN = /layer:([a-zA-Z0-9,_\- \t]+):(start|end)/g
+
+/**
+ * マーカーに**見える**のに MARKER_PATTERN では解釈できない行を見つけるための形。
+ * 書式のタイプミス（`layer:mobile+billing:start` 等）を黙って素通りさせると
+ * 「層の中身が減算されずに残る」という気付きにくい壊れ方になるので、
+ * findBlocks が明示的に落とす。
+ */
+const MARKER_LIKE_PATTERN = /layer:[^:\n]*:(start|end)\b/
+
+/** 1 行に含まれるマーカーを、出てくる順に返す */
+export function markerMatches(line) {
+  return [...line.matchAll(MARKER_PATTERN)].map(([, spec, kind]) => ({
+    spec: spec.trim(),
+    kind,
+  }))
+}
 
 /** テキストとして走査しないディレクトリ */
 const SKIP_DIRECTORIES = new Set([
@@ -236,26 +263,34 @@ export function findBlocks(content) {
   const open = []
 
   lines.forEach((line, index) => {
-    const match = line.match(MARKER_PATTERN)
+    const matches = markerMatches(line)
 
-    if (!match) return
+    if (matches.length === 0) {
+      if (MARKER_LIKE_PATTERN.test(line)) {
+        throw new Error(
+          `マーカーとして解釈できない書式です（${index + 1} 行目）`
+        )
+      }
 
-    const [, spec, kind] = match
-
-    if (kind === 'start') {
-      open.push({ spec, startLine: index })
       return
     }
 
-    const last = open.pop()
+    for (const { spec, kind } of matches) {
+      if (kind === 'start') {
+        open.push({ spec, startLine: index })
+        continue
+      }
 
-    if (!last || last.spec !== spec) {
-      throw new Error(
-        `マーカーの対応が取れません（${index + 1} 行目の layer:${spec}:end）`
-      )
+      const last = open.pop()
+
+      if (!last || last.spec !== spec) {
+        throw new Error(
+          `マーカーの対応が取れません（${index + 1} 行目の layer:${spec}:end）`
+        )
+      }
+
+      blocks.push({ spec, startLine: last.startLine, endLine: index })
     }
-
-    blocks.push({ spec, startLine: last.startLine, endLine: index })
   })
 
   if (open.length > 0) {
@@ -287,10 +322,13 @@ export function stripBlocks(content, removal) {
   let justDropped = false
 
   for (const line of lines) {
-    const match = line.match(MARKER_PATTERN)
+    const matches = markerMatches(line)
 
     if (dropUntil !== null) {
-      if (match && match[2] === 'end' && match[1] === dropUntil) {
+      // 範囲の中。閉じるマーカーが来た行までを落とす
+      if (
+        matches.some(({ spec, kind }) => kind === 'end' && spec === dropUntil)
+      ) {
         dropUntil = null
         justDropped = true
       }
@@ -298,14 +336,34 @@ export function stripBlocks(content, removal) {
       continue
     }
 
-    if (match && match[2] === 'start') {
-      const layers = markerLayers(match[1])
+    // 1 行に複数のマーカーが並ぶことがあるので、出てくる順に見る
+    let dropLine = false
+
+    for (const [index, { spec, kind }] of matches.entries()) {
+      if (kind !== 'start') continue
 
       // 列挙されたいずれかの層が外れるなら、この範囲は消える
-      if (layers.some((name) => removed.has(name))) {
-        dropUntil = match[1]
-        continue
-      }
+      if (!markerLayers(spec).some((name) => removed.has(name))) continue
+
+      dropLine = true
+
+      // 同じ行の後ろで閉じているなら、範囲はこの 1 行で完結する。
+      // ここを見ずに dropUntil を立てると、閉じるマーカーを読み飛ばして
+      // ファイル末尾まで落ちる（#355）
+      const closedHere = matches
+        .slice(index + 1)
+        .some((later) => later.kind === 'end' && later.spec === spec)
+
+      if (!closedHere) dropUntil = spec
+
+      break
+    }
+
+    if (dropLine) {
+      // 範囲が続くあいだは継ぎ目の判定をしない（閉じた行で立てる）
+      if (dropUntil === null) justDropped = true
+
+      continue
     }
 
     // 削除した範囲の前後がどちらも空行（コメント記号だけの行を含む）だと、
@@ -445,6 +503,16 @@ export function applyRemoval(root, manifest, removal, { dryRun = false } = {}) {
     const before = fs.readFileSync(target, 'utf8')
 
     if (!before.includes('layer:')) continue
+
+    // 先に構文を検証する。stripBlocks は対応の取れないマーカーを黙って読み飛ばし、
+    // 範囲が閉じないぶんをファイル末尾まで落とすため、壊れた入力のまま走らせない（#355）
+    try {
+      findBlocks(before)
+    } catch (error) {
+      throw new Error(
+        `${relative}: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
 
     const after = stripBlocks(before, removal)
 
