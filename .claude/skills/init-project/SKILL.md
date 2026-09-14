@@ -134,10 +134,8 @@ rm -f scripts/release.sh scripts/geckou-release scripts/install-release-command.
   scripts の `turbo dev --filter=@geckou/web...` 等
 - 全ソースコードの import 文（`@geckou/shared`, `@geckou/shared/stores` 等）
 - `apps/*/tailwind.config.{ts,js}` の `@geckou/shared/theme` 参照
-- `scripts/setup.sh` 内の `yarn workspace @geckou/shared build`
 - `apps/functions/tsconfig.json` の paths（`@geckou/shared` エイリアス）
-- `apps/web/next.config.ts` / `apps/mobile/metro.config.js` / `firebase.json` /
-  `lint-staged.config.cjs` 内の参照
+- `apps/web/next.config.ts` / `apps/mobile/metro.config.js` / `firebase.json` 内の参照
 - `.claude/skills/` / `.claude/docs/` / `README.md` 内のコード例
 
 一括置換（macOS の BSD sed。Linux では `sed -i ''` を `sed -i` にする）:
