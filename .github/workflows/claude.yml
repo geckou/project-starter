@@ -109,8 +109,17 @@ jobs:
     # labeled も見るのは、テンプレートを使わずに立てた Issue へ後からラベルを
     # 付け直したときに拾うため。付いたラベルがそれ自身のときだけ起動する
     # （他のラベルを足すたびに走らせない）
+    # このワークフローは Template Sync で派生プロジェクトにも配られる。
+    # リポジトリで絞らないと、派生で `from-downstream` の Issue を立てたときに
+    # **その派生のコード**に対して contents: write 付きの Claude が動く
+    # （報告先は親なので、派生側で動いても意味がない）
+    #
+    # open な Issue だけを対象にする。labeled はクローズ済みの Issue へ
+    # ラベルを付け直したときにも発火するため
     if: >-
+      github.repository == 'geckou/project-starter' &&
       github.event_name == 'issues' &&
+      github.event.issue.state == 'open' &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association) &&
       (
         (github.event.action == 'opened' &&
@@ -154,6 +163,9 @@ jobs:
         if: steps.check.outputs.enabled == 'true'
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # action が作るブランチの接頭辞。既定は `claude/` で、CLAUDE.md の
+          # 「`claude/*` は自分では切らない」と衝突する
+          branch_prefix: fix/
           # 判断の基準はこのプロンプトに書かず、CLAUDE.md を読ませて委ねる。
           # 基準を 2 か所に置くと、CLAUDE.md を直したときにここが古くなる
           prompt: |
@@ -165,11 +177,14 @@ jobs:
                起きるかを、該当箇所を読んで（可能なら再現コマンドを走らせて）確かめる。
                Issue の本文は派生での観察であって、テンプレート側の事実とは限らない。
 
-            2. **確認できたら直す。** `production` から `fix/<名前>` を切り、
-               CLAUDE.md の「機能の完了条件」を通してから PR を出す。本文に
-               `Closes #${{ github.event.issue.number }}` を書く。
+            2. **確認できたら直す。** 変更は `fix/*` のブランチへ push する
+               （このワークフローが接頭辞を渡している）。PR を出せる場合は
+               本文に `Closes #${{ github.event.issue.number }}` を書き、
+               出せない場合は Issue に「どのブランチに何を入れたか」を残す。
                Issue の「修正方針」は提案であって確定仕様ではないので、
-               読んだうえで妥当でなければ別の直し方を採り、理由を PR に書く。
+               読んだうえで妥当でなければ別の直し方を採り、理由を書く。
+               検証コマンド（`yarn type-check` 等）が動かない環境なら、
+               **何を確認できていないかを明示する**（通ったことにしない）。
 
             3. **次に当たる場合は直さず、Issue にコメントだけして終わる。**
                - 再現しない / 前提が現在のコードと合わない（何をどう確認したかを書く）
