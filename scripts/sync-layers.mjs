@@ -124,9 +124,14 @@ function main() {
   changes.push(`manifest layers.json: ${removal.join(', ')} を削除`)
 
   if (!options.dryRun) {
+    // layers 以外（source.repository / source.ref / markers / $comment）は
+    // 派生プロジェクト側を正にする。テンプレートのものを被せると、派生が自分の
+    // scaffold 元を指すよう書き換えた source が毎回巻き戻り、以後 add-layer が
+    // 誤ったリポジトリを clone する（#356）。remove-layer / add-layer も
+    // ローカルのマニフェストを土台にしていて、ここだけ挙動が違っていた
     writeJson(
       path.join(root, 'layers.json'),
-      pruneManifest(root, { ...template, layers })
+      pruneManifest(root, { ...local, layers })
     )
   }
 

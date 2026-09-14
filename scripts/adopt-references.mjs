@@ -34,7 +34,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { stripBlocks } from './lib/layers.mjs'
+import { findBlocks, stripBlocks } from './lib/layers.mjs'
 
 const TEMPLATE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -271,6 +271,11 @@ function planRenovateConfig(root, layers) {
     path.join(TEMPLATE_ROOT, RENOVATE_CONFIG_PATH),
     'utf8'
   )
+  // stripBlocks は対応の取れないマーカーを読み飛ばし、閉じないぶんを末尾まで
+  // 落とす。テンプレート側の書式ミスが「切り詰めた renovate.json5」として
+  // 派生に入らないよう、先に構文を検証する（#355）
+  findBlocks(template)
+
   const content = layers.mobile
     ? template
     : collapseSingleEntryExtends(stripBlocks(template, ['mobile']))
