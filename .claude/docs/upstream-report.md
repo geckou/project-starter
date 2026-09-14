@@ -60,3 +60,16 @@ gh issue create \
 重複を避けるため、作成前に必ず `gh issue list -R geckou/project-starter --search "<キーワード>"` で既存 Issue を確認する。
 
 `gh` CLI が使えない環境（Claude Code の Web / リモートセッション等）では、GitHub MCP ツール（Issue の検索・作成）で代替する。それも使えない場合は、Issue 本文の下書きを作成してユーザーに起票を依頼する。
+
+## 立てたあと（親リポジトリ側の動き）
+
+`from-downstream` ラベルの付いた Issue は、**立った時点で親リポジトリの `claude.yml`
+（`downstream-issue` ジョブ）が拾う。** 実在を確認したうえで、直せるものは `fix/*` から
+修正 PR を出す（マージは人）。再現しない・判断が要る・1 PR に収まらない場合は、
+Issue にコメントだけが付く。
+
+- 起動するのは `geckou` の Organization メンバー（`OWNER` / `MEMBER` / `COLLABORATOR`）が
+  立てた Issue だけ。親リポジトリは public なので、ラベルではなく**起票者の権限**で絞っている
+- そのため、**Issue の書き方がそのまま作業の入力になる。** 再現手順と「期待する挙動 /
+  実際の挙動」を、テンプレートの初期状態から追える形で書くこと（→「書いてよいこと・いけないこと」）
+- 「修正方針」は提案として読まれる。妥当でなければ別の直し方になり、理由が PR に書かれる
