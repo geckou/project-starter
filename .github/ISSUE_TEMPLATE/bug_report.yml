@@ -22,9 +22,9 @@ body:
   - type: input
     id: template-version
     attributes:
-      label: 派生元のコミット
-      description: 派生元となったテンプレートのコミットハッシュ（派生プロジェクトで `git log` から確認）
-      placeholder: 例) production @ a1b2c3d
+      label: 取り込み済みのテンプレート
+      description: 派生プロジェクトの `.template-version` の `synced_commit`（Template Sync が更新する）。ファイルが無い場合は、取り込んだテンプレートのコミットハッシュを `git log` から確認して記入する
+      placeholder: 'synced_commit: a1b2c3d'
     validations:
       required: true
 
