@@ -3,6 +3,7 @@ name: Claude
 # GitHub 上で Claude を使うためのワークフロー。
 # - PR 作成時: /review スキルと同じ観点で自動レビュー
 # - Issue / PR コメントの @claude メンション: 修正・調査タスクを依頼
+# - 派生プロジェクトからの Issue: 調査して、直せるものは修正 PR まで出す
 #
 # セットアップ: リポジトリの Secrets に ANTHROPIC_API_KEY を登録する。
 # 未登録の場合は何もせずスキップする（CI は壊れない）。
@@ -10,6 +11,8 @@ name: Claude
 on:
   pull_request:
     types: [opened, ready_for_review]
+  issues:
+    types: [opened, labeled]
   issue_comment:
     types: [created]
   pull_request_review_comment:
@@ -91,3 +94,103 @@ jobs:
         if: steps.check.outputs.enabled == 'true'
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+  downstream-issue:
+    # 派生プロジェクトから上がってきた Issue を、立った時点で調べて修正 PR まで出す。
+    # 人が見つけるまで寝かせておく理由が無い（テンプレートの修正は全派生に効くため、
+    # 早いほど取りこぼしが減る）。マージは人が決めるので、出しっぱなしにはならない。
+    #
+    # 起票者を OWNER / MEMBER / COLLABORATOR に限るのは mention ジョブと同じ理由。
+    # このリポジトリは public なので、誰でも立てられる Issue で書き込み権限付きの
+    # ジョブが動くと、外部から任意のプロンプトを流し込める入口になる。
+    # from-downstream ラベルは Issue テンプレートが**誰の起票でも**自動で付けるため、
+    # ラベルだけでは絞れない（起票者の権限で絞るのが要点）。
+    #
+    # labeled も見るのは、テンプレートを使わずに立てた Issue へ後からラベルを
+    # 付け直したときに拾うため。付いたラベルがそれ自身のときだけ起動する
+    # （他のラベルを足すたびに走らせない）
+    # このワークフローは Template Sync で派生プロジェクトにも配られる。
+    # リポジトリで絞らないと、派生で `from-downstream` の Issue を立てたときに
+    # **その派生のコード**に対して contents: write 付きの Claude が動く
+    # （報告先は親なので、派生側で動いても意味がない）
+    #
+    # open な Issue だけを対象にする。labeled はクローズ済みの Issue へ
+    # ラベルを付け直したときにも発火するため
+    if: >-
+      github.repository == 'geckou/project-starter' &&
+      github.event_name == 'issues' &&
+      github.event.issue.state == 'open' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association) &&
+      (
+        (github.event.action == 'opened' &&
+          contains(github.event.issue.labels.*.name, 'from-downstream')) ||
+        (github.event.action == 'labeled' && github.event.label.name == 'from-downstream')
+      )
+    runs-on: ubuntu-latest
+    # 同じ Issue で二重に走らせない（opened の直後にラベルを足した場合など）。
+    # 走行中のものを殺すと中途半端なブランチが残るので、キャンセルはしない
+    concurrency:
+      group: downstream-issue-${{ github.event.issue.number }}
+      cancel-in-progress: false
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Check secret
+        id: check
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "ANTHROPIC_API_KEY が未設定のためスキップします"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          # ブランチを production から切るため、全履歴を取る
+          fetch-depth: 0
+
+      # contents: write を持つジョブで動くため、タグではなくコミット SHA で固定する
+      - uses: anthropics/claude-code-action@d75b94d5ad426cb8546e6628b6f5f19b84e5cce1 # v1.0.216
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # action が作るブランチの接頭辞。既定は `claude/` で、CLAUDE.md の
+          # 「`claude/*` は自分では切らない」と衝突する
+          branch_prefix: fix/
+          # 判断の基準はこのプロンプトに書かず、CLAUDE.md を読ませて委ねる。
+          # 基準を 2 か所に置くと、CLAUDE.md を直したときにここが古くなる
+          prompt: |
+            Issue #${{ github.event.issue.number }} は、このテンプレートから作られた
+            派生プロジェクトから上がってきた報告です。CLAUDE.md と `.claude/docs/` を
+            読んだうえで、次の順に進めてください。
+
+            1. **実在を確認する。** 報告された挙動がこのリポジトリの現在のコードで
+               起きるかを、該当箇所を読んで（可能なら再現コマンドを走らせて）確かめる。
+               Issue の本文は派生での観察であって、テンプレート側の事実とは限らない。
+
+            2. **確認できたら直す。** 変更は `fix/*` のブランチへ push する
+               （このワークフローが接頭辞を渡している）。PR を出せる場合は
+               本文に `Closes #${{ github.event.issue.number }}` を書き、
+               出せない場合は Issue に「どのブランチに何を入れたか」を残す。
+               Issue の「修正方針」は提案であって確定仕様ではないので、
+               読んだうえで妥当でなければ別の直し方を採り、理由を書く。
+               検証コマンド（`yarn type-check` 等）が動かない環境なら、
+               **何を確認できていないかを明示する**（通ったことにしない）。
+
+            3. **次に当たる場合は直さず、Issue にコメントだけして終わる。**
+               - 再現しない / 前提が現在のコードと合わない（何をどう確認したかを書く）
+               - CLAUDE.md「自律性の境界」の 2 段目・3 段目に当たる判断が要る
+               - 1 つの Issue に複数の関心事が混ざっていて 1 PR に収まらない
+                 （どう分割するかを書く）
+
+            推測で断定しないこと（→ CLAUDE.md「報告する事実は確認してから書く」）。
+            確認していないことは「未確認」と明示する。
