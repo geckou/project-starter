@@ -25,7 +25,6 @@ import {
   DEPENDENCY_FIELDS,
   applyRemoval,
   ensureJsonPath,
-  findBlocks,
   layerByName,
   loadManifest,
   pruneManifest,
@@ -35,6 +34,7 @@ import {
   resolveJsonPath,
   restoreKeyOrder,
   stripBlocks,
+  validateMarkers,
   writeJson,
 } from './lib/layers.mjs'
 
@@ -276,10 +276,7 @@ function copyRecursive(from, to, rename) {
  * の 3-way マージ。ローカルに手が入っていなければ theirs がそのまま採用される。
  */
 function mergeWithLayer(localContent, sourceContent, addition, additionLayers) {
-  // 手本側のマーカーが壊れていると、stripBlocks が範囲を閉じられず base が
-  // 途中で切れる。3-way マージの基準がずれるので、先に構文を検証する（#355）
-  findBlocks(sourceContent)
-
+  // 手本側のマーカーの構文は、書き込みを始める前に validateMarkers が通している
   let base = stripBlocks(sourceContent, addition)
 
   // 減算が置換で消していた箇所（replace）も base 側に反映しておく
@@ -428,6 +425,13 @@ function main() {
       .filter((name) => !present.has(name) && !addition.includes(name))
 
     stage = stageSource(source.dir, sourceManifest, remaining)
+
+    // 手本側のマーカーを、ローカルへ書き込む前にまとめて検証する。
+    // 3-way マージの base は stripBlocks で作るので、壊れたマーカーがあると
+    // base が途中で切れる。ファイルごとに気付くと、途中まで書き込んだ状態で
+    // 止まることになる（#355）。ここは一時ディレクトリなので、落ちても
+    // 対象のリポジトリは触っていない
+    validateMarkers(stage.dir)
 
     const rename = detectScopeRename(stage.dir, root)
 

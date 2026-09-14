@@ -995,6 +995,59 @@ marker_case "マーカーに見えて解釈できない書式は findBlocks が�
   process.exit(1)
 "
 
+# 区切りの無い空白（`layer:mobile billing`）を有効にすると、findBlocks は
+# ブロックを作るのに markerLayers が「mobile billing」という 1 つの層名を返し、
+# どの層でも削除されない範囲ができる
+marker_case "カンマの無い空白区切りは解釈できない書式として落とす" "
+  import { findBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  try {
+    findBlocks('# layer:mobile billing:start\nx\n# layer:mobile billing:end')
+  } catch {
+    process.exit(0)
+  }
+  process.exit(1)
+"
+
+marker_case ':startx のような typo も落とす' "
+  import { findBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  try {
+    findBlocks('# layer:mobile:startx')
+  } catch {
+    process.exit(0)
+  }
+  process.exit(1)
+"
+
+marker_case '有効なマーカーと壊れたマーカーが同じ行でも落とす' "
+  import { findBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  try {
+    findBlocks('<!-- layer:mobile:start --> x <!-- layer:mobile+billing:end -->')
+  } catch {
+    process.exit(0)
+  }
+  process.exit(1)
+"
+
+# JavaScript の `layer: 'mobile',` のようなキーを書式ミスと誤認しない
+marker_case 'マーカーでない layer: は誤検出しない' "
+  import { findBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const blocks = findBlocks(\"  layer: 'mobile',\")
+  if (blocks.length !== 0) process.exit(1)
+"
+
+marker_case '層指定の書き方が違っても start と end を対応させる' "
+  import { findBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const blocks = findBlocks('# layer:mobile,billing:start\nx\n# layer:mobile, billing:end')
+  if (blocks.length !== 1) process.exit(1)
+"
+
+# 同じ行で閉じたあと、また開く形。閉じた時点で走査を打ち切ると後半を見落とす
+marker_case '同じ行で閉じてから開き直す形も追う' "
+  import { stripBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const before = ['k1', '# layer:m:start x # layer:m:end y # layer:m:start', 'drop', '# layer:m:end', 'k2'].join('\n')
+  if (stripBlocks(before, ['m']) !== 'k1\nk2') process.exit(1)
+"
+
 # 壊れたマーカーを持つファイルがあるとき、減算は黙って切り詰めずに落ちる
 variant=$(make_variant)
 printf 'keep1\n# layer:mobile:start\nkeep2\n' > "$variant/broken-marker.md"
@@ -1007,6 +1060,14 @@ if [ "$(cat "$variant/broken-marker.md")" = "$(printf 'keep1\n# layer:mobile:sta
   pass "止めたときにファイルを書き換えない"
 else
   fail "止めたはずのファイルが書き換わった" "$(cat "$variant/broken-marker.md")"
+fi
+
+# 検証はファイル削除より前に通す。後回しだと、壊れたマーカーに気付いた時点で
+# 「層のファイルだけ消えた」中途半端な状態が残る
+if [ -d "$variant/apps/mobile" ]; then
+  pass "止めたときに層のファイルを消していない"
+else
+  fail "検証で止まる前にファイルが消えた（中途半端な状態が残る）"
 fi
 rm -rf "$variant"
 
