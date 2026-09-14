@@ -3,8 +3,9 @@ set -u
 
 # scripts/lib/hosting-targets.mjs と scripts/lib/deploy-targets.mjs の回帰テスト。
 #
-# deploy.sh 本体は firebase CLI と実プロジェクトが無いと流せないため、
-# 「どのターゲットに配るか」の判断だけを切り出して検証する。
+# 前半は「どのターゲットに配るか」の判断を切り出した .mjs を直接検証する。
+# 後半（[9] [10]）は deploy.sh 本体を一時ツリーで回す（firebase はスタブ）。
+# --only の扱いと --force の付け方は .mjs に出てこないため、本体を通さないと見えない。
 #
 # 前半（[1]〜[4]）は hosting のターゲット選び、後半（[5]〜[8]）は
 # .firebaserc の構成から既定のデプロイ対象を導く部分。
@@ -352,6 +353,100 @@ if [ "$RUN_OUT" = "hosting" ]; then
 else
   fail "firebase.json が無いと hosting の扱いが変わる" "実際: '$RUN_OUT'"
 fi
+
+
+echo ""
+echo "=== deploy.sh のガード（firebase はスタブ）==="
+echo ""
+
+# ここから先は deploy.sh 本体を一時ツリーで回す。firebase CLI を呼ぶ手前の
+# 判断（--only の扱い・--force の付け方）は、切り出した .mjs では見えないため
+DEPLOY_TREE=$(mktemp -d) || exit 1
+REPO=$(pwd)
+
+cp -R "$REPO/scripts" "$DEPLOY_TREE/scripts"
+mkdir -p "$DEPLOY_TREE/apps/web" "$DEPLOY_TREE/apps/functions" \
+  "$DEPLOY_TREE/apps/mobile" "$DEPLOY_TREE/bin"
+printf '{ "hosting": { "source": "apps/web" }, "functions": { "source": "apps/functions" } }\n' \
+  >"$DEPLOY_TREE/firebase.json"
+printf '{ "name": "fixture", "private": true, "workspaces": ["apps/*"] }\n' \
+  >"$DEPLOY_TREE/package.json"
+printf '{ "name": "@fixture/web", "version": "0.0.0" }\n' >"$DEPLOY_TREE/apps/web/package.json"
+printf '{ "name": "@fixture/functions", "version": "0.0.0" }\n' >"$DEPLOY_TREE/apps/functions/package.json"
+printf 'NEXT_PUBLIC_X=1\n' >"$DEPLOY_TREE/.env.staging"
+git -C "$DEPLOY_TREE" init -q .
+
+# firebase の呼び出しを引数ごと記録するスタブ
+cat >"$DEPLOY_TREE/bin/firebase" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >>"$FIREBASE_CALLS"
+exit 0
+STUB
+chmod +x "$DEPLOY_TREE/bin/firebase"
+
+FIREBASE_CALLS="$DEPLOY_TREE/firebase-calls.txt"
+export FIREBASE_CALLS
+
+# $1: 説明以外の引数を deploy.sh へ渡す。呼び出し記録は毎回リセットする
+run_deploy() {
+  : >"$FIREBASE_CALLS"
+  (cd "$DEPLOY_TREE" && PATH="$DEPLOY_TREE/bin:$PATH" SKIP_CHECKS=1 \
+    bash scripts/deploy.sh "$@" >"$DEPLOY_TREE/deploy.log" 2>&1)
+}
+
+echo "[9] --only の値"
+
+if run_deploy staging --only ""; then
+  fail "--only \"\" が通ってしまう（既定の全ターゲットへ反転する）" \
+    "$(grep '^deploy' "$FIREBASE_CALLS")"
+else
+  pass "--only \"\" はエラーで止まる"
+fi
+
+if grep -q '^deploy' "$FIREBASE_CALLS"; then
+  fail "--only \"\" で止めたのに firebase deploy が呼ばれている" "$(cat "$FIREBASE_CALLS")"
+else
+  pass "--only \"\" では firebase deploy を呼ばない"
+fi
+
+if run_deploy staging --only hosting; then
+  pass "--only hosting は通る（スタブ）"
+else
+  fail "--only hosting が失敗した" "$(tail -20 "$DEPLOY_TREE/deploy.log")"
+fi
+
+echo ""
+echo "[10] functions の --force"
+
+# 既定（auto）で非対話なら付ける。CI はプロンプトに答えられないため
+if run_deploy staging --only functions &&
+  grep -q 'deploy --only functions --force' "$FIREBASE_CALLS"; then
+  pass "非対話（CI）では functions にも --force を付ける"
+else
+  fail "非対話で --force が付かない（CI がプロンプト待ちで止まる）" "$(cat "$FIREBASE_CALLS")"
+fi
+
+# FUNCTIONS_FORCE=never で外れること（対話端末の既定と同じ経路）
+: >"$FIREBASE_CALLS"
+if (cd "$DEPLOY_TREE" && PATH="$DEPLOY_TREE/bin:$PATH" SKIP_CHECKS=1 FUNCTIONS_FORCE=never \
+  bash scripts/deploy.sh staging --only functions >"$DEPLOY_TREE/deploy.log" 2>&1) &&
+  grep -q 'deploy --only functions$' "$FIREBASE_CALLS"; then
+  pass "FUNCTIONS_FORCE=never なら --force を付けない（関数の削除に確認が入る）"
+else
+  fail "FUNCTIONS_FORCE=never でも --force が付く" "$(cat "$FIREBASE_CALLS")"
+fi
+
+# hosting は対象外（--force は確認を飛ばすだけで、削除を含まない）
+: >"$FIREBASE_CALLS"
+if (cd "$DEPLOY_TREE" && PATH="$DEPLOY_TREE/bin:$PATH" SKIP_CHECKS=1 FUNCTIONS_FORCE=never \
+  bash scripts/deploy.sh staging --only hosting >"$DEPLOY_TREE/deploy.log" 2>&1) &&
+  grep -q 'deploy --only hosting --force' "$FIREBASE_CALLS"; then
+  pass "hosting の --force は外さない"
+else
+  fail "hosting の --force まで外れた" "$(cat "$FIREBASE_CALLS")"
+fi
+
+rm -rf "$DEPLOY_TREE"
 
 echo ""
 echo "=== 結果: ${passed} 件成功 / ${failed} 件失敗 ==="

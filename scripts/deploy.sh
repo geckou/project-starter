@@ -21,9 +21,21 @@ cd "$(dirname "$0")/.."
 
 ENV=${1:-develop}
 DEPLOY_ONLY=""
+DEPLOY_ONLY_GIVEN=false
 
-if [ "$2" = "--only" ] && [ -n "$3" ]; then
-  DEPLOY_ONLY="$3"
+if [ "${2:-}" = "--only" ]; then
+  DEPLOY_ONLY_GIVEN=true
+  DEPLOY_ONLY="${3:-}"
+fi
+
+# --only に空の値を渡されたら止める。値の有無だけで分岐すると、
+# 指定が無かったことになって既定のターゲット全部が配られる。
+# 「対象を絞ったつもりの指定が、最大の配布に反転する」のが一番危ない壊れ方（#357）
+if [ "$DEPLOY_ONLY_GIVEN" = true ] &&
+  [ -z "$(printf '%s' "$DEPLOY_ONLY" | tr -d '[:space:]')" ]; then
+  echo "[error] --only に空の値が渡されました"
+  echo "  → 対象を絞らずに配るなら --only ごと外してください"
+  exit 1
 fi
 
 # production は production ブランチからのみデプロイ可（FORCE_DEPLOY=1 で回避可能）
@@ -45,6 +57,21 @@ echo ""
 storage_configured() {
   node -e "process.exit(require('./firebase.json').storage ? 0 : 1)" 2>/dev/null
 }
+
+# デプロイ対象（カンマ区切り）に functions が含まれるか。
+# functions:api のような個別指定も含む
+includes_functions() {
+  case ",$1," in
+    (*,functions,* | *,functions:*) return 0 ;;
+    (*) return 1 ;;
+  esac
+}
+
+# functions を配るときに --force を付けるか。
+#   auto   （既定）非対話なら付ける / 対話端末なら付けず、削除を人に聞く
+#   always 常に付ける（削除の確認を飛ばす）
+#   never  常に付けない
+FUNCTIONS_FORCE=${FUNCTIONS_FORCE:-auto}
 
 # デプロイ対象（カンマ区切り）。
 # CI は変更差分から必要なターゲットだけを渡してくる（.github/workflows/deploy.yml）
@@ -278,7 +305,13 @@ cleanup_deploy_state() {
 # EXIT だけでは足りない。**本物の Ctrl-C** はフォアグラウンドのプロセスグループ全体に
 # SIGINT を送るため、EXIT トラップが走らないまま終わる。退避した env は .gitignore の
 # 対象で git からも戻せないので、シグナルでも必ず復元する
-trap cleanup_deploy_state EXIT INT TERM HUP
+# シグナルは「復元して**そこで終わる**」。復元だけして継続すると、CLEANUP_DONE により
+# 以降の EXIT トラップが無処理になったまま、退避を戻した状態で後続の
+# firebase deploy が走りうる（#357）
+trap cleanup_deploy_state EXIT
+trap 'cleanup_deploy_state; exit 130' INT
+trap 'cleanup_deploy_state; exit 143' TERM
+trap 'cleanup_deploy_state; exit 129' HUP
 
 echo "[predeploy] workspace 依存を一時削除..."
 # 削除するのは「このリポジトリのワークスペース」だけ。スコープ前置き（@geckou/）で
@@ -399,8 +432,26 @@ if [ -z "$OTHER_TARGETS" ] &&
 fi
 
 if [ -n "$OTHER_TARGETS" ]; then
+  # --force は「ソースに無い関数を確認なしで削除する」を含む。hosting やルールでは
+  # 確認を飛ばすだけだが、functions では取り消せない削除になる（#357）。
+  # 対話端末から実行したときは付けず、削除の可否を人に聞く。
+  # 非対話（CI）はプロンプトに答えられずデプロイが止まるので付けたままにする
+  FORCE_FLAG=--force
+
+  case "$FUNCTIONS_FORCE" in
+    always) ;;
+    never) FORCE_FLAG= ;;
+    *)
+      if includes_functions "$OTHER_TARGETS" && [ -t 0 ]; then
+        FORCE_FLAG=
+      fi
+      ;;
+  esac
+
   echo "[deploy] ${OTHER_TARGETS}..."
-  firebase deploy --only "$OTHER_TARGETS" --force
+  # FORCE_FLAG は空になりうるので、引用しない（空文字の引数を渡さないため）
+  # shellcheck disable=SC2086
+  firebase deploy --only "$OTHER_TARGETS" $FORCE_FLAG
 fi
 
 # Storage ルールは hosting より先に当てる。
