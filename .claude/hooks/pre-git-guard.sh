@@ -938,7 +938,12 @@ cmd=$(printf '%s\n' "$segments" | {
     # 部分一致にすると `git commit -m 'docs: -c core.hooksPath について'` でも当たる。
     # サブコマンドより前に置かれた -c / --config-env の値だけを見る。
     # 設定キーは大文字小文字を区別しないので、比較も区別しない
-    conf_values=$(printf '%s' "$seg" | awk '
+    #
+    # 値を取るオプションの一覧は GIT_OPT_WITH_VALUE を正にする。ここに書き写すと、
+    # 足したオプションの反映漏れで走査が途中で止まり、その後ろの -c を見落とす
+    # （`git --attr-source HEAD -c core.hooksPath=… commit` が素通りしていた）
+    conf_values=$(printf '%s' "$seg" |
+      awk -v with_value="|$GIT_OPT_WITH_VALUE|" '
       {
         for (i = 1; i <= NF; i++) {
           if ($i != "git") continue
@@ -947,8 +952,7 @@ cmd=$(printf '%s\n' "$segments" | {
             if (substr(t, 1, 1) != "-") break
             if (t == "-c" || t == "--config-env") { print $(j + 1); j++; continue }
             if (t ~ /^--config-env=/) { sub(/^--config-env=/, "", t); print t; continue }
-            if (t == "-C" || t == "--git-dir" || t == "--work-tree" ||
-                t == "--namespace" || t == "--exec-path" || t == "--super-prefix") j++
+            if (index(with_value, "|" t "|") > 0) j++
           }
           exit
         }
@@ -982,16 +986,16 @@ cmd=$(printf '%s\n' "$segments" | {
     # セグメント全体の部分一致にすると、この設定について書いたコミットメッセージや
     # ドキュメントでも当たるため、トークンとして解析する。
     # 値を伴わない読み出し（git config core.hooksPath / --get）は変更しないので許す
-    config_hookspath=$(printf '%s' "$seg" | awk '
+    config_hookspath=$(printf '%s' "$seg" |
+      awk -v with_value="|$GIT_OPT_WITH_VALUE|" '
       {
         for (i = 1; i <= NF; i++) {
           if ($i != "git") continue
           for (j = i + 1; j <= NF; j++) {
             t = $j
             if (substr(t, 1, 1) == "-") {
-              if (t == "-c" || t == "--config-env" || t == "-C" ||
-                  t == "--git-dir" || t == "--work-tree" || t == "--namespace" ||
-                  t == "--exec-path" || t == "--super-prefix") j++
+              # 値を取るオプションは値ごと読み飛ばす（一覧は GIT_OPT_WITH_VALUE が正）
+              if (index(with_value, "|" t "|") > 0) j++
               continue
             }
             if (t != "config") exit

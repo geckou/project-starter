@@ -1610,6 +1610,15 @@ run 2 '-p を挟んでも production への push を止める' \
 run 2 '--config-env での husky 迂回も止める' \
   'git --config-env=core.hooksPath=HP commit -m "feat: x"' feat/existing
 
+# 値を取るオプションを一覧に足したら、-c を探す走査でも同じ扱いにする。
+# 片方だけだと走査が値のところで止まり、その後ろの -c を見落とす
+run 2 '値を空白で渡すグローバルオプションの後ろの -c も見る' \
+  'git --attr-source HEAD -c core.hooksPath=HP commit -m "feat: x"' feat/existing
+run 2 '同じく git config での永続設定も見る' \
+  'git --attr-source HEAD config core.hooksPath /dev/null' feat/existing
+run 0 '無関係な -c は止めない' \
+  'git -c user.name=x commit -m "feat: x"' feat/existing
+
 # 短縮フラグは束ねて書ける。単独トークンの -b / -c しか見ていないと、
 # ブランチ命名・分岐元の検査が外れる
 run 2 'checkout -qb でも命名規則を検査する' 'git checkout -qb badname'
