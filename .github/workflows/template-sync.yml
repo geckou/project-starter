@@ -109,6 +109,55 @@ jobs:
           pr_labels: template-sync
           pr_commit_msg: 'chore: テンプレート更新の取り込み'
 
+      # どこまで取り込んだかを派生リポジトリ自身に残す。action はテンプレート側の
+      # ハッシュを同期 PR の本文にしか書かないため、マージしてしまうと「この派生は
+      # テンプレートのどの時点か」を PR を遡らないと言えない（bug_report.yml の
+      # 「派生元のコミット」欄が、これを人間に調べさせていた）。
+      #
+      # 記録するのは**どこまで同期したか**であって「テンプレートと同一」ではない。
+      # .templatesyncignore の除外・派生で外した層・コンフリクト解決で落とした差分は
+      # ここに現れない。ファイル自身のコメントにも同じことを書く（読む人は
+      # ドキュメントではなくファイルを見るため）。
+      #
+      # template_git_hash も見る理由は下のステップと同じ（同期ブランチが remote に
+      # 残っていると action が早期に exit 0 し、pr_branch だけが非空で出力される）
+      - name: 取り込んだテンプレートの地点を記録する
+        if: steps.sync.outputs.pr_branch != '' && steps.sync.outputs.template_git_hash != ''
+        env:
+          PR_BRANCH: ${{ steps.sync.outputs.pr_branch }}
+          TEMPLATE_GIT_HASH: ${{ steps.sync.outputs.template_git_hash }}
+        run: |
+          set -euo pipefail
+
+          # if: でも弾いているが、空文字は set -u を素通りするのでここでも止める。
+          # 空のまま書き込むと「同期済みの地点が空」という嘘の記録が残る
+          : "${TEMPLATE_GIT_HASH:?テンプレートのハッシュが空です}"
+
+          git fetch origin "$PR_BRANCH"
+          git checkout "$PR_BRANCH"
+
+          cat > .template-version <<EOF
+          # geckou/project-starter のどこまでを取り込んだかの記録。
+          # Template Sync が同期 PR ごとに書き換えるので、手で編集しない。
+          #
+          # 「テンプレートと同一」という意味ではない。.templatesyncignore で除外した
+          # ファイル、派生で外した層、コンフリクト解決で落とした差分は反映されない。
+          synced_commit: $TEMPLATE_GIT_HASH
+          EOF
+
+          # 新規作成のときは git diff に出ないので、index に載せてから比べる
+          git add .template-version
+
+          if git diff --cached --quiet; then
+            echo "記録は最新です"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m 'chore: 取り込んだテンプレートの地点を記録する'
+          git push origin "$PR_BRANCH"
+
       # テンプレート本体は全部入りなので、同期対象のファイルには派生で外した層の
       # マーカー・CI ステップ・Renovate 設定が含まれる。layers.json は
       # .templatesyncignore で派生側の状態が残るため、そのままだと

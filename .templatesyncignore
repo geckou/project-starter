@@ -76,3 +76,7 @@ scripts/test-docs-downstream.sh
 scripts/test-layers.sh
 
 # template-only:end
+
+# 取り込んだテンプレートの地点の記録（派生プロジェクトだけが持つ）。
+# template-sync.yml が同期 PR ごとに書き換えるので、同期で上書きしない
+.template-version
