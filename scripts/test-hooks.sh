@@ -1366,6 +1366,10 @@ run_branch 2 'worktree add <パス> -b（パスが先）' \
   'git worktree add ../wt -b feat/new-thing'
 run_branch 2 'worktree add -b <名前> <パス>' \
   'git worktree add -b feat/new-thing ../wt'
+# pre-git-guard 側と検出する形を揃える（束・値の連結）
+run_branch 2 'checkout -qb（束ねた短縮フラグ）' 'git checkout -qb feat/new-thing'
+run_branch 2 'checkout -bfoo（値の連結）' 'git checkout -bfeat/new-thing'
+run_branch 2 'switch -cfoo（値の連結）' 'git switch -cfeat/new-thing'
 run_branch 2 'git branch <名前>' 'git branch feat/new-thing'
 run_branch 2 'worktree add <パス>（-b 無し）は basename がブランチ名になる' \
   'git worktree add ../foo-bar'
@@ -1583,6 +1587,66 @@ HOOK_PR_BASE_BRANCH=feat/thing
 export HOOK_PR_BASE_BRANCH
 run_pr 0 '差し替えた既定ブランチと同じなら見ない' '{}'
 unset HOOK_PR_BASE_BRANCH
+echo
+echo '=== グローバルオプションと短縮フラグの束（#354）==='
+
+# 許可リストに無いグローバルオプションが 1 つ残るだけで、後続の判定が
+# `git <サブコマンド>` の形に一致せず全て素通りしていた（fail-open）。
+# 判定できない形は通さない
+run 2 '知らないグローバルオプションは判定不能として止める' \
+  'git --future-option commit -m "wip"' feat/existing
+expect 'グローバルオプション' '何が原因かを伝える'
+
+run 2 '知らないグローバルオプションの push も止める' \
+  'git --future-option push --force origin production'
+
+# 一覧へ足したぶんは、剥がしたうえで通常どおり検査する
+run 2 '-p を挟んでもコミットメッセージ規約を検証する' \
+  'git -p commit -m "wip"' feat/existing
+run 0 '-p を挟んでも規約どおりなら通す' \
+  'git -p commit -m "feat: x"' feat/existing
+run 2 '-p を挟んでも production への push を止める' \
+  'git -p push --force origin production'
+run 2 '--config-env での husky 迂回も止める' \
+  'git --config-env=core.hooksPath=HP commit -m "feat: x"' feat/existing
+
+# 短縮フラグは束ねて書ける。単独トークンの -b / -c しか見ていないと、
+# ブランチ命名・分岐元の検査が外れる
+run 2 'checkout -qb でも命名規則を検査する' 'git checkout -qb badname'
+expect 'ブランチ命名規則違反' '命名規則として伝える'
+run 2 'switch -qc でも命名規則を検査する' 'git switch -qc badname'
+run 2 'checkout -qB でも命名規則を検査する' 'git checkout -qB badname'
+run 2 'worktree add -qb でも命名規則を検査する' \
+  'git worktree add -qb badname ../p'
+run 2 'checkout -qb の分岐元も検査する' \
+  'git checkout -qb feat/x release/1.0.0'
+expect '分岐元' '分岐元の違反として伝える'
+run 0 '束ねた形でも、規約どおりなら通す' 'git checkout -qb feat/x'
+
+# 値を連結した短縮フラグ（`-bfoo`）も実 git で有効なブランチ作成。
+# 束を 1 文字ずつに割るだけだと `-b -f -o -o` になり、ブランチ名が消える
+run 2 'checkout -bfoo（値の連結）でも命名規則を検査する' 'git checkout -bfoo'
+expect 'foo' '連結した値をブランチ名として取り出す'
+run 2 'switch -cbadname でも命名規則を検査する' 'git switch -cbadname'
+expect 'badname' 'switch でも名前を取り出す'
+run 2 'worktree add -bbadname でも命名規則を検査する' \
+  'git worktree add -bbadname ../p'
+
+# 束のままだと checkout が「既存ブランチへの切り替え」に見え、
+# 同じコマンド内の commit が production への直接コミットとして弾かれていた
+run 0 '束ねた checkout のあとの commit を、作成したブランチ宛てと見る' \
+  'git checkout -qb feat/x && git commit --allow-empty -m "feat: x"'
+run 0 '値を連結した checkout でも同じ' \
+  'git checkout -bfeat/x && git commit --allow-empty -m "feat: x"'
+
+# サブコマンドを取らない情報表示は、判定不能の網に掛けない。
+# 許可リストが実質の互換性契約になるので、8 種類すべてを見る
+for informational in --version -v --help -h --exec-path --html-path --man-path --info-path; do
+  run 0 "git ${informational} は通す" "git ${informational}"
+done
+run 0 'git --list-cmds=<group> も通す' 'git --list-cmds=main'
+
+
 # ---- scripts/check-shell-compat.mjs ----
 #
 # bash 3.2（macOS の /bin/sh）で構文解析できない書き方の検出そのものを検証する。
@@ -1629,46 +1693,6 @@ if command -v node >/dev/null 2>&1; then
       printf 'FAIL [want %s got %s] %s\n     out: %s\n' "$want" "$status" "$desc" "$LAST_OUT"
     fi
   }
-
-echo
-echo '=== グローバルオプションと短縮フラグの束（#354）==='
-
-# 許可リストに無いグローバルオプションが 1 つ残るだけで、後続の判定が
-# `git <サブコマンド>` の形に一致せず全て素通りしていた（fail-open）。
-# 判定できない形は通さない
-run 2 '知らないグローバルオプションは判定不能として止める' \
-  'git --future-option commit -m "wip"' feat/existing
-expect 'グローバルオプション' '何が原因かを伝える'
-
-run 2 '知らないグローバルオプションの push も止める' \
-  'git --future-option push --force origin production'
-
-# 一覧へ足したぶんは、剥がしたうえで通常どおり検査する
-run 2 '-p を挟んでもコミットメッセージ規約を検証する' \
-  'git -p commit -m "wip"' feat/existing
-run 0 '-p を挟んでも規約どおりなら通す' \
-  'git -p commit -m "feat: x"' feat/existing
-run 2 '-p を挟んでも production への push を止める' \
-  'git -p push --force origin production'
-run 2 '--config-env での husky 迂回も止める' \
-  'git --config-env=core.hooksPath=HP commit -m "feat: x"' feat/existing
-
-# 短縮フラグは束ねて書ける。単独トークンの -b / -c しか見ていないと、
-# ブランチ命名・分岐元の検査が外れる
-run 2 'checkout -qb でも命名規則を検査する' 'git checkout -qb badname'
-expect 'ブランチ命名規則違反' '命名規則として伝える'
-run 2 'switch -qc でも命名規則を検査する' 'git switch -qc badname'
-run 2 'checkout -qB でも命名規則を検査する' 'git checkout -qB badname'
-run 2 'worktree add -qb でも命名規則を検査する' \
-  'git worktree add -qb badname ../p'
-run 2 'checkout -qb の分岐元も検査する' \
-  'git checkout -qb feat/x release/1.0.0'
-expect '分岐元' '分岐元の違反として伝える'
-run 0 '束ねた形でも、規約どおりなら通す' 'git checkout -qb feat/x'
-
-# サブコマンドを取らない情報表示は、判定不能の網に掛けない
-run 0 'git --version は通す' 'git --version'
-run 0 'git --help は通す' 'git --help'
 
   echo
   echo '=== check-shell-compat: bash 3.2 で落ちる書き方の検出 ==='

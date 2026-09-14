@@ -14,7 +14,9 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty')
 # 検出する形を変えるときは両方を直すこと（片方だけだと挙動がずれる）。
 # worktree add は -b 付きか、引数がパス 1 つだけの形（basename がブランチ名になる）
 # のときだけ作成。`git worktree add <パス> <既存ブランチ>` は作成ではない
-NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[bB]|--orphan)|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[cC]|--create|--orphan)|worktree[[:space:]]+add([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[bB]|worktree[[:space:]]+add([[:space:]]+-[^[:space:];&|]+)*[[:space:]]+[^-[:space:];&|][^[:space:];&|]*[[:space:]]*($|[;&|])|branch([[:space:]]+(-f|--force|-q|--quiet|-t|--track(=[^[:space:]]+)?|--no-track|--create-reflog|--recurse-submodules))*[[:space:]]+[^-[:space:]])'
+# 短縮フラグは束ねられ（`-qb`）、値も連結できる（`-bfoo`）。pre-git-guard 側は
+# トークンを展開してから見るが、こちらは生のコマンドを見るので正規表現で吸収する
+NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[A-Za-z]*[bB][^[:space:];&|]*|--orphan)|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[A-Za-z]*[cC][^[:space:];&|]*|--create|--orphan)|worktree[[:space:]]+add([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[A-Za-z]*[bB][^[:space:];&|]*|worktree[[:space:]]+add([[:space:]]+-[^[:space:];&|]+)*[[:space:]]+[^-[:space:];&|][^[:space:];&|]*[[:space:]]*($|[;&|])|branch([[:space:]]+(-f|--force|-q|--quiet|-t|--track(=[^[:space:]]+)?|--no-track|--create-reflog|--recurse-submodules))*[[:space:]]+[^-[:space:]])'
 
 printf '%s' "$cmd" | grep -Eq "(^|[[:space:]])git[[:space:]]+$NEW_BRANCH_RE" || exit 0
 

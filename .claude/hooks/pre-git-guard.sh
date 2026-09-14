@@ -1079,7 +1079,7 @@ cmd=$(printf '%s\n' "$segments" | {
         printf '%s\n' "$MARK_UNDECIDABLE"
         continue
         ;;
-      (--version | -v | --help | -h | --exec-path | --html-path | --man-path | --info-path)
+      (--version | -v | --help | -h | --exec-path | --html-path | --man-path | --info-path | --list-cmds=*)
         # サブコマンドを取らない情報表示。何も変えないので通す
         ;;
       (-*)
@@ -1120,9 +1120,14 @@ MARK_COMMIT_N=$(printf '\001commit-n')
 cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
   BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
 
-  # -m / -F / -t は次のトークンを値として取る（束ねた -am も末尾の文字で見る）
+  # 値を取る短縮フラグ。束ねた中にこれが出たら、後ろは全部その値になる
+  #   m / F / t … commit のメッセージ・ファイル・テンプレート
+  #   b / B / c / C … checkout / switch / worktree add のブランチ名
+  BEGIN { VALUE_LETTERS = "mFtbBcC" }
+
+  # 次のトークンを値として取るフラグか（束ねた -am も末尾の文字で見る）
   function takes_value(p) {
-    if (p ~ /^-[A-Za-z]*[mFt]$/) return 1
+    if (p ~ /^-[A-Za-z]*[mFtbBcC]$/) return 1
     if (substr(p, 1, 2) != "--" || length(p) < 3) return 0
     p = substr(p, 3)
     return (substr("message", 1, length(p)) == p ||
@@ -1140,18 +1145,22 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
     return res
   }
 
-  # -am -> -a -m、-m"wip" -> -m "wip"。値や `--` 付きの長いオプションは触らない
-  function expand(t,   j, letters, rest, k, res) {
+  # -am -> -a -m、-m"wip" -> -m "wip"、-bfoo -> -b foo。
+  # 値を取る文字が出たら、そこで分割を止めて残りを値として切り出す
+  # （止めないと `-bfoo` が `-b -f -o -o` になり、ブランチ名が消える）。
+  # 値や `--` 付きの長いオプションは触らない
+  function expand(t,   j, ch, rest, res) {
     if (t !~ /^-[A-Za-z]/) return t
-    j = 2
-    while (j <= length(t) && substr(t, j, 1) ~ /[A-Za-z]/) j++
-    letters = substr(t, 2, j - 2)
-    rest = substr(t, j)
     res = ""
-    for (k = 1; k <= length(letters); k++) {
-      if (substr(letters, k, 1) == "n") saw_n = 1
-      res = res (res == "" ? "" : " ") "-" substr(letters, k, 1)
+    j = 2
+    while (j <= length(t) && substr(t, j, 1) ~ /[A-Za-z]/) {
+      ch = substr(t, j, 1)
+      if (ch == "n") saw_n = 1
+      res = res (res == "" ? "" : " ") "-" ch
+      j++
+      if (index(VALUE_LETTERS, ch) > 0) break
     }
+    rest = substr(t, j)
     if (rest != "") res = res " " rest
     return res
   }
@@ -1161,7 +1170,13 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
     # 印の付いた行はコミットメッセージの本文。フラグとしては読まない
     # （本文に書いた `git commit -n` のようなコマンド例で止めないため）
     if (substr(line, 1, 1) == sprintf("%c", 2)) { print line; next }
-    if (line !~ /git[ \t]+(commit|push)([ \t]|$)/) { print line; next }
+    # checkout / switch / worktree も通す。`-qb feat/x`（束）と `-bfoo`（値の連結）は
+    # 実 git で有効なブランチ作成なので、単独トークンの `-b` しか見ないと
+    # 命名・分岐元・コミット先の判定がまとめて外れる（#354）
+    if (line !~ /git[ \t]+(commit|push|checkout|switch|worktree)([ \t]|$)/) {
+      print line
+      next
+    }
 
     is_commit = (line ~ /git[ \t]+commit([ \t]|$)/)
     saw_n = 0
