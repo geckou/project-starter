@@ -1630,6 +1630,46 @@ if command -v node >/dev/null 2>&1; then
     fi
   }
 
+echo
+echo '=== グローバルオプションと短縮フラグの束（#354）==='
+
+# 許可リストに無いグローバルオプションが 1 つ残るだけで、後続の判定が
+# `git <サブコマンド>` の形に一致せず全て素通りしていた（fail-open）。
+# 判定できない形は通さない
+run 2 '知らないグローバルオプションは判定不能として止める' \
+  'git --future-option commit -m "wip"' feat/existing
+expect 'グローバルオプション' '何が原因かを伝える'
+
+run 2 '知らないグローバルオプションの push も止める' \
+  'git --future-option push --force origin production'
+
+# 一覧へ足したぶんは、剥がしたうえで通常どおり検査する
+run 2 '-p を挟んでもコミットメッセージ規約を検証する' \
+  'git -p commit -m "wip"' feat/existing
+run 0 '-p を挟んでも規約どおりなら通す' \
+  'git -p commit -m "feat: x"' feat/existing
+run 2 '-p を挟んでも production への push を止める' \
+  'git -p push --force origin production'
+run 2 '--config-env での husky 迂回も止める' \
+  'git --config-env=core.hooksPath=HP commit -m "feat: x"' feat/existing
+
+# 短縮フラグは束ねて書ける。単独トークンの -b / -c しか見ていないと、
+# ブランチ命名・分岐元の検査が外れる
+run 2 'checkout -qb でも命名規則を検査する' 'git checkout -qb badname'
+expect 'ブランチ命名規則違反' '命名規則として伝える'
+run 2 'switch -qc でも命名規則を検査する' 'git switch -qc badname'
+run 2 'checkout -qB でも命名規則を検査する' 'git checkout -qB badname'
+run 2 'worktree add -qb でも命名規則を検査する' \
+  'git worktree add -qb badname ../p'
+run 2 'checkout -qb の分岐元も検査する' \
+  'git checkout -qb feat/x release/1.0.0'
+expect '分岐元' '分岐元の違反として伝える'
+run 0 '束ねた形でも、規約どおりなら通す' 'git checkout -qb feat/x'
+
+# サブコマンドを取らない情報表示は、判定不能の網に掛けない
+run 0 'git --version は通す' 'git --version'
+run 0 'git --help は通す' 'git --help'
+
   echo
   echo '=== check-shell-compat: bash 3.2 で落ちる書き方の検出 ==='
   run_compat 1 '置換の中の素の case を検出する' "$COMPAT_BARE"

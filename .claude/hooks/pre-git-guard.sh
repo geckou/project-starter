@@ -362,8 +362,8 @@ session_gitdir=$(git rev-parse --git-common-dir 2>/dev/null) || exit 0
 session_gitdir=$(cd "$session_gitdir" 2>/dev/null && pwd -P) || exit 0
 
 # git のグローバルオプション（サブコマンドより前に置くもの）
-GIT_OPT_WITH_VALUE='-C|-c|--git-dir|--work-tree|--namespace|--exec-path|--super-prefix'
-GIT_OPT_BOOL='--no-pager|--paginate|--bare|--no-replace-objects|--literal-pathspecs|--no-optional-locks'
+GIT_OPT_WITH_VALUE='-C|-c|--git-dir|--work-tree|--namespace|--exec-path|--super-prefix|--config-env|--attr-source'
+GIT_OPT_BOOL='--no-pager|--paginate|-p|-P|--bare|--no-replace-objects|--literal-pathspecs|--icase-pathspecs|--glob-pathspecs|--noglob-pathspecs|--no-advice|--no-lazy-fetch|--no-optional-locks'
 
 # パスを絶対パスへ解決する。解決できなければ何も出力せず 1 を返す（= 判定不能）
 resolve_dir() {
@@ -407,6 +407,9 @@ MARK_ENV_BYPASS=$(printf '\001envbypass')
 MARK_ALIAS=$(printf '\001alias')
 MARK_INDIRECT=$(printf '\001indirect')
 MARK_UNDECIDABLE=$(printf '\001undecidable')
+# サブコマンドの前に、許可リストに無いグローバルオプションが残った形。
+# 判定不能として弾くが、直し方が違うのでメッセージを分ける（#354）
+MARK_UNKNOWN_OPT=$(printf '\001unknown-opt')
 # コマンド名が置換で書かれている（判定不能）ことを seg_cmd 経由で伝える印
 SUBST_CMD=$(printf '\001subst')
 # コマンド位置に置かれた置換（`which git` … / $(which git) …）の終わり。
@@ -1065,9 +1068,22 @@ cmd=$(printf '%s\n' "$segments" | {
     # （置換は括弧で別セグメントへ切り出されるため、ここでは `git` か `git $` になる）
     after_git=$(printf '%s' "$seg" |
       awk '{ for (i = 1; i <= NF; i++) if ($i == "git") { print $(i + 1); exit } exit }')
+    #
+    # 一覧に無いグローバルオプションが残った形（`git -p commit …`）も同じ扱いにする。
+    # git のグローバルオプションは増えるので、許可リストの拡充だけでは追従できない。
+    # ここを素通しすると after_git が `-…` になり、以降の判定が全て
+    # `git[[:space:]]+(commit|push|…)` に一致せず**黙って通る**（fail-open）。
+    # 判定できない形は通さない、に倒す（#354）
     case $after_git in
       ('' | '$'* | '`'*)
         printf '%s\n' "$MARK_UNDECIDABLE"
+        continue
+        ;;
+      (--version | -v | --help | -h | --exec-path | --html-path | --man-path | --info-path)
+        # サブコマンドを取らない情報表示。何も変えないので通す
+        ;;
+      (-*)
+        printf '%s\n' "$MARK_UNKNOWN_OPT"
         continue
         ;;
     esac
@@ -1086,11 +1102,12 @@ env_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ENV_BYPASS$")
 alias_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ALIAS$")
 indirect=$(printf '%s\n' "$cmd" | grep -c "^$MARK_INDIRECT$")
 undecidable=$(printf '%s\n' "$cmd" | grep -c "^$MARK_UNDECIDABLE$")
+unknown_opt=$(printf '%s\n' "$cmd" | grep -c "^$MARK_UNKNOWN_OPT$")
 guard_dir=$(printf '%s\n' "$cmd" | sed -n "s/^$MARK_DIR//p" | head -1)
 cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_DIR" |
   grep -v "^$MARK_HOOKSPATH$" | grep -v "^$MARK_ENV_BYPASS$" |
   grep -v "^$MARK_ALIAS$" | grep -v "^$MARK_INDIRECT$" |
-  grep -v "^$MARK_UNDECIDABLE$")
+  grep -v "^$MARK_UNDECIDABLE$" | grep -v "^$MARK_UNKNOWN_OPT$")
 
 # --- 短縮フラグの束を 1 文字ずつに展開する ------------------------------
 # git は `-am` のようにフラグを束ねて書ける。束のままだと -m / -F / -n の検出が
@@ -1185,6 +1202,7 @@ cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_COMMIT_N$" | tr -d '\002')
 # ここで抜けると、判定不能・alias・間接実行の検出が黙って捨てられる
 if [ -z "$cmd" ] &&
   [ "${undecidable:-0}" -eq 0 ] && [ "${alias_bypass:-0}" -eq 0 ] &&
+  [ "${unknown_opt:-0}" -eq 0 ] &&
   [ "${indirect:-0}" -eq 0 ] && [ "${hooks_path_bypass:-0}" -eq 0 ] &&
   [ "${env_bypass:-0}" -eq 0 ]; then
   exit 0
@@ -1304,6 +1322,10 @@ fi
 
 if [ "${undecidable:-0}" -gt 0 ]; then
   deny 'git を変数・コマンド置換で書く形（git $(…) / git `…` / $g commit / "$(which git)" commit）は、何を実行するのか検査できないため使用できません。git とサブコマンドをそのまま書いてください。'
+fi
+
+if [ "${unknown_opt:-0}" -gt 0 ]; then
+  deny 'このフックが知らないグローバルオプションが git とサブコマンドの間にあります。サブコマンドを特定できないと、コミットメッセージ規約・--no-verify 禁止・production への push 禁止の検査がすべて外れるため、通していません。オプションを外して `git <サブコマンド> …` の形で書いてください（必要なオプションなら .claude/hooks/pre-git-guard.sh の GIT_OPT_WITH_VALUE / GIT_OPT_BOOL に足してください）。'
 fi
 
 if [ "${indirect:-0}" -gt 0 ]; then
@@ -1794,7 +1816,10 @@ fi
 # 短縮形だけでなく長い形（--create / --orphan）も見る。
 # worktree add はパスとフラグの語順が自由なので、-b の前に非フラグが来る形も許す。
 # `git branch` は直後が非フラグのときだけ作成（-d / -m / --list 等は別の操作）
-NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[bB]|--orphan)|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[cC]|--create|--orphan)|worktree[[:space:]]+add([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[bB])'
+# 短縮フラグは束ねて書ける（`checkout -qb <名前>`）。束の末尾だけを見るのは、
+# `-b` / `-c` が値（ブランチ名）を取るため、後ろに別の文字が続く形は git 自身が
+# 弾くから。単独トークンの `-b` しか見ないと束で素通りしていた（#354）
+NEW_BRANCH_RE='(checkout([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[A-Za-z]*[bB]|--orphan)|switch([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[A-Za-z]*[cC]|--create|--orphan)|worktree[[:space:]]+add([[:space:]]+[^[:space:];&|]+)*[[:space:]]+-[A-Za-z]*[bB])'
 
 # `git branch <名前> [<分岐元>]` もブランチを作る。直後が非フラグのときだけ対象に
 # する（-d / -D / -m / -r / --list 等はブランチを作らない別の操作）。
@@ -1847,7 +1872,7 @@ if [ -z "$newbranch" ]; then
           break
         }
         if (!seen_add) { if ($i == "add") seen_add = 1; else break; continue }
-        if ($i ~ /^(-[bB]|--detach|--orphan)$/) { creates = 0; break }
+        if ($i ~ /^(-[A-Za-z]*[bB]|--detach|--orphan)$/) { creates = 0; break }
         if ($i == "--reason") { i++; continue }
         if (substr($i, 1, 1) == "-") continue
         if (++nonflag == 1) { path = $i; continue }
@@ -1988,7 +2013,7 @@ if [ -n "$newbranch" ]; then
              if (stage == 0) {
                if ($i == "worktree") { is_wt = 1; continue }
                if (is_wt && $i == "add") { seen_add = 1; continue }
-               if ($i ~ /^(-[bBcC]|--create|--orphan)$/) { stage = 1; continue }
+               if ($i ~ /^(-[A-Za-z]*[bBcC]|--create|--orphan)$/) { stage = 1; continue }
                # worktree add のパスが -b より前に来た語順
                if (seen_add && substr($i, 1, 1) != "-") path_before = 1
                continue
