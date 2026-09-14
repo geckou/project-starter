@@ -387,11 +387,17 @@ chmod +x "$DEPLOY_TREE/bin/firebase"
 FIREBASE_CALLS="$DEPLOY_TREE/firebase-calls.txt"
 export FIREBASE_CALLS
 
-# $1: 説明以外の引数を deploy.sh へ渡す。呼び出し記録は毎回リセットする
+# deploy.sh へ引数を渡して実行する。呼び出し記録は毎回リセットする。
+#
+# stdin を /dev/null に固定するのは、端末から実行したときに deploy.sh の
+# `[ -t 0 ]` が真になり、auto が --force を外して結果が変わるため
+# （回帰テストが実行環境に依存しなくなる）。
+# FUNCTIONS_FORCE も既定値を明示して、外の環境変数を持ち込まない
 run_deploy() {
   : >"$FIREBASE_CALLS"
   (cd "$DEPLOY_TREE" && PATH="$DEPLOY_TREE/bin:$PATH" SKIP_CHECKS=1 \
-    bash scripts/deploy.sh "$@" >"$DEPLOY_TREE/deploy.log" 2>&1)
+    FUNCTIONS_FORCE="${FUNCTIONS_FORCE_OVERRIDE:-auto}" \
+    bash scripts/deploy.sh "$@" >"$DEPLOY_TREE/deploy.log" 2>&1 < /dev/null)
 }
 
 echo "[9] --only の値"
@@ -427,9 +433,7 @@ else
 fi
 
 # FUNCTIONS_FORCE=never で外れること（対話端末の既定と同じ経路）
-: >"$FIREBASE_CALLS"
-if (cd "$DEPLOY_TREE" && PATH="$DEPLOY_TREE/bin:$PATH" SKIP_CHECKS=1 FUNCTIONS_FORCE=never \
-  bash scripts/deploy.sh staging --only functions >"$DEPLOY_TREE/deploy.log" 2>&1) &&
+if FUNCTIONS_FORCE_OVERRIDE=never run_deploy staging --only functions &&
   grep -q 'deploy --only functions$' "$FIREBASE_CALLS"; then
   pass "FUNCTIONS_FORCE=never なら --force を付けない（関数の削除に確認が入る）"
 else
@@ -437,13 +441,68 @@ else
 fi
 
 # hosting は対象外（--force は確認を飛ばすだけで、削除を含まない）
-: >"$FIREBASE_CALLS"
-if (cd "$DEPLOY_TREE" && PATH="$DEPLOY_TREE/bin:$PATH" SKIP_CHECKS=1 FUNCTIONS_FORCE=never \
-  bash scripts/deploy.sh staging --only hosting >"$DEPLOY_TREE/deploy.log" 2>&1) &&
+if FUNCTIONS_FORCE_OVERRIDE=never run_deploy staging --only hosting &&
   grep -q 'deploy --only hosting --force' "$FIREBASE_CALLS"; then
   pass "hosting の --force は外さない"
 else
   fail "hosting の --force まで外れた" "$(cat "$FIREBASE_CALLS")"
+fi
+
+# functions を含まない対象では、FUNCTIONS_FORCE の値で挙動が変わらない。
+# 変わると「関数の設定がルールのデプロイまで動かす」ことになる
+if FUNCTIONS_FORCE_OVERRIDE=never run_deploy staging --only firestore &&
+  grep -q 'deploy --only firestore --force' "$FIREBASE_CALLS"; then
+  pass "functions を含まない対象には FUNCTIONS_FORCE が効かない"
+else
+  fail "functions 以外のデプロイまで --force が外れた" "$(cat "$FIREBASE_CALLS")"
+fi
+
+# 打ち間違い（never のつもりの nerver 等）を黙って auto に落とさない
+if FUNCTIONS_FORCE_OVERRIDE=nerver run_deploy staging --only functions; then
+  fail "FUNCTIONS_FORCE の不正な値が素通りする（非対話では --force が付く）" \
+    "$(cat "$FIREBASE_CALLS")"
+else
+  pass "FUNCTIONS_FORCE の不正な値はエラーで止まる"
+fi
+
+echo ""
+echo "[11] 中断したらそこで止まる"
+
+# firebase の実行中に INT を受けたら、復元して**そこで終わる**こと。
+# 復元だけして継続すると、以降の EXIT トラップが無処理になったまま
+# 後続の firebase deploy が走る（#357）
+cat >"$DEPLOY_TREE/bin/firebase" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >>"$FIREBASE_CALLS"
+
+# 最初の deploy の最中に、呼び出し元（deploy.sh）へ INT を送る
+case "$1" in
+  (deploy)
+    if [ ! -f "$FIREBASE_CALLS.interrupted" ]; then
+      : >"$FIREBASE_CALLS.interrupted"
+      kill -INT "$PPID"
+      sleep 2
+    fi
+    ;;
+esac
+exit 0
+STUB
+chmod +x "$DEPLOY_TREE/bin/firebase"
+rm -f "$FIREBASE_CALLS.interrupted"
+
+run_deploy staging --only firestore,hosting
+interrupt_status=$?
+
+if [ "$interrupt_status" -ne 0 ]; then
+  pass "中断したら 0 以外で終わる（終了コード: ${interrupt_status}）"
+else
+  fail "中断しても正常終了として扱われる" "$(tail -5 "$DEPLOY_TREE/deploy.log")"
+fi
+
+if [ "$(grep -c '^deploy' "$FIREBASE_CALLS")" -eq 1 ]; then
+  pass "中断のあとに後続のデプロイを実行しない"
+else
+  fail "中断後もデプロイが続いた" "$(cat "$FIREBASE_CALLS")"
 fi
 
 rm -rf "$DEPLOY_TREE"

@@ -71,7 +71,20 @@ includes_functions() {
 #   auto   （既定）非対話なら付ける / 対話端末なら付けず、削除を人に聞く
 #   always 常に付ける（削除の確認を飛ばす）
 #   never  常に付けない
+#
+# 未対応の値はエラーにする。黙って auto に落とすと、`never` のつもりで
+# `nerver` と書いた CI が非対話なので --force 付きで走り、確認なしに
+# 関数が削除されうる（#357 の指摘）
 FUNCTIONS_FORCE=${FUNCTIONS_FORCE:-auto}
+
+case "$FUNCTIONS_FORCE" in
+  (auto | always | never) ;;
+  (*)
+    echo "[error] FUNCTIONS_FORCE の値が不正です: ${FUNCTIONS_FORCE}"
+    echo "  → auto（既定） / always / never のいずれかを指定してください"
+    exit 1
+    ;;
+esac
 
 # デプロイ対象（カンマ区切り）。
 # CI は変更差分から必要なターゲットだけを渡してくる（.github/workflows/deploy.yml）
@@ -436,17 +449,18 @@ if [ -n "$OTHER_TARGETS" ]; then
   # 確認を飛ばすだけだが、functions では取り消せない削除になる（#357）。
   # 対話端末から実行したときは付けず、削除の可否を人に聞く。
   # 非対話（CI）はプロンプトに答えられずデプロイが止まるので付けたままにする
+  #
+  # 効かせるのは **functions を含むときだけ**。含まないのに外すと、ルールの
+  # デプロイから確認の飛ばしが消えるだけで、危険が減るわけではない
   FORCE_FLAG=--force
 
-  case "$FUNCTIONS_FORCE" in
-    always) ;;
-    never) FORCE_FLAG= ;;
-    *)
-      if includes_functions "$OTHER_TARGETS" && [ -t 0 ]; then
-        FORCE_FLAG=
-      fi
-      ;;
-  esac
+  if includes_functions "$OTHER_TARGETS"; then
+    case "$FUNCTIONS_FORCE" in
+      (always) ;;
+      (never) FORCE_FLAG= ;;
+      (*) if [ -t 0 ]; then FORCE_FLAG=; fi ;;
+    esac
+  fi
 
   echo "[deploy] ${OTHER_TARGETS}..."
   # FORCE_FLAG は空になりうるので、引用しない（空文字の引数を渡さないため）

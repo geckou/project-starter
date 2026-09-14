@@ -360,6 +360,10 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
+          # 先に空ファイルを 0600 で作る。リダイレクトだけだと umask 任せになり、
+          # 一般的な 022 では 0644 で作られる。self-hosted runner では同じホストの
+          # 別ユーザー・別ジョブからデプロイ中の鍵を読めてしまう
+          install -m 600 /dev/null "$RUNNER_TEMP/firebase-service-account.json"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
 
       # ローカルと同じ deploy.sh を使う（workspace 依存の一時削除・

@@ -56,7 +56,20 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
    - storage は Cloud Storage 未有効化時に失敗しうるため個別に実行し、失敗時は対処方法を表示する
    - storage は `firebase.json` が `storage` を宣言している場合のみ対象になる。Cloud Storage を使わないプロジェクトは `firebase.json` から `storage` を削除する
 
-`--force` フラグは上記の理由で意図的に使用している（削除しないこと）。
+`--force` は hosting とルールでは意図的に使っている（確認を飛ばすだけなので、外さないこと）。
+
+**functions は別扱い。** `--force` は「ソースに無い関数を確認なしで削除する」を含むため、
+対象に functions が入るときは**対話端末からの実行では付けない**（削除の可否を人に聞く）。
+非対話（CI）はプロンプトに答えられずデプロイが止まるので、付けたままにする。
+
+| `FUNCTIONS_FORCE` | 挙動 |
+|---|---|
+| `auto`（既定） | 非対話なら付ける / 対話端末では付けず、削除を人に聞く |
+| `always` | 常に付ける |
+| `never` | 常に付けない |
+
+不正な値はエラーで止まる（`never` のつもりの打ち間違いが、非対話で `--force` に
+化けるのを防ぐため）。
 
 production へのデプロイは `production` ブランチからのみ実行できるガードが deploy.sh に入っている。
 どうしても他ブランチから実行する必要がある場合のみ `FORCE_DEPLOY=1 yarn deploy:production` で回避できる。
