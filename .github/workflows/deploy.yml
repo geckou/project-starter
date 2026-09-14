@@ -109,7 +109,6 @@ jobs:
           yarn workspace "$(node -p "require('./apps/mobile/package.json').name")" \
             exec expo customize tsconfig.json
       # layer:mobile:end
-
       # turbo のローカルキャッシュを実行間で持ち越し、変更のないパッケージの
       # 再ビルドを避ける。build の inputs に .env* が含まれているため、
       # 環境ごとの差はキャッシュキー側で分かれる（turbo.json 参照）
@@ -353,13 +352,19 @@ jobs:
         run: printf '%s\n' "$ENV_FILE" > .env.${{ steps.env.outputs.name }}
 
       # サービスアカウントで認証（FIREBASE_TOKEN は firebase-tools v13+ で非推奨）
+      # 鍵のパスは GITHUB_ENV に書かない。書くと以降の**全ステップ**が引き継ぐため、
+      # 認証をビルドより後ろに置いて作った分離が無効になる（#351）。
+      # deploy の step に env で直接渡す（下）
       - name: Authenticate to Firebase
         if: steps.env.outputs.deploy == 'true' && steps.targets.outputs.targets != ''
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
+          # 先に空ファイルを 0600 で作る。リダイレクトだけだと umask 任せになり、
+          # 一般的な 022 では 0644 で作られる。self-hosted runner では同じホストの
+          # 別ユーザー・別ジョブからデプロイ中の鍵を読めてしまう
+          install -m 600 /dev/null "$RUNNER_TEMP/firebase-service-account.json"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> $GITHUB_ENV
 
       # ローカルと同じ deploy.sh を使う（workspace 依存の一時削除・
       # hosting ターゲット個別デプロイなどの回避策を共有するため）。
@@ -369,4 +374,14 @@ jobs:
         if: steps.env.outputs.deploy == 'true' && steps.targets.outputs.targets != ''
         env:
           SKIP_CHECKS: '1'
+          # 鍵を見せるのはこの step だけにする。firebase deploy が走らせる
+          # functions の predeploy（ワークスペースの build）は依然この中なので、
+          # 露出が消えるわけではない。無関係な step から外すのが目的
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
         run: bash scripts/deploy.sh ${{ steps.env.outputs.name }} --only "${{ steps.targets.outputs.targets }}"
+
+      # 鍵ファイルは RUNNER_TEMP に残る。self-hosted runner では実行間で
+      # 残り続けるので、パスを絞ったうえで実体も消す
+      - name: Remove service account key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firebase-service-account.json"

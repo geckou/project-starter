@@ -120,9 +120,11 @@ CI でも実行される。
 判断は `scripts/lib/hosting-targets.mjs` に切り出してあり、`bash scripts/test-deploy-targets.sh`
 （`yarn test:deploy-targets`）が検証する。同じテストが `scripts/lib/deploy-targets.mjs`
 （`.firebaserc` の構成から既定のデプロイ対象を導く部分。1 プロジェクトに環境を相乗りさせる
-構成で、環境で分けられないターゲットを既定から外す）も見る。`deploy.sh` 本体は firebase CLI と実プロジェクトが
-無いと流せないため、**選び方だけを切り出してテスト可能にしている。** ターゲットの選び方を
-変えるときはこのテストも足す。CI では `ci.yml` の Deploy Target Test が実行する。
+構成で、環境で分けられないターゲットを既定から外す）も見る。ターゲットの選び方は `deploy.sh` 本体から
+切り出してあり、**判断だけを単体で検証できる。** 同じテストの後半は、`firebase` を
+引数ごと記録するスタブに差し替えて `deploy.sh` 本体を一時ツリーで回し、`--only` の扱い・
+`--force` の付け方・中断時の停止を見る（これらは切り出した `.mjs` には出てこない）。
+ターゲットの選び方やデプロイのガードを変えるときはこのテストも足す。CI では `ci.yml` の Deploy Target Test が実行する。
 
 ## env の配布内容は回帰テストで固定する
 
