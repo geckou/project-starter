@@ -78,5 +78,8 @@ scripts/test-layers.sh
 # template-only:end
 
 # 取り込んだテンプレートの地点の記録（派生プロジェクトだけが持つ）。
-# template-sync.yml が同期 PR ごとに書き換えるので、同期で上書きしない
+# template-sync.yml が同期 PR ごとに書き換えるので、同期で上書きしない。
+# ただしこの行が届くのは新しく scaffold した派生だけ（既存の派生は自分の
+# .templatesyncignore が同期のたびに復元される）。本体がこのファイルを
+# 持たない以上、届かなくても上書きは起きない
 .template-version
