@@ -19,24 +19,34 @@ GitHub Copilot（コードレビュー・チャット・coding agent）がこの
 技術方針の詳細は `.claude/docs/`（`architecture.md`・`layers.md`・`dependencies.md`・
 `git-workflow.md`）にある。
 
-## このリポジトリ特有の注意
+## このファイルはテンプレートと派生プロジェクトの両方に置かれる
+
+このファイルは Template Sync で派生プロジェクトへ配られる。**テンプレート本体
+（`geckou/project-starter`）にしか無いものを前提に書かない**（#364）。
+両方で成り立たない記述が要るなら、どちらの話かを明示する。
+
+## モノレポ構成の注意
 
 - **層マニフェスト（`layers.json`）**: ファイルを追加・移動・削除したら更新が必要。
   更新漏れは型チェックにもテストにも引っかからないので、差分に該当があれば指摘してよい
-- **CI は reusable workflow**: `.github/workflows/ci.yml` は `workflow_call` で
-  派生プロジェクトから呼ばれる。`actions/checkout` が展開するのは**呼び出し元**の
-  リポジトリなので、`scripts/` を直接呼ぶステップには存在しない場合のフォールバックが要る
-- **`@v1` は浮動タグ**: `release-tag.yml` が `production` の先頭へ進める。
-  破壊的変更ではタグを進めない仕組みがある
+  （このファイルを持たない構成もある）
+- **CI の `ci.yml` は 2 通りある**: テンプレート本体のものは `workflow_call` で
+  呼ばれる**提供側**、派生プロジェクトのものは
+  `uses: geckou/project-starter/.github/workflows/ci.yml@v1` の**呼び出し側**。
+  reusable workflow から呼ばれても `actions/checkout` が展開するのは呼び出し元の
+  リポジトリなので、`scripts/` を直接呼ぶステップには「存在しない場合のフォールバック」が要る
+- **`@v1` は浮動タグ**: テンプレート本体の `release-tag.yml` が `production` の先頭へ
+  進める。破壊的変更では進めない仕組みがある。派生プロジェクトはこのタグを参照するだけで、
+  自分では動かさない
 
 ## 指摘しなくてよいこと
 
 - **フォーマット**: Prettier に委譲している。ESLint 側でフォーマット規則は設定しない
 - **`.claude/skills/` 内の実在しないパス**: スキルは「これから作るファイル」を書くもので、
   存在しないパスを含むのが正しい
-- **`scripts/test-layers.sh` の対応が取れていない層マーカー**: 減算スクリプトの
-  回帰テスト用フィクスチャで、意図的にそうしてある（`SELF_DOCUMENTING` として
-  検証・削除の対象から除外されている）
+- **層スクリプトの回帰テスト（`scripts/test-layers.sh`）にある、対応が取れていない層マーカー**:
+  意図的なフィクスチャで、`SELF_DOCUMENTING` として検証・削除の対象から外してある。
+  このファイルはテンプレート本体だけが持つ（派生には配られない）
 
 ## 指摘の書き方
 

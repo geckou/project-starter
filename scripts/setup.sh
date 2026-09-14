@@ -346,8 +346,12 @@ if [ "$INSTALL" != "n" ] && [ "$INSTALL" != "N" ]; then
   echo "[done] 依存関係をインストールしました"
 
   # packages/shared の dist を生成（tailwind.config.js などの Node ランタイム
-  # から `require('@geckou/shared/theme')` を解決可能にするため）
-  yarn workspace @geckou/shared build
+  # から `require('<スコープ>/shared/theme')` を解決可能にするため）。
+  #
+  # ワークスペース名を書かずパスで指定する。/init-project がスコープを
+  # リネームすると名前指定は存在しないワークスペースを指し、set -e で
+  # ここから先（Template Sync の案内など）がまるごと出なくなる（#360）
+  yarn turbo build --filter='./packages/shared'
   echo "[done] packages/shared をビルドしました"
 fi
 

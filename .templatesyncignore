@@ -15,6 +15,13 @@
 CLAUDE.md
 README.md
 
+# ルールのテスト（派生プロジェクトは自分のルールに対して書く）。
+# firestore.rules / storage.rules 自体が同期対象外なのに、それを検証する
+# テストだけが配られると、届いた瞬間に ci.yml のルールテストが有効になり
+# （判定は tests/*rules*.test.ts の有無）、テンプレート前提の assertion で
+# 必ず落ちる（#350）
+tests/
+
 # 環境・Firebase 設定（プロジェクトごとに異なる）
 .env*
 .firebaserc
