@@ -31,6 +31,15 @@ turbo build --filter='./packages/*'
 # Tailwind v3 のアプリ（Expo / 静的サイト等）を同居させると、ルートへ v3 が
 # ホイストされてこの状態になる。気付かないまま大量のファイルが並べ替えられ、
 # 後で設定を直すと同じファイルが再び全部並べ替わるので、ここで落とす
+warn_ignored_tailwind_option() {
+  echo ""
+  echo "[error] prettier-plugin-tailwindcss が tailwindStylesheet を無視しています。"
+  echo "  インストールされている Tailwind が v4 ではありません"
+  echo "  （v3 のアプリを同居させると、ルートに v3 がホイストされます）。"
+  echo "  .prettierrc.cjs の overrides で、v4 のアプリにだけ tailwindStylesheet を、"
+  echo "  v3 のアプリには tailwindConfig を指定してください。"
+}
+
 run_prettier() {
   local output status
 
@@ -42,12 +51,7 @@ run_prettier() {
   printf '%s\n' "$output"
 
   if printf '%s' "$output" | grep -q 'does not support this feature'; then
-    echo ""
-    echo "[error] prettier-plugin-tailwindcss が tailwindStylesheet を無視しています。"
-    echo "  インストールされている Tailwind が v4 ではありません"
-    echo "  （v3 のアプリを同居させると、ルートに v3 がホイストされます）。"
-    echo "  .prettierrc.cjs の overrides で、v4 のアプリにだけ tailwindStylesheet を、"
-    echo "  v3 のアプリには tailwindConfig を指定してください。"
+    warn_ignored_tailwind_option
     return 1
   fi
 
@@ -57,5 +61,20 @@ run_prettier() {
 if [ "${1:-}" = "--check" ]; then
   run_prettier --check .
 else
+  # **書き込む前に**警告を見る。--write で走らせてから気付いても、その時点で
+  # 全ファイルがデフォルトテーマ基準の順序に書き換わっている（元に戻すには
+  # 設定を直してもう一度全部並べ替えることになる）。
+  #
+  # --check は整形が必要なファイルがあれば非ゼロで終わるが、ここで見たいのは
+  # 警告だけなので終了コードは使わない
+  set +e
+  probe=$(prettier --check . 2>&1)
+  set -e
+
+  if printf '%s' "$probe" | grep -q 'does not support this feature'; then
+    warn_ignored_tailwind_option
+    exit 1
+  fi
+
   run_prettier --write .
 fi
