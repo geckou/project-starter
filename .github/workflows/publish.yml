@@ -64,6 +64,9 @@ permissions:
 jobs:
   # 何を公開するかだけを決める。公開の権限（id-token / npm-publish Environment）は持たない
   targets:
+    # テンプレート本体専用。派生プロジェクトでは何もしない（publish は needs 経由で止まる）
+    # （派生では production への push ごとに走り、非 private なパッケージがあると OIDC 認証で失敗する）
+    if: github.repository == 'geckou/project-starter'
     runs-on: ubuntu-latest
     outputs:
       packages: ${{ steps.resolve.outputs.packages }}
