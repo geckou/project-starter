@@ -303,9 +303,13 @@ shared/src/
 
 コード内で外部ライブラリと同じようにインポートできる。
 実際にはダウンロードされるわけではなく、yarn のワークスペース機能でローカルの
-`packages/shared` を参照している。参照されるのは `exports` の `default` が指す
-`packages/shared/dist/`（ビルド成果物）で、`turbo.json` の `^build` が先にビルドする
-（型だけは `types` が `src/` を指すので、ビルド前でも型チェックは通る）。
+`packages/shared` を参照している。参照されるのはビルド成果物で、`turbo.json` の `^build` が
+先にビルドする（型だけは `exports` の `types` が `src/` を指すので、ビルド前でも型チェックは通る）。
+
+**成果物は CJS（`dist/`）と ESM（`dist/esm/`）の二本立て。** `import` で解決する
+web / mobile は後者、`require` で解決する `apps/functions` は `default` 経由で前者を読む。
+片方だけにすると firebase SDK が二重インスタンスになって Firestore への通信が
+できなくなる（→ `.claude/docs/architecture.md`「`packages/shared` は ESM と CJS の両方を出す」）。
 
 ```typescript
 // ルートのバレルが出すのは環境非依存のもの（types / utils / theme / i18n）だけ

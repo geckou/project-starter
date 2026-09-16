@@ -271,6 +271,7 @@ yarn test                          # テスト実行
 yarn test:rules                    # Firestore / Storage ルール（エミュレーター）
 yarn test:hooks                    # フックの回帰テスト
 yarn check:docs                    # ドキュメントの参照切れ検出
+yarn check:module-formats          # packages/* の出力が exports の ESM / CJS 条件と合うか（要 yarn build）
 yarn firebase:emulators            # Firebase エミュレーター
 yarn env:<環境名> / deploy:<環境名>  # 環境切り替え / デプロイ（develop / staging / production）
 ```

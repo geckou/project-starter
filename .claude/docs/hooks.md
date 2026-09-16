@@ -157,6 +157,25 @@ CI でも実行される。
 `remove-layer.mjs` が本物のマーカーとみなし、対応する `end` が無いためファイル末尾まで
 削り落とす。CI では `ci.yml` の Env Distribution Test が実行する。
 
+## 公開物の ESM / CJS は CI が検査する
+
+`packages/*` の `exports` が `import` / `require` で別のファイルを指していても、**出力が
+実際にその形式になっているとは限らない。** 食い違うと、ESM のアプリ（Next.js / Expo）から
+使ったときにパッケージが `require` した firebase SDK とアプリが `import` した firebase SDK が
+別インスタンスになり、Firestore への通信が一切できなくなる（#377。詳細は
+`.claude/docs/architecture.md`「`packages/shared` は ESM と CJS の両方を出す」）。
+
+`node scripts/check-module-formats.mjs`（`yarn check:module-formats`）が、`packages/*` の
+`exports` について次を見る。ビルド成果物を読むので**先に `yarn build` が要る**。
+
+- 条件が指すファイルが実在するか
+- `import` 条件の JS が本当に ESM か（`"type": "module"` の配下にあるか込み）
+- その裏（`require` 条件と、`import` と並ぶ `default`）が本当に CJS か
+
+条件を持たないサブパス（文字列だけ）は、パッケージ全体の `"type"` が形式を決めているので
+存在検査だけにする（`@geckou/eslint-config` のように丸ごと ESM のパッケージを落とさないため）。
+CI では `ci.yml` の Module Format Check が Build の後に実行する。
+
 ## 本体保守で使うスクリプト
 
 テンプレート本体の検証・公開まわり。ここに挙げるものは派生プロジェクトへ配られないので、

@@ -46,6 +46,7 @@
     "test:env-distribution": "bash scripts/test-env-distribution.sh",
     "check:docs": "bash scripts/check-docs.sh",
     "check:ranges": "node scripts/check-workspace-ranges.mjs",
+    "check:module-formats": "node scripts/check-module-formats.mjs",
     "release": "bash scripts/release.sh"
   },
   "resolutions": {

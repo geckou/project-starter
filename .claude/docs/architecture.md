@@ -44,6 +44,37 @@ core の時点で存在し、Blaze プランもこの時点で必須になる。
 | サーバー（SSR / Server Actions） | `apps/web/src/lib/firebase-admin.ts` | `firebase-admin` | `server-only` で保護。クライアントから import するとビルドエラー |
 | Functions                        | `apps/functions/src/`                | `firebase-admin` | `initializeApp()` は `index.ts` で1回のみ                        |
 
+### `packages/shared` は ESM と CJS の両方を出す
+
+`packages/shared` は **`dist`（CJS）と `dist/esm`（ESM）の二本立て**で、`package.json` の
+`exports` が `import` 条件で後者を指す（`tsconfig.esm.json` + `scripts/emit-esm-package-json.sh`）。
+web / mobile は `import` で、`apps/functions` は `require` で解決するため、**どちらか一方だけでは
+必ず片方が壊れる。**
+
+CJS だけを出していたときは、shared 内の `require('firebase/…')` と、アプリが直接書いた
+`import … from 'firebase/…'` が **firebase SDK の別実装**を掴んでいた（firebase は
+`exports` の `require` / `import` で実装を出し分ける）。firebase は `db` / `auth` を
+instanceof で検査するので、`initFirebase` が返した `db` を `doc()` に渡すと
+`Expected first argument to collection() to be a CollectionReference…` で弾かれ、
+**Firestore への通信が一切できなくなる**（#377）。
+
+そのため次の 2 つを守る。**どちらも型チェックにもテストにも引っかからない**ので、
+`scripts/check-module-formats.mjs` が CI で機械的に検査する（→ `.claude/docs/hooks.md`）。
+
+- `exports` にサブパスを足すときは `types` / `import` / `default` の 3 条件を揃える
+- shared から使う npm パッケージは `import` 条件（ESM ビルド）を持つものを選ぶ。
+  `@geckou/firebase-client` は 0.3.0 から持つ
+
+**既に scaffold 済みの派生プロジェクトは手で当てる。** `packages/` は Template Sync の
+対象外（`.templatesyncignore`）なので、同期では届かない。当てるのは 4 点。
+
+1. `packages/shared/tsconfig.esm.json` を作る（`tsconfig.json` を extends し、
+   `module: esnext` / `moduleResolution: bundler` / `outDir: ./dist/esm`）
+2. `packages/shared/package.json` の `build` を
+   `tsc && tsc -p tsconfig.esm.json && bash ../../scripts/emit-esm-package-json.sh dist/esm` にする
+3. `exports` の各サブパスに `import` 条件（`./dist/esm/…`）を足す
+4. `@geckou/firebase-client` を `^0.3.0` に上げる
+
 ## 認証フロー
 
 ```

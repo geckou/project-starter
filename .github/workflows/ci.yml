@@ -255,3 +255,11 @@ jobs:
       - name: Build
         if: steps.changes.outputs.code == 'true'
         run: yarn build
+
+      # packages/* の出力が exports の条件どおりの形式（ESM / CJS）か。
+      # 食い違うと web / mobile が掴む firebase SDK が二重インスタンスになり、
+      # Firestore への通信が一切できなくなる（#377）。型チェックにもテストにも
+      # 引っかからないのでここで落とす。ビルド成果物を見るので Build の後に置く
+      - name: Module Format Check
+        if: steps.changes.outputs.code == 'true' && hashFiles('scripts/check-module-formats.mjs') != ''
+        run: node scripts/check-module-formats.mjs
