@@ -177,6 +177,12 @@ jobs:
         if: steps.changes.outputs.code == 'true' && hashFiles('scripts/test-workspace-ranges.sh') != ''
         run: bash scripts/test-workspace-ranges.sh
 
+      # 公開物の形式検査（下の Module Format Check）自身の回帰テスト。
+      # 偽の packages/ を組み立てて動かすだけなので依存インストールは要らない
+      - name: Module Format Check Test
+        if: steps.changes.outputs.code == 'true' && hashFiles('scripts/test-module-formats.sh') != ''
+        run: bash scripts/test-module-formats.sh
+
       - if: steps.changes.outputs.code == 'true'
         run: yarn install --frozen-lockfile
 
@@ -255,3 +261,11 @@ jobs:
       - name: Build
         if: steps.changes.outputs.code == 'true'
         run: yarn build
+
+      # packages/* の出力が exports の条件どおりの形式（ESM / CJS）か。
+      # 食い違うと web / mobile が掴む firebase SDK が二重インスタンスになり、
+      # Firestore への通信が一切できなくなる（#377）。型チェックにもテストにも
+      # 引っかからないのでここで落とす。ビルド成果物を見るので Build の後に置く
+      - name: Module Format Check
+        if: steps.changes.outputs.code == 'true' && hashFiles('scripts/check-module-formats.mjs') != ''
+        run: node scripts/check-module-formats.mjs

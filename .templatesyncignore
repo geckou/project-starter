@@ -74,6 +74,10 @@ scripts/test-adopt-references.sh
 # 派生プロジェクトへ同期された状態を再現して docs-check を回す検査（テンプレート本体専用）
 scripts/test-docs-downstream.sh
 
+# 公開物の形式検査（check-module-formats.mjs）の回帰テスト。検査スクリプト本体は
+# 派生にも配る（ci.yml が直接呼ぶ）が、その振る舞いを固定するのは本体の CI の仕事
+scripts/test-module-formats.sh
+
 # 減算・加算スクリプトの回帰テスト。アサーションが**テンプレート本体の形**
 # （全部入りの構成、renovate/*.json や packages/*-config の実体、ci.yml の中身）を
 # 直に見るため、参照方式の派生や層を外した構成では必ず落ちる。

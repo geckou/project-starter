@@ -38,6 +38,7 @@
         "scripts/test-deploy-install.sh",
         "scripts/test-env-distribution.sh",
         "scripts/use-env.sh",
+        "scripts/emit-esm-package-json.sh",
         "packages/eslint-config/index.js",
         "packages/eslint-config/next.js",
         "packages/eslint-config/react.js",

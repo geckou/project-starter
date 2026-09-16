@@ -44,6 +44,56 @@ core の時点で存在し、Blaze プランもこの時点で必須になる。
 | サーバー（SSR / Server Actions） | `apps/web/src/lib/firebase-admin.ts` | `firebase-admin` | `server-only` で保護。クライアントから import するとビルドエラー |
 | Functions                        | `apps/functions/src/`                | `firebase-admin` | `initializeApp()` は `index.ts` で1回のみ                        |
 
+### `packages/shared` は ESM と CJS の両方を出す
+
+`packages/shared` は **`dist`（CJS）と `dist/esm`（ESM）の二本立て**で、`package.json` の
+`exports` が `import` 条件で後者を指す（`tsconfig.esm.json` + `scripts/emit-esm-package-json.sh`）。
+web / mobile は `import` で解決し、`require` で解決する利用側（`apps/mobile/tailwind.config.js` の
+`require('@geckou/shared/theme')` 等）は `default` 経由で CJS を読む。**どちらか一方だけでは
+必ず片方が壊れる。**（`apps/functions` はどちらも読まない — `esbuild --bundle` が
+`apps/functions/tsconfig.json` の `paths` で `packages/shared/src` を直接束ねるため、
+`exports` の解決を通らない。）
+
+CJS だけを出していたときは、shared 内の `require('firebase/…')` と、アプリが直接書いた
+`import … from 'firebase/…'` が **firebase SDK の別実装**を掴んでいた（firebase は
+`exports` の `require` / `import` で実装を出し分ける）。firebase は `db` / `auth` を
+instanceof で検査するので、`initFirebase` が返した `db` を `doc()` に渡すと
+`Expected first argument to collection() to be a CollectionReference…` で弾かれ、
+**Firestore への通信が一切できなくなる**（#377）。
+
+この出力はバンドラ（Next.js / Metro）専用で、素の Node の ESM からは読めない
+（相対 import が拡張子なしで出る）。Node から直接読む経路を作るときは
+`tsconfig.esm.json` のコメントを参照。
+
+そのため次の 2 つを守る。**どちらも型チェックにもテストにも引っかからない。**
+
+- **`exports` にサブパスを足すときは `types` / `import` / `default` の 3 条件を揃える。**
+  1 つでも `import` 条件を落とすと、そのサブパスだけ上の状態に戻る。これは
+  `scripts/check-module-formats.mjs` が CI で機械的に検査する（→ `.claude/docs/hooks.md`）
+- **shared から使う npm パッケージは `import` 条件（ESM ビルド）を持つものを選ぶ。**
+  依存側が CJS だけだと、shared を ESM にしても連鎖の先で CJS に落ちる。
+  **こちらは機械的に検査していない**（チェッカーは `packages/*` の `exports` しか見ない）
+  ので、パッケージを足すときに人が `exports` を見る。`@geckou/firebase-client` は
+  0.3.0 から持つ。`@geckou/billing` は今も CJS だけだが、`@geckou/billing/entitlement`
+  が出すのは SDK のインスタンスを持たない純関数なので実害が無い
+  （インスタンスの同一性を要求する依存を足すときだけ問題になる）
+
+**既に scaffold 済みの派生プロジェクトは手で当てる。** `packages/` は Template Sync の
+対象外（`.templatesyncignore`）なので、同期では届かない。当てるのは 6 点。
+
+1. `packages/shared/tsconfig.esm.json` をテンプレートから**そのままコピーする**
+   （`declaration` / `composite` を切る指定まで含めて必要。`module` と `outDir` だけ
+   足した版では `composite: true` を継承して別物になる）
+2. `packages/shared/tsconfig.json` に `"tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"`
+   を足す（無いと `rm -rf dist` 後のビルドが ESM だけの片肺になる）
+3. `packages/shared/package.json` の `build` を
+   `tsc && tsc -p tsconfig.esm.json && bash ../../scripts/emit-esm-package-json.sh dist/esm` に、
+   `dev` を同じ emit + 2 本の `tsc --watch` にする
+4. `exports` の各サブパスに `import` 条件（`./dist/esm/…`）を足す
+5. `@geckou/firebase-client` を `^0.3.0` に上げる
+6. ルートの `package.json` に `"check:module-formats": "node scripts/check-module-formats.mjs"`
+   を足す（スクリプト本体は同期で届くが、ルートの `package.json` は同期対象外）
+
 ## 認証フロー
 
 ```

@@ -13,7 +13,11 @@
     "isolatedModules": true,
     "declaration": true,
     "declarationMap": true,
-    "composite": true
+    "composite": true,
+    // dist の外（既定は packages/shared/tsconfig.tsbuildinfo）に置くと、
+    // rm -rf dist しても tsc が「出力済み」と判断して CJS を出し直さない。
+    // ESM 側は毎回出るので、dist が ESM だけの片肺になる
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]

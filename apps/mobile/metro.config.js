@@ -15,8 +15,10 @@ config.resolver.nodeModulesPaths = [
 ]
 
 // package.json の "exports" フィールドを Metro に honor させる。
-// これにより @geckou/shared の conditional exports（types→src / default→dist）
-// が tsconfig の paths を介さず一貫した解決経路で扱われる。
+// これにより @geckou/shared の conditional exports（types→src / import→dist/esm /
+// default→dist）が tsconfig の paths を介さず一貫した解決経路で扱われる。
+// Metro の既定の条件名には import が入るので、掴むのは ESM 側（dist/esm）。
+// これが無いと firebase SDK が二重インスタンスになる（→ .claude/docs/architecture.md）。
 config.resolver.unstable_enablePackageExports = true
 
 // nohoist により mobile は react@18 をローカルに持つが、ルートには web 用の

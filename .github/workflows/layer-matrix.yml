@@ -133,3 +133,9 @@ jobs:
 
       - name: Build
         run: yarn build
+
+      # 層を外した構成でも exports の条件と成果物の形式が揃っているか。
+      # 減算は exports のサブパスごと消すので、消し方を間違えると
+      # 残ったサブパスが条件だけ失う（→ #377 の再発）
+      - name: Module Format Check
+        run: node scripts/check-module-formats.mjs
