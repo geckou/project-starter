@@ -303,9 +303,22 @@ shared/src/
 
 コード内で外部ライブラリと同じようにインポートできる。
 実際にはダウンロードされるわけではなく、yarn のワークスペース機能でローカルの
-`packages/shared` を参照している。参照されるのは `exports` の `default` が指す
-`packages/shared/dist/`（ビルド成果物）で、`turbo.json` の `^build` が先にビルドする
-（型だけは `types` が `src/` を指すので、ビルド前でも型チェックは通る）。
+`packages/shared` を参照している。参照されるのはビルド成果物で、`turbo.json` の
+`^build` が先にビルドする（型だけは `types` が `src/` を指すので、ビルド前でも
+型チェックは通る）。
+
+**成果物は CJS と ESM の両方を出す。** `import` すると `dist/esm/`、`require` すると
+`dist/` が読まれる（`exports` の条件で分岐）。ESM 側が要るのは、利用側と firebase SDK の
+実体を揃えるため。`dist/`（CJS）が `require('@geckou/firebase-client')` で掴む実装と、
+アプリが `import` で掴む実装は、firebase 側の `exports` の条件分岐によって別物になる。
+firebase は `db` / `auth` を instanceof で検査するため、CJS 側で作った `db` を ESM 側の
+`doc()` に渡すと `Expected first argument to collection() to be a CollectionReference,
+a DocumentReference or FirebaseFirestore` で弾かれる（geckou/kit#66）。
+
+ESM は `packages/shared/tsconfig.esm.json` で出し、出力先には
+`scripts/emit-esm-package-json.sh` が `{ "type": "module" }` だけの `package.json` を置く
+（これが無いと Node もバンドラも `.js` を CJS として読む）。条件と実際の出力が食い違って
+いないかは `yarn check:module-formats` が検査し、CI でも走る。
 
 ```typescript
 // ルートのバレルが出すのは環境非依存のもの（types / utils / theme / i18n）だけ

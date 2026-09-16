@@ -1,0 +1,18 @@
+{
+  // CJS 用の tsconfig.json と対になる ESM ビルド。出力先は dist/esm。
+  //
+  // ESM のアプリ（web / mobile）が import したとき、このパッケージが
+  // require で掴む firebase SDK とアプリが import で掴む firebase SDK が
+  // 別実装になるのを避けるために要る（geckou/kit#66）。
+  //
+  // 型は exports の types が src を直接指しているので、ここでは出さない。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "outDir": "./dist/esm",
+    "declaration": false,
+    "declarationMap": false,
+    "composite": false
+  }
+}

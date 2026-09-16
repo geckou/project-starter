@@ -255,3 +255,10 @@ jobs:
       - name: Build
         if: steps.changes.outputs.code == 'true'
         run: yarn build
+
+      # exports の import / require 条件と、実際の配布物（ESM / CJS）が食い違っていないか。
+      # 条件だけ足して出力が CJS のままでも型チェックにもテストにも引っかからず、
+      # ESM のアプリから使ったときだけ firebase SDK が二重インスタンスになる（geckou/kit#66）
+      - name: Module Format Check
+        if: steps.changes.outputs.code == 'true' && hashFiles('scripts/check-module-formats.mjs') != ''
+        run: node scripts/check-module-formats.mjs

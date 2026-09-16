@@ -7,52 +7,74 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./types": {
       "types": "./src/types/index.ts",
+      "import": "./dist/esm/types/index.js",
+      "require": "./dist/types/index.js",
       "default": "./dist/types/index.js"
     },
     "./api-client": {
       "types": "./src/api-client/index.ts",
+      "import": "./dist/esm/api-client/index.js",
+      "require": "./dist/api-client/index.js",
       "default": "./dist/api-client/index.js"
     },
     "./billing": {
       "types": "./src/billing/index.ts",
+      "import": "./dist/esm/billing/index.js",
+      "require": "./dist/billing/index.js",
       "default": "./dist/billing/index.js"
     },
     "./utils": {
       "types": "./src/utils/index.ts",
+      "import": "./dist/esm/utils/index.js",
+      "require": "./dist/utils/index.js",
       "default": "./dist/utils/index.js"
     },
     "./firebase": {
       "types": "./src/firebase/index.ts",
+      "import": "./dist/esm/firebase/index.js",
+      "require": "./dist/firebase/index.js",
       "default": "./dist/firebase/index.js"
     },
     "./firestore": {
       "types": "./src/firestore/index.ts",
+      "import": "./dist/esm/firestore/index.js",
+      "require": "./dist/firestore/index.js",
       "default": "./dist/firestore/index.js"
     },
     "./theme": {
       "types": "./src/theme/index.ts",
+      "import": "./dist/esm/theme/index.js",
+      "require": "./dist/theme/index.js",
       "default": "./dist/theme/index.js"
     },
     "./stores": {
       "types": "./src/stores/index.ts",
+      "import": "./dist/esm/stores/index.js",
+      "require": "./dist/stores/index.js",
       "default": "./dist/stores/index.js"
     },
     "./storage": {
       "types": "./src/storage/index.ts",
+      "import": "./dist/esm/storage/index.js",
+      "require": "./dist/storage/index.js",
       "default": "./dist/storage/index.js"
     },
     "./i18n": {
       "types": "./src/i18n/index.ts",
+      "import": "./dist/esm/i18n/index.js",
+      "require": "./dist/i18n/index.js",
       "default": "./dist/i18n/index.js"
     },
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc -p tsconfig.esm.json && bash ../../scripts/emit-esm-package-json.sh dist/esm",
     "dev": "tsc --watch",
     "type-check": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "eslint .",
