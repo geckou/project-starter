@@ -221,7 +221,36 @@ else
   fail "ワイルドカードのサブパスは存在検査の対象外"
 fi
 
-# ---- 10. packages/ が無い構成では落とさない ----
+# ---- 10. 入れ子の条件（{ browser: { import, default } }）を取りこぼし扱いしない ----
+reset_tree sample
+write_dual_package
+printf '%s\n' 'export const b = 2' > "$WORK/repo/packages/sample/src/extra.ts"
+printf '%s\n' 'exports.b = 2' > "$WORK/repo/packages/sample/dist/extra.js"
+printf '%s\n' 'export const b = 2' > "$WORK/repo/packages/sample/dist/esm/extra.js"
+node -e "
+const fs = require('fs')
+const path = '$WORK/repo/packages/sample/package.json'
+const manifest = JSON.parse(fs.readFileSync(path, 'utf8'))
+
+manifest.exports['./extra'] = {
+  types: './src/extra.ts',
+  browser: {
+    import: './dist/esm/extra.js',
+    default: './dist/extra.js',
+  },
+}
+
+fs.writeFileSync(path, JSON.stringify(manifest, null, 2))
+"
+run_checker
+
+if [ "$LAST_STATUS" -eq 0 ]; then
+  pass "入れ子の条件の中の import 条件を見つける"
+else
+  fail "入れ子の条件の中の import 条件を見つける"
+fi
+
+# ---- 11. packages/ が無い構成では落とさない ----
 rm -rf "$WORK/repo"
 mkdir -p "$WORK/repo/scripts"
 cp "$CHECKER" "$WORK/repo/scripts/check-module-formats.mjs"

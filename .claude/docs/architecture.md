@@ -48,8 +48,11 @@ core の時点で存在し、Blaze プランもこの時点で必須になる。
 
 `packages/shared` は **`dist`（CJS）と `dist/esm`（ESM）の二本立て**で、`package.json` の
 `exports` が `import` 条件で後者を指す（`tsconfig.esm.json` + `scripts/emit-esm-package-json.sh`）。
-web / mobile は `import` で、`apps/functions` は `require` で解決するため、**どちらか一方だけでは
-必ず片方が壊れる。**
+web / mobile は `import` で解決し、`require` で解決する利用側（`apps/mobile/tailwind.config.js` の
+`require('@geckou/shared/theme')` 等）は `default` 経由で CJS を読む。**どちらか一方だけでは
+必ず片方が壊れる。**（`apps/functions` はどちらも読まない — `esbuild --bundle` が
+`apps/functions/tsconfig.json` の `paths` で `packages/shared/src` を直接束ねるため、
+`exports` の解決を通らない。）
 
 CJS だけを出していたときは、shared 内の `require('firebase/…')` と、アプリが直接書いた
 `import … from 'firebase/…'` が **firebase SDK の別実装**を掴んでいた（firebase は
@@ -76,7 +79,7 @@ instanceof で検査するので、`initFirebase` が返した `db` を `doc()` 
   （インスタンスの同一性を要求する依存を足すときだけ問題になる）
 
 **既に scaffold 済みの派生プロジェクトは手で当てる。** `packages/` は Template Sync の
-対象外（`.templatesyncignore`）なので、同期では届かない。当てるのは 4 点。
+対象外（`.templatesyncignore`）なので、同期では届かない。当てるのは 6 点。
 
 1. `packages/shared/tsconfig.esm.json` をテンプレートから**そのままコピーする**
    （`declaration` / `composite` を切る指定まで含めて必要。`module` と `outDir` だけ

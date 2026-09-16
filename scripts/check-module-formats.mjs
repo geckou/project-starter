@@ -108,8 +108,13 @@ function checkDualBuildCoverage(name, exportsField, targets) {
     collectTargets(value, [], jsTargets)
 
     const servesJs = jsTargets.some(({ target }) => target.endsWith('.js'))
+    // import はサブパスの直下とは限らない（{ browser: { import, default } } のように
+    // 入れ子になりうる）。葉まで降りた条件列で見る
+    const hasImport = jsTargets.some(({ conditions }) =>
+      conditions.includes('import')
+    )
 
-    if (servesJs && !Object.hasOwn(value, 'import')) {
+    if (servesJs && !hasImport) {
       problems.push(
         `${name}: ${subpath} に import 条件がありません（このパッケージの他のサブパスは持っています）`
       )

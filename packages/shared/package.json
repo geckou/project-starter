@@ -64,7 +64,7 @@
   },
   "scripts": {
     "build": "tsc && tsc -p tsconfig.esm.json && bash ../../scripts/emit-esm-package-json.sh dist/esm",
-    "dev": "bash ../../scripts/emit-esm-package-json.sh dist/esm && tsc --watch --preserveWatchOutput & cjs=$!; trap \"kill $cjs 2>/dev/null\" EXIT INT TERM; tsc -p tsconfig.esm.json --watch --preserveWatchOutput",
+    "dev": "bash ../../scripts/emit-esm-package-json.sh dist/esm && { tsc --watch --preserveWatchOutput & cjs=$!; trap \"kill $cjs 2>/dev/null\" EXIT INT TERM; tsc -p tsconfig.esm.json --watch --preserveWatchOutput; }",
     "type-check": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "eslint .",
     "test": "vitest run",
