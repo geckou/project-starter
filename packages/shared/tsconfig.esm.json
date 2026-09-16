@@ -3,7 +3,12 @@
   // web / mobile は @geckou/shared を import で解決するため、ここが CJS だと
   // shared 内の require('firebase/...') がアプリ側の import と別実装を掴む
   // （firebase は instanceof で検査するので Firestore へ一切通信できなくなる）。
-  // 型定義は exports の types が src を指しているので、ここでは出さない
+  // 型定義は exports の types が src を指しているので、ここでは出さない。
+  //
+  // **この出力はバンドラ専用**（Next.js / Metro / Vite）。moduleResolution: bundler
+  // なので相対 import が拡張子なし（`export * from './types'`）で出て、素の Node の
+  // ESM からは読めない（ERR_UNSUPPORTED_DIR_IMPORT）。Node から直接読む経路を作る
+  // なら module: node16 に変え、src 側の相対 import を拡張子付きに揃える必要がある
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "esnext",

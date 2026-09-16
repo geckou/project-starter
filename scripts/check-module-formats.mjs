@@ -12,14 +12,24 @@
 // exports に条件を足しても、出力が実際に ESM になっていなければ同じことが起きる。
 // 型チェックにもテストにも引っかからないので、ここで機械的に落とす。
 //
-// 見るのは 3 つ。
+// 見るのは 4 つ。
 //   1. exports が指すファイルが実在するか
 //   2. import 条件の JS が本当に ESM か（"type": "module" の配下にあるか込み）
 //   3. その裏（require 条件と、import と並ぶ default）が本当に CJS か
+//   4. **二本立てのパッケージで、import 条件を持たないサブパスが無いか**
+//      （1 つ取りこぼすとそのサブパスだけ #377 の状態に戻る）
 //
 // 条件を持たないサブパス（"./index.js" のような文字列だけ）は、パッケージ全体の
 // "type" がその形式を決めているので存在検査だけにする。@geckou/eslint-config の
 // ように丸ごと ESM のパッケージを落とさないため。
+//
+// 4 は「そのパッケージが既に import 条件を 1 つでも持っている」ときだけ見る。
+// CJS だけを出しているパッケージ（まだ手当てしていない派生の packages/shared 等）を
+// 同期が届いた瞬間に赤くしないため。二本立てにすると決めた時点から一貫性を強制する。
+//
+// ここで検査できないこと: **shared が依存する npm パッケージが ESM を出しているか。**
+// 依存側に import 条件が無ければ、shared を ESM にしても連鎖の先で CJS に落ちる
+// （#377 はこれも原因だった）。パッケージを足すときは人が見る（→ architecture.md）。
 
 import fs from 'node:fs'
 import path from 'node:path'
@@ -79,6 +89,34 @@ function nearestTypeField(filePath, packageDirectory) {
   return 'commonjs'
 }
 
+// 二本立て（import 条件を持つ）パッケージで、import 条件を持たないサブパスを
+// 見つける。オブジェクトで条件を書き分けているサブパスだけが対象で、文字列だけの
+// サブパス（パッケージ全体の "type" が形式を決める）は見ない
+function checkDualBuildCoverage(name, exportsField, targets) {
+  const isDualBuild = targets.some(({ conditions }) =>
+    conditions.includes('import')
+  )
+
+  if (!isDualBuild) return
+
+  for (const [subpath, value] of Object.entries(exportsField)) {
+    if (!subpath.startsWith('.')) continue
+    if (typeof value !== 'object' || value === null) continue
+
+    const jsTargets = []
+
+    collectTargets(value, [], jsTargets)
+
+    const servesJs = jsTargets.some(({ target }) => target.endsWith('.js'))
+
+    if (servesJs && !Object.hasOwn(value, 'import')) {
+      problems.push(
+        `${name}: ${subpath} に import 条件がありません（このパッケージの他のサブパスは持っています）`
+      )
+    }
+  }
+}
+
 function checkPackage(packageDirectory) {
   const manifestPath = path.join(packageDirectory, 'package.json')
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
@@ -90,8 +128,14 @@ function checkPackage(packageDirectory) {
 
   collectTargets(manifest.exports, [], targets)
 
+  checkDualBuildCoverage(name, manifest.exports, targets)
+
   for (const { target, conditions } of targets) {
     if (!target.startsWith('./')) continue
+
+    // ワイルドカード（"./*" 等）は展開しないと実ファイルに落ちない。存在検査の
+    // 対象から外す（パターンのまま存在しないファイルとして報告しないため）
+    if (target.includes('*')) continue
 
     const filePath = path.join(packageDirectory, target)
 
@@ -135,6 +179,13 @@ function checkPackage(packageDirectory) {
 
 function source(filePath) {
   return fs.readFileSync(filePath, 'utf8')
+}
+
+// packages/ を持たない構成（層を潰した派生プロジェクト等）では検査するものが無い。
+// check-layers.mjs と同じく、落とさずに抜ける
+if (!fs.existsSync(PACKAGES_DIRECTORY)) {
+  console.log('[skip] packages/ が無いため公開物の形式の検査をスキップします')
+  process.exit(0)
 }
 
 const packageDirectories = fs

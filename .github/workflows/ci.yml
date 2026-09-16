@@ -177,6 +177,12 @@ jobs:
         if: steps.changes.outputs.code == 'true' && hashFiles('scripts/test-workspace-ranges.sh') != ''
         run: bash scripts/test-workspace-ranges.sh
 
+      # 公開物の形式検査（下の Module Format Check）自身の回帰テスト。
+      # 偽の packages/ を組み立てて動かすだけなので依存インストールは要らない
+      - name: Module Format Check Test
+        if: steps.changes.outputs.code == 'true' && hashFiles('scripts/test-module-formats.sh') != ''
+        run: bash scripts/test-module-formats.sh
+
       - if: steps.changes.outputs.code == 'true'
         run: yarn install --frozen-lockfile
 

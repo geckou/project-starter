@@ -171,10 +171,23 @@ CI でも実行される。
 - 条件が指すファイルが実在するか
 - `import` 条件の JS が本当に ESM か（`"type": "module"` の配下にあるか込み）
 - その裏（`require` 条件と、`import` と並ぶ `default`）が本当に CJS か
+- **二本立てのパッケージに、`import` 条件を持たないサブパスが無いか**（1 つ取りこぼすと
+  そのサブパスだけ #377 の状態に戻る）
 
-条件を持たないサブパス（文字列だけ）は、パッケージ全体の `"type"` が形式を決めているので
-存在検査だけにする（`@geckou/eslint-config` のように丸ごと ESM のパッケージを落とさないため）。
-CI では `ci.yml` の Module Format Check が Build の後に実行する。
+最後の 1 つは「そのパッケージが既に `import` 条件を 1 つでも持っている」ときだけ見る。
+CJS だけを出しているパッケージ（まだ手当てしていない派生の `packages/shared` 等）を
+同期が届いた瞬間に赤くしないため。条件を持たないサブパス（文字列だけ）は、パッケージ全体の
+`"type"` が形式を決めているので存在検査だけにする（`@geckou/eslint-config` のように
+丸ごと ESM のパッケージを落とさないため）。`packages/` を持たない構成ではスキップする。
+
+**検査していないもの**: 依存している npm パッケージが ESM を出しているか。チェッカーが
+読むのは `packages/*` の `exports` だけで、`node_modules` は見ない。依存を足すときは
+人が見る（→ `.claude/docs/architecture.md`）。
+
+`bash scripts/test-module-formats.sh`（`yarn test:module-formats`）が、偽の `packages/` を
+組み立ててチェッカーの落ちる形・通る形を固定する。**チェッカーを変えたらここにケースを足す。**
+CI では `ci.yml` の Module Format Check（Build の後）と Module Format Check Test、
+`layer-matrix.yml` の Module Format Check（層を外した各構成）が実行する。
 
 ## 本体保守で使うスクリプト
 
@@ -195,6 +208,7 @@ bash scripts/test-release-command.sh                  # 上記コマンドの回
 
 node scripts/check-workspace-ranges.mjs               # 参照レンジがローカルの version を満たすか検証
 bash scripts/test-workspace-ranges.sh                 # 上記の回帰テスト
+bash scripts/test-module-formats.sh                   # 公開物の形式検査（check-module-formats.mjs）の回帰テスト
 bash scripts/test-api-diff.sh        # リリース時の API 差分検査の回帰テスト
 ```
 

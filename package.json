@@ -44,6 +44,7 @@
     "test:ranges": "bash scripts/test-workspace-ranges.sh",
     "test:deploy-targets": "bash scripts/test-deploy-targets.sh",
     "test:env-distribution": "bash scripts/test-env-distribution.sh",
+    "test:module-formats": "bash scripts/test-module-formats.sh",
     "check:docs": "bash scripts/check-docs.sh",
     "check:ranges": "node scripts/check-workspace-ranges.mjs",
     "check:module-formats": "node scripts/check-module-formats.mjs",
