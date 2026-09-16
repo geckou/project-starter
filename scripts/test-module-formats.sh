@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+#
+# **このファイルの正は geckou/project-starter/scripts/test-module-formats.sh。**
+# geckou/kit にも同じものがある。直すときはまずそちらを直してから配ること
+# （2 リポジトリで中身が同じであることを前提にしている）。
+#
 # scripts/check-module-formats.mjs の回帰テスト。
 #
 #   bash scripts/test-module-formats.sh
@@ -6,7 +11,7 @@
 # 一時ディレクトリに偽の packages/<名前> を組み立てて、チェッカーが落ちる形・
 # 通る形をそれぞれ確かめる。本物のリポジトリも node_modules も触らない。
 #
-# **なぜ回帰テストが要るか**: このチェッカーが見逃すと、#377（firebase SDK の
+# **なぜ回帰テストが要るか**: このチェッカーが見逃すと、geckou/project-starter#377（firebase SDK の
 # 二重インスタンスで Firestore へ一切通信できない）が CI 緑のまま再発する。
 # 「落ちるはず」の形が本当に落ちることは、実際に走らせないと分からない。
 set -euo pipefail
@@ -133,7 +138,7 @@ else
   fail "条件が指すファイルが無ければ落ちる"
 fi
 
-# ---- 6. 二本立てなのに import 条件を持たないサブパスがある（#377 の再発の形）----
+# ---- 6. 二本立てなのに import 条件を持たないサブパスがある（geckou/project-starter#377 の再発の形）----
 reset_tree sample
 write_dual_package
 printf '%s\n' 'export const b = 2' > "$WORK/repo/packages/sample/src/extra.ts"

@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 //
+// **このファイルの正は geckou/project-starter/scripts/check-module-formats.mjs。**
+// geckou/kit にも同じものがある。直すときはまずそちらを直してから配ること
+// （2 リポジトリで中身が同じであることを前提にしている）。
+//
 // packages/* の公開物が package.json の exports の条件どおりの形式（ESM / CJS）に
 // なっているかを検査する。
 //
@@ -8,7 +12,7 @@
 // **なぜ必要か**: `import` 条件を持たない CJS のみのパッケージを ESM のアプリ
 // （Next.js / Expo）から使うと、パッケージが require した firebase SDK とアプリが
 // import した firebase SDK が別インスタンスになる。firebase は db / auth を
-// instanceof で検査するため、Firestore への通信が一切できなくなる（#377）。
+// instanceof で検査するため、Firestore への通信が一切できなくなる（geckou/project-starter#377）。
 // exports に条件を足しても、出力が実際に ESM になっていなければ同じことが起きる。
 // 型チェックにもテストにも引っかからないので、ここで機械的に落とす。
 //
@@ -17,7 +21,7 @@
 //   2. import 条件の JS が本当に ESM か（"type": "module" の配下にあるか込み）
 //   3. その裏（require 条件と、import と並ぶ default）が本当に CJS か
 //   4. **二本立てのパッケージで、import 条件を持たないサブパスが無いか**
-//      （1 つ取りこぼすとそのサブパスだけ #377 の状態に戻る）
+//      （1 つ取りこぼすとそのサブパスだけ geckou/project-starter#377 の状態に戻る）
 //
 // 条件を持たないサブパス（"./index.js" のような文字列だけ）は、パッケージ全体の
 // "type" がその形式を決めているので存在検査だけにする。@geckou/eslint-config の
@@ -29,7 +33,7 @@
 //
 // ここで検査できないこと: **shared が依存する npm パッケージが ESM を出しているか。**
 // 依存側に import 条件が無ければ、shared を ESM にしても連鎖の先で CJS に落ちる
-// （#377 はこれも原因だった）。パッケージを足すときは人が見る（→ architecture.md）。
+// （geckou/project-starter#377 はこれも原因だった）。パッケージを足すときは人が見る（→ architecture.md）。
 
 import fs from 'node:fs'
 import path from 'node:path'
