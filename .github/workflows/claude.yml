@@ -58,8 +58,14 @@ jobs:
             重要度付きでレビューコメントを投稿してください。
 
   mention:
-    # 外部ユーザーのコメントで書き込み権限付きジョブが起動しないよう、
-    # メンションはリポジトリの OWNER / MEMBER / COLLABORATOR に限定する
+    # author_association は**一次フィルタ**であって、権限の保証ではない（#382）。
+    # COLLABORATOR は read / triage 権限の collaborator も含み、MEMBER も Organization の
+    # 基本権限が read なら write を持たない。書き込み権限の保証は claude-code-action が
+    # 担う: Issue / コメント起点のイベントでは実行者（github.actor）の権限を
+    # collaborators/{user}/permission で確認し、admin / write 以外なら失敗させる
+    # （src/entrypoints/run.ts → src/github/validation/permissions.ts。
+    # allowed_non_write_users を渡していないのでこのチェックは有効）。
+    # ここで絞るのは、外部ユーザーのコメントのたびにランナーを起動しないため
     if: >-
       (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
       contains(github.event.comment.body, '@claude') &&
@@ -100,11 +106,18 @@ jobs:
     # 人が見つけるまで寝かせておく理由が無い（テンプレートの修正は全派生に効くため、
     # 早いほど取りこぼしが減る）。マージは人が決めるので、出しっぱなしにはならない。
     #
-    # 起票者を OWNER / MEMBER / COLLABORATOR に限るのは mention ジョブと同じ理由。
     # このリポジトリは public なので、誰でも立てられる Issue で書き込み権限付きの
     # ジョブが動くと、外部から任意のプロンプトを流し込める入口になる。
     # from-downstream ラベルは Issue テンプレートが**誰の起票でも**自動で付けるため、
-    # ラベルだけでは絞れない（起票者の権限で絞るのが要点）。
+    # ラベルだけでは絞れない。防御は 2 段（#382）:
+    #
+    #   1. author_association の一次フィルタ（この if:）。権限の保証ではなく、
+    #      外部の起票のたびにランナーを起動しないための絞り込み（→ mention ジョブ）
+    #   2. write 権限の確認。opened では claude-code-action が実行者（= 起票者）を
+    #      確認する。labeled では実行者が**ラベルを付けた人**であって起票者ではないので、
+    #      アクションのチェックだけだと「write 権限のない人が書いた本文に、write 権限を
+    #      持つ人がラベルを付ける」経路でその本文がそのままプロンプトになる。
+    #      下の check-author ステップが起票者の権限を確認して、それを塞ぐ
     #
     # labeled も見るのは、テンプレートを使わずに立てた Issue へ後からラベルを
     # 付け直したときに拾うため。付いたラベルがそれ自身のときだけ起動する
@@ -152,15 +165,39 @@ jobs:
             echo "ANTHROPIC_API_KEY が未設定のためスキップします"
           fi
 
-      - uses: actions/checkout@v7
+      # 起票者が write 権限を持つかを確認する（上のコメントの 2 段目。#382）。
+      # claude-code-action が見るのは github.actor（labeled ではラベルを付けた人）なので、
+      # 本文を書いた起票者はここで別に確認する。opened では actor = 起票者だが、
+      # 判定を 1 か所にするため action に依らずここでも同じ確認をする。
+      # permission は admin / write / read / none のいずれか（maintain は write に含まれる）
+      - name: Check issue author permission
+        id: check-author
         if: steps.check.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          permission=$(gh api "repos/${GITHUB_REPOSITORY}/collaborators/${AUTHOR}/permission" --jq '.permission' 2>/dev/null || echo "unknown")
+          case "$permission" in
+            admin | write)
+              echo "allowed=true" >> "$GITHUB_OUTPUT"
+              echo "起票者 ${AUTHOR} の権限: ${permission}"
+              ;;
+            *)
+              echo "allowed=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::起票者 ${AUTHOR} は write 権限を持たない（${permission}）ためスキップします。本文を確認したうえで動かすには、write 権限を持つ人が Issue を立て直すか、コメントで @claude にメンションしてください"
+              ;;
+          esac
+
+      - uses: actions/checkout@v7
+        if: steps.check-author.outputs.allowed == 'true'
         with:
           # ブランチを production から切るため、全履歴を取る
           fetch-depth: 0
 
       # contents: write を持つジョブで動くため、タグではなくコミット SHA で固定する
       - uses: anthropics/claude-code-action@d75b94d5ad426cb8546e6628b6f5f19b84e5cce1 # v1.0.216
-        if: steps.check.outputs.enabled == 'true'
+        if: steps.check-author.outputs.allowed == 'true'
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # action が作るブランチの接頭辞。既定は `claude/` で、CLAUDE.md の

@@ -167,7 +167,7 @@ project-starter/
 | ------------ | ---------- | -------------------- |
 | Node.js      | 22 以上    | `node -v`            |
 | yarn         | 1.x        | `yarn -v`            |
-| Firebase CLI | 最新       | `firebase --version` |
+| Firebase CLI | リポジトリで固定 | `npx firebase --version`（`yarn install` で入る） |
 
 Node.js のバージョンは `.nvmrc` で管理している。nvm を使っている場合は `nvm use` で切り替え可能。
 
@@ -192,7 +192,7 @@ yarn setup
 - 環境別 env ファイル（`.env.develop` / `.env.staging` / `.env.production`）を
   `.env.example` から作成
 - `.env.local` の作成（`.env.develop` からコピー = 既定は develop 環境）
-- Node.js / yarn / Firebase CLI のバージョン・導入チェック
+- Node.js / yarn のバージョン・導入チェック（Firebase CLI はルート `package.json` に固定してあり、`yarn install` で入る）
 - `production` ブランチの保護ルール（`.github/rulesets/production.json`）の取り込み
   （`gh` が使え、`production` ブランチが既にある場合）
 - `release/*` / `hotfix/*` の保護ルール（`.github/rulesets/release.json`）の取り込み

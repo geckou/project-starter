@@ -68,9 +68,11 @@ gh issue create \
 修正 PR を出す（マージは人）。再現しない・判断が要る・1 PR に収まらない場合は、
 Issue にコメントだけが付く。
 
-- 起動するのは、親リポジトリで書き込み権限を持つ人（`OWNER` / `MEMBER` / `COLLABORATOR`。
-  Organization のメンバーとは限らず、リポジトリ単位の collaborator も含む）が立てた
-  **open な** Issue だけ。親リポジトリは public なので、ラベルではなく**起票者の権限**で絞っている
+- 起動するのは、親リポジトリで **write 権限**を持つ人が立てた **open な** Issue だけ。
+  親リポジトリは public なので、ラベルではなく**起票者の権限**で絞っている。
+  `author_association`（`OWNER` / `MEMBER` / `COLLABORATOR`）は起動回数を減らす一次フィルタで、
+  権限の確認はワークフロー内のステップと `claude-code-action` が行う（read 権限の
+  collaborator が立てた Issue では動かない）
 - テンプレートを使わずに立てた Issue へ、あとから `from-downstream` ラベルを付けても動く
   （そのラベルが付いたときだけ。他のラベルでは起動しない）
 - そのため、**Issue の書き方がそのまま作業の入力になる。** 再現手順と「期待する挙動 /

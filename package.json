@@ -65,6 +65,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.2.5",
     "firebase": "^11.0.0",
+    "firebase-tools": "^15",
     "husky": "^9.1.7",
     "lint-staged": "^17.3.0",
     "next": "^15.5.23",
