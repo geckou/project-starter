@@ -51,9 +51,6 @@
         "renovate/default.json",
         "renovate/automerge.json"
       ],
-      "deps": {
-        "package.json": ["firebase-tools"]
-      },
       "env": [
         "BASIC_AUTH_CREDENTIALS",
         "NEXT_PUBLIC_GTM_ID",
@@ -63,7 +60,7 @@
         "hosting.frameworksBackend の SSR 用関数は framework アダプタが自動生成して Cloud Functions (2nd gen) にデプロイする。リポジトリにコードを持たないため core に属する（functions 層とは別物）。",
         "apps/web/src/app/ui-demo/ は @geckou/ui-react だけに依存する参考ページ。層ではなく scaffold の削除対象（/init-project で消す類）として扱う。",
         "packages/eslint-config / prettier-config / commitlint-config は第0層（規約）の設定を npm パッケージとして配るためのもの。層に直交するが、core と一緒に必ず存在するのでここに置く。mobile 層に属するのは ./expo のサブパスだけ。",
-        "firebase-tools（Firebase CLI）は Hosting のデプロイと環境切替（scripts/deploy.sh / use-env.sh）が使うので core に属する。版をルート package.json で固定する（#381）。"
+        "firebase-tools（Firebase CLI）は Hosting のデプロイと環境切替（scripts/deploy.sh / use-env.sh）が使うので core に属する。版はルート package.json で固定する（#381）が、deps には登録しない: ルート package.json は Template Sync の対象外で、層を外した派生では sync-layers.mjs が core の定義をテンプレート版に差し替えるため、登録すると固定していない派生の check-layers.mjs が落ちる。"
       ]
     },
     {
