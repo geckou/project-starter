@@ -80,7 +80,16 @@ jobs:
 
       - name: Install Firebase CLI
         if: steps.layers.outputs.rules == 'true'
-        run: npm install -g firebase-tools@14
+        run: |
+          # ルート package.json に固定した firebase-tools（#381）を使う。
+          # ルート package.json は Template Sync の対象外なので、固定していない派生では
+          # 従来どおりグローバルへ入れる（版はテンプレートの固定に合わせる）
+          if [ -x node_modules/.bin/firebase ]; then
+            echo "firebase-tools $(node_modules/.bin/firebase --version) を node_modules から使います"
+          else
+            echo "::notice::ルート package.json に firebase-tools が無いためグローバルにインストールします（yarn add -W -D firebase-tools@^15 で固定できます）"
+            npm install -g firebase-tools@15
+          fi
 
       - name: Firestore Rules Test
         if: steps.layers.outputs.rules == 'true'

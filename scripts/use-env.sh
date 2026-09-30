@@ -5,6 +5,11 @@ set -e
 
 ENV=${1:-develop}
 
+# firebase use はルート package.json に固定した firebase-tools（node_modules/.bin）で
+# 実行する。yarn env:* 経由なら yarn が PATH に入れるが、直接呼ぶ経路では入らない（#381）。
+# 固定していない派生では node_modules/.bin/firebase が無く、従来どおり PATH 上の CLI に落ちる
+export PATH="$PWD/node_modules/.bin:$PATH"
+
 if [ ! -f ".env.${ENV}" ]; then
   echo "[error] .env.${ENV} が見つかりません"
   echo "  作成: cp .env.example .env.${ENV} で作成し、値を入力してください"
@@ -16,7 +21,7 @@ fi
 #
 # framework-backed hosting（firebase.json の frameworksBackend）では、SSR 用の関数を
 # firebase-tools が自動生成する。そのとき **hosting.source の .env** が関数の環境変数に
-# なる（firebase-tools 14 の lib/frameworks/index.js）。use-env.sh が
+# なる（firebase-tools 15 の lib/frameworks/index.js）。use-env.sh が
 # apps/web/.env.local を書くだけでは、サーバー専用の変数が SSR 側で undefined になる
 # （middleware の Basic 認証が dev/stg で効かない等）。
 #

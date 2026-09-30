@@ -13,7 +13,8 @@ cd "$(dirname "$0")/.."
 
 # emulators:exec は渡したコマンドを /bin/sh で実行するため、yarn 経由の
 # 起動でないと node_modules/.bin が PATH に入らず vitest が見つからない。
-# CI は yarn を介さずこのスクリプトを直接呼ぶので、ここで明示的に通す
+# CI は yarn を介さずこのスクリプトを直接呼ぶので、ここで明示的に通す。
+# firebase 自体も同じ場所から取る（ルート package.json に固定した firebase-tools。#381）
 export PATH="$PWD/node_modules/.bin:$PATH"
 
 firebase emulators:exec \

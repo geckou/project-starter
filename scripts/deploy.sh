@@ -19,6 +19,12 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+# firebase はルート package.json に固定した firebase-tools（node_modules/.bin）を使う。
+# yarn deploy:* 経由なら yarn が PATH に入れるが、このスクリプトを直接呼ぶ経路
+# （ドキュメントの手順・deploy.yml）では入らないので、ここで明示的に通す（#381）。
+# 固定していない派生では node_modules/.bin/firebase が無く、従来どおり PATH 上の CLI に落ちる
+export PATH="$PWD/node_modules/.bin:$PATH"
+
 ENV=${1:-develop}
 DEPLOY_ONLY=""
 DEPLOY_ONLY_GIVEN=false
@@ -221,7 +227,7 @@ done
 # デプロイ中だけ退避する env ファイル。
 #
 # framework-backed hosting は **apps/web/.env.* を丸ごと**関数のソースへ同梱する
-# （firebase-tools 14 の lib/frameworks/index.js が glob('.env.*') でコピーし、
+# （firebase-tools 15 の lib/frameworks/index.js が glob('.env.*') でコピーし、
 # lib/deploy/functions/prepareFunctionsUpload.js の既定 ignore は dotfile を外さない）。
 # apps/web/.env.local は .env.<環境名> の全文コピーなので、そのままだと
 # FIREBASE_SERVICE_ACCOUNT_KEY のようなサーバー秘密まで関数に載る（#329）。

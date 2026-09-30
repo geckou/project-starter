@@ -242,7 +242,8 @@ Firebase プロジェクトごとに別なので、環境の切り替えでキ�
 
 `hosting.frameworksBackend` を使う構成では、SSR 用の Cloud Functions を firebase-tools が
 自動生成する。`apps/web/` の env ファイルは**3 通りの届き方**をする。以下は
-firebase-tools 14 の `lib/frameworks/index.js` と `lib/functions/env.js` を読んで確かめたもの。
+firebase-tools 15 の `lib/frameworks/index.js` と `lib/functions/env.js` を読んで確かめたもの
+（ルート `package.json` の devDependencies に固定してある版。#381）。
 
 | 届き方 | 対象のファイル | 効くところ |
 | --- | --- | --- |

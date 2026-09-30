@@ -144,12 +144,25 @@ else
   echo "  → npm install -g yarn"
 fi
 
-# Firebase CLI チェック
-if command -v firebase &> /dev/null; then
-  echo "[ok] firebase $(firebase --version)"
+# Firebase CLI チェック。
+# firebase-tools はルート package.json の devDependencies に固定し、yarn install で
+# node_modules/.bin/firebase に入れる（#381）。グローバルの CLI に頼ると、マシンや CI
+# ごとに版がずれて Functions エミュレーターの起動やデプロイが予告なく壊れる。
+# ルート package.json は Template Sync の対象外なので、固定していない派生では
+# 従来どおりグローバルの CLI を見たうえで、固定を促す
+if node -e "process.exit(require('./package.json').devDependencies?.['firebase-tools'] ? 0 : 1)" 2>/dev/null; then
+  if [ -x node_modules/.bin/firebase ]; then
+    echo "[ok] firebase $(node_modules/.bin/firebase --version)（node_modules に固定）"
+  else
+    echo "[info] firebase-tools は yarn install で node_modules に入ります（グローバルのインストールは不要）"
+  fi
+elif command -v firebase &> /dev/null; then
+  echo "[ok] firebase $(firebase --version)（グローバル）"
+  echo "  → 版を固定するには: yarn add -W -D firebase-tools@^15"
 else
   echo "[warn] Firebase CLI がインストールされていません"
-  echo "  → npm install -g firebase-tools"
+  echo "  → yarn add -W -D firebase-tools@^15（推奨。リポジトリで版を固定する）"
+  echo "  → または npm install -g firebase-tools@15"
 fi
 
 echo ""
