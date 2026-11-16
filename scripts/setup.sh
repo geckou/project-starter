@@ -196,6 +196,20 @@ detect_repo() {
   fi
 
   # owner/repo を抽出（BSD sed は非貪欲量指定子 .+? を解釈できないため多段置換。末尾の / と .git も除去）
+  #
+  # 先に github.com の URL かを確かめる。sed は一致しなければ入力をそのまま返すので、
+  # GitLab 等のリモートでも REPO が空にならず、URL 全体を owner/repo として gh api に
+  # 渡して「production ブランチがまだ存在しません」という無関係な案内になる（#316）
+  case "$REMOTE_URL" in
+    *github.com[:/]*) ;;
+    *)
+      # URL は出さない（https://<トークン>@host/... の形だと資格情報が画面に残る）
+      echo "[skip] origin が github.com のリポジトリではありません"
+      echo "  → ブランチ保護の設定は GitHub のリポジトリでのみ行います"
+      return 1
+      ;;
+  esac
+
   REPO=$(echo "$REMOTE_URL" | sed -E 's#.*github\.com[:/]##; s#/$##; s#\.git$##')
   if [ -z "$REPO" ]; then
     echo "[skip] GitHub リポジトリを検出できませんでした"
