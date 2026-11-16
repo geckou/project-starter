@@ -102,15 +102,23 @@ rm -f .github/workflows/publish.yml .github/workflows/layer-matrix.yml \
 rm -f scripts/release.sh scripts/geckou-release scripts/install-release-command.sh \
   scripts/test-release-command.sh scripts/check-api-diff.mjs scripts/test-api-diff.sh \
   scripts/check-workspace-ranges.mjs scripts/test-workspace-ranges.sh \
+  scripts/adopt-references.mjs scripts/test-adopt-references.sh \
+  scripts/test-docs-downstream.sh scripts/test-module-formats.sh \
   scripts/test-layers.sh
 ```
+
+この一覧は `.templatesyncignore` の `template-only:start` / `:end` の範囲と一致させる
+（`scripts/test-docs-downstream.sh` がテンプレート本体の CI で突き合わせる）。
 
 `ci.yml` の該当ステップは `hashFiles` で存在を見ているため、消しても CI は緑のまま通る。
 
 あわせて **`.claude/docs/hooks.md` の「本体保守で使うスクリプト」節を削除する。**
 このファイルは Template Sync の対象なので派生にも届くが、節が挙げているスクリプトは
-上で消したものを含み、残すと `yarn check:docs` が参照切れとして検出する
-（節ごと消せば検出されない。テンプレート更新で節が戻ってきたら、また消す）。
+上で消したものを含み、残すと存在しないスクリプトの説明になる。
+**消し忘れても `yarn check:docs` は検出しない** — `template-only` に載っていて実在しない
+パスへの言及は「派生には無いだけ」として見逃す作りのため（`scripts/check-docs.sh` の
+`is_template_only`）。CI では気付けないので、ここで消す（テンプレート更新で節が戻ってきたら、
+また消す）。
 
 ### 4. `@geckou/*` スコープの一括リネーム
 
