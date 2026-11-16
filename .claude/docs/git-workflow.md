@@ -845,6 +845,17 @@ PAT だと、詰まる／詰まらない以前に次の2つが常時ついて回
 避けられるはず。
 
 scaffold 直後のリポジトリにこのラベルは無いので、先に作っておくのが確実。
+**`yarn setup` が、同期される設定の前提になっているラベルをまとめて作る**（不足分だけ。既にある
+ラベルには触らない）。ラベルはリポジトリの状態であってファイルではないので、Template Sync でも
+`/init-project` でも届かない。
+
+| ラベル | 要求しているもの |
+|---|---|
+| `template-sync` | `.github/workflows/template-sync.yml` の `pr_labels` |
+| `dependencies` / `security` | `renovate/default.json` |
+| `task` / `from-downstream` | `.github/ISSUE_TEMPLATE/` |
+
+手で作るなら次のとおり。
 
 ```bash
 gh label create template-sync
