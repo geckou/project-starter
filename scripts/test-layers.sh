@@ -191,6 +191,61 @@ else
 fi
 rm -rf "$broken"
 
+# .env.example が無い派生（.env* は Template Sync の対象外）。生の ENOENT で落ちると、
+# それまでに集めた指摘が 1 つも出ない（#313）
+broken=$(make_variant)
+rm -f "$broken/.env.example"
+node -e "
+  const fs = require('fs');
+  const manifest = JSON.parse(fs.readFileSync('$broken/layers.json', 'utf8'));
+  manifest.layers.find((l) => l.name === 'firebase').files.push('apps/web/src/lib/does-not-exist.ts');
+  fs.writeFileSync('$broken/layers.json', JSON.stringify(manifest, null, 2) + '\n');
+"
+output=$(cd "$broken" && node scripts/check-layers.mjs 2>&1)
+if echo "$output" | grep -q 'ENOENT'; then
+  fail ".env.example が無いと ENOENT のスタックトレースで落ちる" "$output"
+elif echo "$output" | grep -q '\.env\.example がありません'; then
+  pass ".env.example が無いことを指摘として報告する"
+else
+  fail ".env.example が無いことを報告していない" "$output"
+fi
+if echo "$output" | grep -q 'does-not-exist.ts'; then
+  pass ".env.example が無くても他の検査結果を出力する"
+else
+  fail ".env.example が無いと他の検査結果が出ない" "$output"
+fi
+
+# env を宣言している層が無ければ（blocks からも外してあれば）、.env.example が無くても
+# 検査するものが無い
+node -e "
+  const fs = require('fs');
+  const manifest = JSON.parse(fs.readFileSync('$broken/layers.json', 'utf8'));
+  for (const layer of manifest.layers) {
+    delete layer.env;
+    if (layer.blocks) layer.blocks = layer.blocks.filter((file) => file !== '.env.example');
+    layer.files = (layer.files ?? []).filter((file) => !file.includes('does-not-exist'));
+  }
+  fs.writeFileSync('$broken/layers.json', JSON.stringify(manifest, null, 2) + '\n');
+"
+if (cd "$broken" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  pass "env を宣言していなければ .env.example が無くても通す"
+else
+  fail "env を宣言していないのに .env.example の不在で落ちる" "$(cd "$broken" && node scripts/check-layers.mjs 2>&1)"
+fi
+rm -rf "$broken"
+
+# .env.example のマーカーが壊れているとき。3-4 が報告したあと、env の節がもう一度
+# findBlocks を呼んで生の例外で落ちると、やはり指摘の一覧が出ない（#313）
+broken=$(make_variant)
+printf '\n# layer:billing:start\n' >> "$broken/.env.example"
+output=$(cd "$broken" && node scripts/check-layers.mjs 2>&1)
+if echo "$output" | grep -q '^  - \.env\.example: 閉じていないマーカー'; then
+  pass ".env.example の壊れたマーカーを指摘の一覧として報告する"
+else
+  fail ".env.example の壊れたマーカーで指摘の一覧が出ない" "$output"
+fi
+rm -rf "$broken"
+
 # ワークスペースの公開区分。private も publishConfig も無いと、add-layer の
 # スコープ書き換えから黙って漏れる（型チェックにもテストにも引っかからない）
 set_workspace_manifest() {

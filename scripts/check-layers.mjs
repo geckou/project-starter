@@ -220,9 +220,35 @@ for (const layer of manifest.layers) {
 }
 
 // --- 7. env ---
-const envExample = fs.readFileSync(path.join(root, '.env.example'), 'utf8')
-const envLines = envExample.split('\n')
-const envBlocks = findBlocks(envExample)
+// .env* は Template Sync の対象外なので、派生が .env.example を消して layers.json だけ
+// 残している状態はあり得る。無条件に読むと、ここまでに集めた指摘を 1 つも出さずに
+// 生の ENOENT で落ちる（#313）。pruneManifest も同じファイルの不在を許容している
+const envExamplePath = path.join(root, '.env.example')
+const envExample = fs.existsSync(envExamplePath)
+  ? fs.readFileSync(envExamplePath, 'utf8')
+  : null
+
+let envBlocks = null
+
+if (envExample === null) {
+  // env を宣言している層が無ければ検査するものが無い。あれば、宣言が実態と合っていない
+  for (const layer of manifest.layers) {
+    if ((layer.env ?? []).length === 0) continue
+
+    fail(
+      `${layer.name}.env が挙がっていますが .env.example がありません` +
+        '（.env.example を戻すか、layers.json の env を外してください）'
+    )
+  }
+} else {
+  try {
+    envBlocks = findBlocks(envExample)
+  } catch {
+    // マーカーの不整合は 3-4 で報告済み。範囲が決まらないので env の検査だけ飛ばす
+  }
+}
+
+const envLines = (envExample ?? '').split('\n')
 
 /** そのキーの代入行（コメントアウトされたものも含む）がある行番号 */
 function envKeyLines(key) {
@@ -233,7 +259,7 @@ function envKeyLines(key) {
     .filter((index) => index >= 0)
 }
 
-for (const layer of manifest.layers) {
+for (const layer of envBlocks === null ? [] : manifest.layers) {
   for (const key of layer.env ?? []) {
     const lines = envKeyLines(key)
 
