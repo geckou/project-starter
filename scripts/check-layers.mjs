@@ -13,7 +13,7 @@
 //   4. blocks に挙げたファイルに、その層のマーカーが実在するか（逆も）
 //   5. deps / scripts / json のキーが実在するか
 //   6. replace の find が実在するか
-//   7. env に挙げたキーが .env.example の当該層のマーカー内にあるか
+//   7. env に挙げたキーが .env.example の当該層のマーカー内に（全ての代入行が）あるか
 //
 // node_modules に依存しない。yarn install なしで実行できる。
 
@@ -23,6 +23,7 @@ import path from 'node:path'
 import {
   DEPENDENCY_FIELDS,
   SELF_DOCUMENTING,
+  envKeyPlacement,
   findBlocks,
   isTextFile,
   listFiles,
@@ -228,7 +229,8 @@ const envExample = fs.existsSync(envExamplePath)
   ? fs.readFileSync(envExamplePath, 'utf8')
   : null
 
-let envBlocks = null
+// マーカーが壊れていると範囲が決まらない（3-4 で報告済み）ので、env の検査だけ飛ばす
+let envCheckable = envExample !== null
 
 if (envExample === null) {
   // env を宣言している層が無ければ検査するものが無い。あれば、宣言が実態と合っていない
@@ -242,56 +244,35 @@ if (envExample === null) {
   }
 } else {
   try {
-    envBlocks = findBlocks(envExample)
+    findBlocks(envExample)
   } catch {
-    // マーカーの不整合は 3-4 で報告済み。範囲が決まらないので env の検査だけ飛ばす
+    envCheckable = false
   }
 }
 
-const envLines = (envExample ?? '').split('\n')
-
-/** そのキーの代入行（コメントアウトされたものも含む）がある行番号 */
-function envKeyLines(key) {
-  const pattern = new RegExp(`^#?\\s*${key}=`)
-
-  return envLines
-    .map((line, index) => (pattern.test(line) ? index : -1))
-    .filter((index) => index >= 0)
-}
-
-for (const layer of envBlocks === null ? [] : manifest.layers) {
+for (const layer of envCheckable ? manifest.layers : []) {
   for (const key of layer.env ?? []) {
-    const lines = envKeyLines(key)
+    // 判定は全ての代入行を見る。どれか 1 行が範囲内にあるだけで通すと、同じキーを
+    // マーカーの外にも書いた状態を見逃し、減算しても外側の行が残る（#311）
+    const placement = envKeyPlacement(envExample, layer, key)
 
-    if (lines.length === 0) {
+    if (placement === 'missing') {
       fail(`${layer.name}.env のキーが .env.example にありません: ${key}`)
       continue
     }
 
+    if (placement === 'ok') continue
+
     // core は層のマーカーを持たない（マーカー外＝core）
     if (layer.requires === null) {
-      const wrapped = envBlocks.some((block) =>
-        lines.some((line) => line > block.startLine && line < block.endLine)
-      )
-
-      if (wrapped) {
-        fail(`core.env のキーが層のマーカー内にあります: ${key}`)
-      }
-
+      fail(`core.env のキーが層のマーカー内にあります: ${key}`)
       continue
     }
 
-    const wrapped = envBlocks.some(
-      (block) =>
-        markerLayers(block.spec).includes(layer.name) &&
-        lines.some((line) => line > block.startLine && line < block.endLine)
+    fail(
+      `${layer.name}.env のキーが layer:${layer.name} のマーカーの外にあります` +
+        `（全ての代入行をマーカー内に置くこと）: ${key}`
     )
-
-    if (!wrapped) {
-      fail(
-        `${layer.name}.env のキーが layer:${layer.name} のマーカー内にありません: ${key}`
-      )
-    }
   }
 }
 

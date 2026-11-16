@@ -191,6 +191,49 @@ else
 fi
 rm -rf "$broken"
 
+# 層専用の env キーが、マーカーの外にも書かれているとき。どれか 1 行が範囲内に
+# あるだけで通すと、その層を減算しても外側の行が残る（#311）
+broken=$(make_variant)
+printf '\nSTRIPE_PRICE_IDS=\n' >> "$broken/.env.example"
+output=$(cd "$broken" && node scripts/check-layers.mjs 2>&1)
+if echo "$output" | grep -q 'billing.env のキーが layer:billing のマーカーの外にあります.*STRIPE_PRICE_IDS'; then
+  pass "マーカーの外にも書かれた層専用の env キーを検出する"
+else
+  fail "マーカーの外にも書かれた層専用の env キーを見逃す" "$output"
+fi
+rm -rf "$broken"
+
+# コメントアウトした代入行も同じ扱い（減算で残るのは同じ）
+broken=$(make_variant)
+printf '\n# STRIPE_PRICE_IDS=price_xxx\n' >> "$broken/.env.example"
+if (cd "$broken" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  fail "マーカーの外のコメントアウトされた env キーを見逃す"
+else
+  pass "マーカーの外のコメントアウトされた env キーも検出する"
+fi
+rm -rf "$broken"
+
+# 複数の層を列挙したマーカー（層の交点）の中にあるぶんは、その層の範囲内として数える
+marker_case_env=$(node --input-type=module -e "
+  import { envKeyPlacement } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const env = ['CORE=', '# layer:billing:start', 'KEY=', '# layer:billing:end', '# layer:billing,mobile:start', '# KEY=x', '# layer:billing,mobile:end'].join('\n')
+  const billing = { name: 'billing', requires: 'functions' }
+  const core = { name: 'core', requires: null }
+  const results = [
+    envKeyPlacement(env, billing, 'KEY'),
+    envKeyPlacement(env + '\nKEY=', billing, 'KEY'),
+    envKeyPlacement(env, billing, 'NONE'),
+    envKeyPlacement(env, core, 'CORE'),
+    envKeyPlacement(env, core, 'KEY'),
+  ].join(' ')
+  console.log(results)
+" 2>&1)
+if [ "$marker_case_env" = "ok misplaced missing ok misplaced" ]; then
+  pass "env キーの位置判定（全行が範囲内 / 外に 1 行 / 無い / core）"
+else
+  fail "env キーの位置判定が期待と違う" "$marker_case_env"
+fi
+
 # .env.example が無い派生（.env* は Template Sync の対象外）。生の ENOENT で落ちると、
 # それまでに集めた指摘が 1 つも出ない（#313）
 broken=$(make_variant)

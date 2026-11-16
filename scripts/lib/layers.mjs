@@ -491,6 +491,44 @@ export function pruneManifest(root, manifest) {
   return { ...manifest, layers }
 }
 
+/**
+ * .env.example の中で、層の環境変数キーが置かれるべき場所にあるかを判定する。
+ * 返り値は 'missing'（代入行が無い）/ 'misplaced'（場所が違う）/ 'ok'。
+ *
+ * 見るのは**そのキーの全ての代入行**（コメントアウトされたものも含む）。
+ * 「どれか 1 行が範囲内にあればよい」とすると、同じキーをマーカーの外にも書いた
+ * 状態が通り、その層を減算しても外側の行が残る（#311）。
+ *
+ * core は層のマーカーを持たない（マーカー外＝core）ので、どの範囲にも入っていないこと、
+ * それ以外の層は全行がその層のマーカーの範囲に入っていることを求める。
+ * マーカーが壊れていると findBlocks が throw する（呼び出し側で先に検証しておく）。
+ */
+export function envKeyPlacement(envExample, layer, key) {
+  const pattern = new RegExp(`^#?\\s*${key}=`)
+
+  const lines = envExample
+    .split('\n')
+    .map((line, index) => (pattern.test(line) ? index : -1))
+    .filter((index) => index >= 0)
+
+  if (lines.length === 0) return 'missing'
+
+  const blocks = findBlocks(envExample)
+
+  const within = (line, candidates) =>
+    candidates.some((block) => line > block.startLine && line < block.endLine)
+
+  if (layer.requires === null) {
+    return lines.some((line) => within(line, blocks)) ? 'misplaced' : 'ok'
+  }
+
+  const own = blocks.filter((block) =>
+    markerLayers(block.spec).includes(layer.name)
+  )
+
+  return lines.every((line) => within(line, own)) ? 'ok' : 'misplaced'
+}
+
 /** resolveJsonPath と同じだが、途中のオブジェクトが無ければ作る（加算用） */
 export function ensureJsonPath(value, keys) {
   let parent = value
