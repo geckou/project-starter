@@ -208,7 +208,14 @@ cmd=$(printf '%s' "$cmd" | awk '
 # 外側が引用されている場合（コミットメッセージ中の言及）は展開しない
 unwrap_pass() {
   awk '
-    BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
+    BEGIN {
+      sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92)
+      # 展開した中身の終わりの印。中身の末尾が `# コメント` のとき、後段の
+      # コメント読み飛ばしが行末まで進むと、同じ行に続く本物のコマンド
+      # （`sh -c '"'"'echo a # b'"'"'; git push origin production` の push）まで
+      # 落としてしまう。コメントは引用の中で終わるので、その位置を伝える（#298）
+      eoc = sprintf("%c", 3)
+    }
 
     # ANSI-C クォート（ドル記号 + 引用符）の中の空白のエスケープを元に戻す。
     # 戻さないと git\x20push のような書き方が 1 トークンのままで検査に当たらない
@@ -232,7 +239,7 @@ unwrap_pass() {
               out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
             j = i + 1; inner = ""
             while (j <= n && substr(line, j, 1) != ch) { inner = inner substr(line, j, 1); j++ }
-            if (j <= n) { out = out "( " decode(inner) " )"; i = j + 1; continue }
+            if (j <= n) { out = out "( " decode(inner) " " eoc ")"; i = j + 1; continue }
           }
           out = out ch; state = ch; i++; continue
         }
@@ -447,6 +454,8 @@ segments=$(printf '%s' "$cmd" | awk '
     seg_end = sprintf("%c.", 1)
     subst_cmd_end = sprintf("%csubstend", 1)
     sep_and = sprintf("%csep&&", 1); sep_seq = sprintf("%csep", 1)
+    # unwrap_pass が sh -c / eval の中身の終わりに置く印（コメントの終端）
+    eoc = sprintf("%c", 3)
   }
   # セグメントは改行を含みうるので、1 件ごとに終端の行を添えて渡す
   function emit(s) { print s; print seg_end }
@@ -494,6 +503,8 @@ segments=$(printf '%s' "$cmd" | awk '
         i = j - 1
         continue
       }
+      # 展開した中身の終わりの印は、コメントの終端としてだけ使う（下の # の分岐）
+      if (c == eoc) continue
       if (q == sq) { seg = seg c; if (c == sq) q = ""; continue }
       if (q == dq) {
         if (c == bs) { if (cont(i)) { i++; continue }
@@ -532,6 +543,22 @@ segments=$(printf '%s' "$cmd" | awk '
       if (c == bs) { if (cont(i)) { i++; continue }
                      seg = seg c substr(all, i + 1, 1); i++; continue }
       if (c == sq || c == dq) { q = c; seg = seg c; continue }
+      # 引用の外で語の先頭に来た # から行末まではコメント。落とさないと、コメント中の
+      # 語が refspec やフラグとして読まれる（`git push origin feat/x # not to production`
+      # が production への push に見える。#298）。語の途中の #（`fix#12`）と引用の中の #
+      # （`-m "fix: #12"`）はコメントではない。heredoc_marker と同じ規則。
+      # 終端は改行のほか、sh -c / eval を展開した中身の終わり（eoc）と、
+      # バッククォートの置換の閉じ（シェルは置換の文字列を先に切り出す）
+      if (c == "#" && (i == 1 || substr(all, i - 1, 1) ~ /[ \t\n]/)) {
+        j = i
+        while (j <= n) {
+          ch = substr(all, j, 1)
+          if (ch == "\n" || ch == eoc || (bt_open && ch == bt)) break
+          j++
+        }
+        i = j - 1
+        continue
+      }
       if (c == "(" || c == ")") {
         if (c == "(") {
           # $( … ) がコマンド位置に来ているか。直前が「空白と（あれば）引用符 + $」

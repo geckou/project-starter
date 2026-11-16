@@ -1655,6 +1655,44 @@ for informational in --version -v --help -h --exec-path --html-path --man-path -
 done
 run 0 'git --list-cmds=<group> も通す' 'git --list-cmds=main'
 
+echo
+echo '=== 行末の # コメントはコマンドの引数として読まない（#298）==='
+
+# コメント中の語が refspec・フラグ・分岐元として読まれ、誤った理由で止まっていた。
+# CLAUDE.md「Git ブランチ運用」のスニペット自体が行末コメントを使っている
+run 0 'コメント中の production を push 先と読まない' \
+  'git push origin feat/existing # not to production' feat/existing
+run 0 'コメント中の -n を commit -n と読まない' \
+  "git commit -m 'feat: x' # commit without -n" feat/existing
+run 0 'コメントの # を分岐元と読まない' \
+  'git checkout production && git pull && git checkout -b feat/new # 作業ブランチ'
+run 0 'コメントだけの行を挟んでも通す' \
+  "# まずコミットする
+git commit -m 'feat: x'" feat/existing
+
+# クォートの中と語の途中の # はコメントではない
+run 0 'クォート内の # はメッセージとして扱う' \
+  "git commit -m 'fix: #12 を直す'" feat/existing
+run 2 'クォート内の # より後ろも件名として検証する' \
+  'git commit -m "wip #12 feat: x"' feat/existing
+run 2 '語の途中の # はコメントにしない' \
+  'git checkout -b wip#12'
+
+# コメントを落とすことで、実行されるコマンドまで落としてはいけない
+run 2 'コメントより前の production への push は止める' \
+  'git push origin production # 例外'
+run 2 'コメントは改行で終わる（次の行の push は止める）' \
+  'echo start # ここから
+git push origin production'
+run 2 'コメントの前の --no-verify は止める' \
+  "git commit --no-verify -m 'feat: x' # 急ぎ" feat/existing
+run 2 'sh -c の中のコメントは引用の中で終わる' \
+  "sh -c 'echo a # b'; git push origin production"
+run 2 'eval の中のコメントも引用の中で終わる' \
+  'eval "echo a # b" && git push origin production'
+run 2 'バッククォートの中のコメントは閉じで終わる' \
+  'echo `echo a # b` && git push origin production'
+
 
 # ---- scripts/check-shell-compat.mjs ----
 #
