@@ -1732,6 +1732,61 @@ run 2 '置換の中の commit -n も検査する' \
   'git commit -m "feat: $(git commit -n -m wip)"' feat/existing
 run 0 '読み出すだけの置換は通す' \
   'git commit -m "feat: x $(git rev-parse --short HEAD)"' feat/existing
+echo
+echo '=== commit 用のフラグ検査（-F / -t）は commit のセグメントだけを見る（#301）==='
+
+# 他のサブコマンドの同名フラグ（git grep -F / git checkout -t）に反応していた
+run 0 '後続の git grep -F をメッセージファイルの指定と読まない' \
+  "git commit -m 'feat: x' && git grep -F TODO" feat/existing
+run 0 '先行する git checkout -t を commit の --template と読まない' \
+  "git checkout -t -b feat/new origin/production && git commit --allow-empty -m 'feat: x'"
+run 0 'メッセージの値の中の -F / -t はフラグではない' \
+  "git commit -m 'docs: -F nothere.txt と -t の扱いを書く'" feat/existing
+run 0 'heredoc の本文に書いた -t / -F でも止めない' \
+  "git commit -F - <<'EOF'
+feat: x
+
+- git commit -t と git commit -F nothere.txt の扱いを説明する
+EOF" feat/existing
+
+# -F の相対パスは、その commit が動くディレクトリを基準に見る
+mkdir -p "$SESSION/sub"
+echo 'feat: サブディレクトリのメッセージ' > "$SESSION/sub/msg.txt"
+echo 'wip' > "$SESSION/sub/bad.txt"
+echo 'feat: ルートのメッセージ' > "$SESSION/rootmsg.txt"
+run 0 'cd 先にあるメッセージファイルを読む' \
+  'cd sub && git commit -F msg.txt' feat/existing
+run 0 'git -C 先にあるメッセージファイルを読む' \
+  'git -C sub commit -F msg.txt' feat/existing
+run 0 '--file= の形でも cd 先を基準にする' \
+  'cd sub && git commit --file=msg.txt' feat/existing
+run 2 'cd 先のファイルが規約違反なら止める' \
+  'cd sub && git commit -F bad.txt' feat/existing
+expect 'コミットメッセージ規約違反' '規約違反として伝える'
+run 2 'cd 先に無いファイルは読めないものとして止める' \
+  'cd sub && git commit -F rootmsg.txt' feat/existing
+expect '読めない' '読めないことを伝える'
+run 0 'cd しなければルートのファイルを読む' \
+  'git commit -F rootmsg.txt' feat/existing
+run 0 '絶対パスは cd に関係なく読む' \
+  "cd sub && git commit -F $SESSION/rootmsg.txt" feat/existing
+
+# commit に付いた -t / -F は引き続き検査する
+run 2 'git commit -t は止める' 'git commit -t template.txt' feat/existing
+expect '--template' 'テンプレートであることを伝える'
+run 2 'git commit --template= も止める' \
+  'git commit --template=template.txt' feat/existing
+run 2 '読めないファイルの -F は止める' \
+  'git commit -F nothere.txt' feat/existing
+expect '読めない' '読めないことを伝える'
+run 2 '束ねた -aF でも読めないファイルは止める' \
+  'git commit -aF nothere.txt' feat/existing
+run 2 '2 つ目の commit の -F も検査する' \
+  "git commit -m 'feat: x' && git commit -F nothere.txt" feat/existing
+run 2 '他のコマンドのあとの commit -t も止める' \
+  'git grep -F TODO; git commit -t template.txt' feat/existing
+rm -rf "$SESSION/sub" "$SESSION/rootmsg.txt"
+
 
 # ---- scripts/check-shell-compat.mjs ----
 #

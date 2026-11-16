@@ -1137,18 +1137,6 @@ cmd=$(printf '%s\n' "$segments" | {
 
 [ -n "$cmd" ] || exit 0
 
-hooks_path_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_HOOKSPATH$")
-env_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ENV_BYPASS$")
-alias_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ALIAS$")
-indirect=$(printf '%s\n' "$cmd" | grep -c "^$MARK_INDIRECT$")
-undecidable=$(printf '%s\n' "$cmd" | grep -c "^$MARK_UNDECIDABLE$")
-unknown_opt=$(printf '%s\n' "$cmd" | grep -c "^$MARK_UNKNOWN_OPT$")
-guard_dir=$(printf '%s\n' "$cmd" | sed -n "s/^$MARK_DIR//p" | head -1)
-cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_DIR" |
-  grep -v "^$MARK_HOOKSPATH$" | grep -v "^$MARK_ENV_BYPASS$" |
-  grep -v "^$MARK_ALIAS$" | grep -v "^$MARK_INDIRECT$" |
-  grep -v "^$MARK_UNDECIDABLE$" | grep -v "^$MARK_UNKNOWN_OPT$")
-
 # --- 短縮フラグの束を 1 文字ずつに展開する ------------------------------
 # git は `-am` のようにフラグを束ねて書ける。束のままだと -m / -F / -n の検出が
 # 「単独トークンの -m」しか見ないため全て素通りし、コミット規約も -n 禁止も効かない。
@@ -1210,6 +1198,8 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
     # 印の付いた行はコミットメッセージの本文。フラグとしては読まない
     # （本文に書いた `git commit -n` のようなコマンド例で止めないため）
     if (substr(line, 1, 1) == sprintf("%c", 2)) { print line; next }
+    # 絞り込みループが出した印の行（実行ディレクトリ等）もコマンドではない
+    if (substr(line, 1, 1) == sprintf("%c", 1)) { print line; next }
     # checkout / switch / worktree も通す。`-qb feat/x`（束）と `-bfoo`（値の連結）は
     # 実 git で有効なブランチ作成なので、単独トークンの `-b` しか見ないと
     # 命名・分岐元・コミット先の判定がまとめて外れる（#354）
@@ -1247,6 +1237,22 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
     if (is_commit && saw_n) print mark
   }
 ')
+
+# 印（実行ディレクトリ・メッセージ本文）が残っている形。commit ごとの -F / -t を
+# 「その commit が動くディレクトリ」と対で取り出すのに使う（下の commit_opts）
+cmd_marked=$cmd
+
+hooks_path_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_HOOKSPATH$")
+env_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ENV_BYPASS$")
+alias_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ALIAS$")
+indirect=$(printf '%s\n' "$cmd" | grep -c "^$MARK_INDIRECT$")
+undecidable=$(printf '%s\n' "$cmd" | grep -c "^$MARK_UNDECIDABLE$")
+unknown_opt=$(printf '%s\n' "$cmd" | grep -c "^$MARK_UNKNOWN_OPT$")
+guard_dir=$(printf '%s\n' "$cmd" | sed -n "s/^$MARK_DIR//p" | head -1)
+cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_DIR" |
+  grep -v "^$MARK_HOOKSPATH$" | grep -v "^$MARK_ENV_BYPASS$" |
+  grep -v "^$MARK_ALIAS$" | grep -v "^$MARK_INDIRECT$" |
+  grep -v "^$MARK_UNDECIDABLE$" | grep -v "^$MARK_UNKNOWN_OPT$")
 
 commit_n_bundle=$(printf '%s\n' "$cmd" | grep -c "^$MARK_COMMIT_N$")
 # メッセージ本文の印はここまでで役目を終える。以降はメッセージの値そのものを
@@ -1584,14 +1590,96 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
     esac
   fi
 
-  # --fil 以降は --file に一意（--fi は --fixup と曖昧で git 自身が弾く）
-  if has '(^|[[:space:]])(-F|--fil[a-z]*)([[:space:]]|=|$)'; then
-    # クォート付きの値は閉じクォートまでを 1 引数として取る（cd の処理と同じ方針）。
-    # 空白までで切ると `-F "my file.txt"` が `"my` になり、分かりにくいエラーで止まる
-    msg_file=$(printf '%s' "$cmd" |
-      grep -oE "(^|[[:space:]])(-F|--fil[a-z]*)[[:space:]=]+(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)" |
-      head -1 | sed -E 's/.*(-F|--fil[a-z]*)[[:space:]=]+//')
-    msg_file=$(unquote "$msg_file")
+  # -F / --file と -t / --template は **git commit のセグメントに書かれたものだけ**を見る。
+  # コマンド全体から探すと、`git commit -m … && git grep -F TODO` の -F や
+  # `git checkout -t -b …` の -t に反応する（#301）。commit_opts は commit ごとに
+  # 「T」（-t あり）か「F <実行ディレクトリ> <ファイル>」を 1 行で出す。
+  # --fil 以降は --file に一意（--fi は --fixup と曖昧で git 自身が弾く）。
+  # --te 以降は --template に一意（--t は --trailer と曖昧で git 自身が弾く）
+  OPT_SEP=$(printf '\001')
+  commit_opts=$(printf '%s\n' "$cmd_marked" | awk -v mark_dir="$MARK_DIR" '
+    BEGIN {
+      sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92)
+      ctl = sprintf("%c", 1); msg = sprintf("%c", 2)
+      text = ""; dir = ""
+    }
+
+    function is_message(t) {
+      return (t == "-m" || (substr(t, 1, 2) == "--" && length(t) > 2 &&
+        substr("message", 1, length(t) - 2) == substr(t, 3)))
+    }
+
+    # 前後のクォートを 1 組だけ剥がす（クォート付きのパスは 1 引数として渡る）
+    function unq(v,   c) {
+      c = substr(v, 1, 1)
+      if ((c == sq || c == dq) && length(v) > 1 && substr(v, length(v), 1) == c)
+        return substr(v, 2, length(v) - 2)
+      return v
+    }
+
+    # 1 セグメント分をクォートを保ったままトークンへ分け、commit なら -F / -t を出す
+    function flush(   n, q, tok, len, i, c, t, e, g) {
+      n = 0; q = ""; tok = ""; len = length(text)
+      for (i = 1; i <= len; i++) {
+        c = substr(text, i, 1)
+        if (q == sq) { tok = tok c; if (c == sq) q = ""; continue }
+        if (q == dq) {
+          if (c == bs) { tok = tok c substr(text, i + 1, 1); i++; continue }
+          tok = tok c
+          if (c == dq) q = ""
+          continue
+        }
+        if (c == bs) { tok = tok c substr(text, i + 1, 1); i++; continue }
+        if (c == sq || c == dq) { q = c; tok = tok c; continue }
+        if (c == " " || c == "\t" || c == "\n") {
+          if (tok != "") T[++n] = tok
+          tok = ""
+          continue
+        }
+        tok = tok c
+      }
+      if (tok != "") T[++n] = tok
+      text = ""
+
+      # サブコマンドは「git の直後」。グローバルオプションは上流で剥がしてある
+      g = 0
+      for (i = 1; i <= n; i++) if (T[i] == "git") { g = i; break }
+      if (g == 0 || g + 1 > n || T[g + 1] != "commit") return
+
+      for (i = g + 2; i <= n; i++) {
+        t = T[i]
+        # -m の値はメッセージ。中に書いた -F / -t はフラグではない
+        if (is_message(t)) { i++; continue }
+        if (substr(t, 1, 1) != "-") continue
+        if (t == "-t" || t ~ /^--te[a-z]*(=|$)/) { print "T"; continue }
+        if (t == "-F" || t ~ /^--fil[a-z]*$/) {
+          print "F" ctl dir ctl (i < n ? unq(T[i + 1]) : "")
+          i++
+          continue
+        }
+        if (t ~ /^--fil[a-z]*=/) {
+          e = index(t, "=")
+          print "F" ctl dir ctl unq(substr(t, e + 1))
+        }
+      }
+    }
+
+    # 実行ディレクトリの印が git のセグメントの切れ目
+    index($0, mark_dir) == 1 { flush(); dir = substr($0, length(mark_dir) + 1); next }
+    # その他の印の行と、メッセージ本文の行はコマンドのトークンではない
+    substr($0, 1, 1) == ctl || substr($0, 1, 1) == msg { next }
+    { text = text $0 "\n" }
+    END { flush() }
+  ')
+
+  # -t / --template はエディタ起動前提でメッセージを事前に検証できない
+  if printf '%s\n' "$commit_opts" | grep -qx 'T'; then
+    deny "-t / --template は使用できません。メッセージを事前に検証できないため、-m または -F でメッセージを渡してください。"
+  fi
+
+  # 1 コマンドに commit が複数あれば、それぞれの -F を検証する
+  while IFS=$OPT_SEP read -r opt_kind msg_dir msg_file; do
+    [ "$opt_kind" = "F" ] || continue
 
     # フックはコマンド文字列をそのまま見るため、変数や置換を含むパスは展開されない。
     # 検証できないものを黙って通すと素通りの経路になるので、リテラルのパスを求める。
@@ -1622,22 +1710,28 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
           grep -Eq "^($TYPES)(\([^)]+\))?!?: [^[:space:]]" || deny "$msg_ng"
         ;;
       *)
-        [ -r "$msg_file" ] ||
+        # 相対パスは、その commit が動くディレクトリ（直前の cd / git -C を反映したもの）を
+        # 基準に解決する。フックの cwd で見ると `cd apps/web && git commit -F msg.txt` の
+        # ファイルが「読めない」ことになる（#301）。ディレクトリを特定できなかった
+        # ときは従来どおりフックの cwd で見る
+        msg_path=$msg_file
+        case "$msg_file" in
+          /*) ;;
+          *) [ -n "$msg_dir" ] && msg_path=$msg_dir/$msg_file ;;
+        esac
+
+        [ -r "$msg_path" ] ||
           deny "コミットメッセージのファイル '$msg_file' が読めないため規約を検証できません。先にファイルを作成するか、-m でメッセージを渡してください。"
 
-        if ! grep -m1 -v '^[[:space:]]*$' "$msg_file" |
+        if ! grep -m1 -v '^[[:space:]]*$' "$msg_path" |
           grep -Eq "^($TYPES)(\([^)]+\))?!?: [^[:space:]]"; then
           deny "$msg_ng（'$msg_file' の1行目）"
         fi
         ;;
     esac
-  fi
-
-  # -t / --template はエディタ起動前提でメッセージを事前に検証できない
-  # （--te 以降は --template に一意。--t は --trailer と曖昧で git 自身が弾く）
-  if has '(^|[[:space:]])(-t|--te[a-z]*)([[:space:]]|=)'; then
-    deny "-t / --template は使用できません。メッセージを事前に検証できないため、-m または -F でメッセージを渡してください。"
-  fi
+  done <<EOF
+$commit_opts
+EOF
 fi
 
 # --- push ---------------------------------------------------------------
