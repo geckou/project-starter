@@ -1,5 +1,5 @@
 // リポジトリ内のパッケージ（packages/*）の version が、それを参照する
-// ワークスペースの依存レンジを満たしているかを検査する。
+// ワークスペースとルートの package.json の依存レンジを満たしているかを検査する。
 //
 //   node scripts/check-workspace-ranges.mjs
 //
@@ -122,10 +122,19 @@ const local = new Map(
     .map(({ file, json }) => [json.name, { version: json.version, file }])
 )
 
+// 依存元にはルートの package.json も含める。@geckou/prettier-config と
+// @geckou/commitlint-config を参照しているのはルートだけなので、ここを見ないと
+// それらの version を上げてもレンジずれを検出できない（#303）。
+// 参照される側（local）には入れない — ルートはワークスペースではない
+const rootFile = path.join(REPO_ROOT, 'package.json')
+const dependents = existsSync(rootFile)
+  ? [{ file: rootFile, json: readJson(rootFile) }, ...workspaces]
+  : workspaces
+
 const problems = []
 const unknown = []
 
-for (const { file, json } of workspaces) {
+for (const { file, json } of dependents) {
   for (const field of DEPENDENCY_FIELDS) {
     for (const [name, range] of Object.entries(json[field] ?? {})) {
       const target = local.get(name)
@@ -158,7 +167,7 @@ for (const { file, field, name, range } of unknown) {
 
 if (problems.length === 0) {
   console.log(
-    `[ok] ${workspaces.length} ワークスペースの参照レンジはローカルの version を満たしています`
+    `[ok] ${workspaces.length} ワークスペースとルートの参照レンジはローカルの version を満たしています`
   )
   process.exit(0)
 }
