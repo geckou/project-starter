@@ -77,11 +77,16 @@ function commandSubstitutions(src) {
   const pendingHeredocs = []
 
   const heredocAt = (i) => {
-    const m = /^<<(-?)[ \t]*(?:'([^'\n]+)'|"([^"\n]+)"|\\([A-Za-z_][A-Za-z_0-9]*))/.exec(
-      src.slice(i, i + 200)
-    )
+    const m =
+      /^<<(-?)[ \t]*(?:'([^'\n]+)'|"([^"\n]+)"|\\([A-Za-z_][A-Za-z_0-9]*))/.exec(
+        src.slice(i, i + 200)
+      )
     if (!m) return null
-    return { stripTabs: m[1] === '-', delimiter: m[2] ?? m[3] ?? m[4], length: m[0].length }
+    return {
+      stripTabs: m[1] === '-',
+      delimiter: m[2] ?? m[3] ?? m[4],
+      length: m[0].length,
+    }
   }
 
   // i は heredoc の行末の改行。本文の終わり（終了行の末尾）の位置を返す。
