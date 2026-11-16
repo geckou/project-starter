@@ -61,6 +61,11 @@ node_modules に依存しないので `yarn install` なしで走る。CI でも
 node_modules に依存しないので `yarn install` なしでも `bash scripts/test-hooks.sh` で走る。
 CI でも実行される。
 
+同じテストの冒頭で `node scripts/check-shell-compat.mjs` が、`.claude/hooks/*.sh` と
+`scripts/*.sh` に bash 3.2（macOS の `/bin/sh`）で構文解析できない書き方（コマンド置換の中の、
+`(` で開いていない `case` パターン）が無いかを見る。CI は Linux で走るので、ここで見ないと
+macOS の手元でだけ壊れる。
+
 **フックを追加・変更したらテストも足す。** 設定で挙動が変わるフックは、
 設定が効くことと `config.sh` が無くても既定値で動くことの両方を検証する。
 

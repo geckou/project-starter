@@ -33,6 +33,7 @@ for hook in "$REPO"/.claude/hooks/*.sh; do
   fi
 done
 
+# 既定の対象は .claude/hooks/ と scripts/（どちらも macOS の bash 3.2 で実行される）
 if command -v node >/dev/null 2>&1; then
   node "$REPO/scripts/check-shell-compat.mjs" || exit 1
 else
@@ -1977,13 +1978,13 @@ if command -v node >/dev/null 2>&1; then
   # 引数として渡すだけの case / esac は予約語ではない（sh -n が通る形）
   printf "value=\$(printf '%%s' case)\nz=\$(printf '%%s' esac)\n" >> "$COMPAT_OK/ok.sh"
 
-  # run_compat <期待する終了コード> <説明> <検査対象のディレクトリ>
+  # run_compat <期待する終了コード> <説明> <検査対象のディレクトリ>...
   run_compat() {
     want=$1
     desc=$2
-    dir=$3
+    shift 2
 
-    LAST_OUT=$(node "$REPO/scripts/check-shell-compat.mjs" "$dir" 2>&1)
+    LAST_OUT=$(node "$REPO/scripts/check-shell-compat.mjs" "$@" 2>&1)
     status=$?
 
     if [ "$status" = "$want" ]; then
@@ -2004,6 +2005,98 @@ if command -v node >/dev/null 2>&1; then
   # 検査が厳しすぎると、正しいスクリプトで CI が落ちる
   run_compat 0 '引数の case / esac では誤検出しない' "$COMPAT_OK"
   run_compat 0 'フック本体は通る' "$REPO/.claude/hooks"
+
+  echo
+  echo '=== check-shell-compat: 検査対象・サブシェル・heredoc（#362）==='
+
+  # サブシェルで開く置換。case と esac の数は合う（サブシェルの括弧が帳尻を合わせる）が、
+  # bash 3.2 ではパターンの ) で置換が切れて構文エラーになる
+  COMPAT_SUBSHELL="$SANDBOX/compat subshell"
+  COMPAT_SUBSHELL_TIGHT="$SANDBOX/compat subshell tight"
+  mkdir -p "$COMPAT_SUBSHELL" "$COMPAT_SUBSHELL_TIGHT"
+  printf 'v=$( (case "$x" in\n  a) echo one ;;\nesac) )\n' > "$COMPAT_SUBSHELL/subshell.sh"
+  # 空白を入れない $(( も、閉じが )) でなければ算術展開ではなく置換
+  printf 'v=$((case "$x" in\n  a) echo one ;;\nesac) )\n' > "$COMPAT_SUBSHELL_TIGHT/tight.sh"
+  run_compat 1 'サブシェルで開く置換の中の素の case を検出する' "$COMPAT_SUBSHELL"
+  expect 'subshell.sh:2' 'パターンの行を指す'
+  run_compat 1 '$(( で始まる置換（算術展開ではない）でも検出する' "$COMPAT_SUBSHELL_TIGHT"
+
+  # 通る形: パターンを ( で開いたサブシェル、算術展開、引用した heredoc の本文
+  COMPAT_OK2="$SANDBOX/compat ok2"
+  mkdir -p "$COMPAT_OK2"
+  {
+    printf 'v=$( (case "$x" in\n  (a) echo one ;;\nesac) )\n'
+    printf 'n=$(( (1 + 2) * 3 ))\nm=$((n << 2))\n'
+    # 区切り語を引用した heredoc の本文はシェルが解釈しない
+    printf "cat <<'EOT'\nv=\$(case \"\$x\" in a) echo one ;; esac)\nEOT\n"
+    printf 'cat <<"EOT"\nv=$(case "$x" in b) echo one ;; esac)\nEOT\n'
+    printf 'cat <<\\EOT\nv=$(case "$x" in c) echo one ;; esac)\nEOT\n'
+    printf "cat <<-'EOT'\n\tv=\$(case \"\$x\" in d) echo one ;; esac)\n\tEOT\n"
+    # 本文の引用符が後続の読み方を狂わせないこと（閉じていない引用符を置く）
+    printf "cat <<'EOT'\nit's \"unbalanced\nEOT\nok=\$(case \$y in (e) echo 1 ;; esac)\n"
+  } > "$COMPAT_OK2/ok.sh"
+  run_compat 0 '引用した heredoc の本文・算術展開・( で開いたサブシェルは通す' "$COMPAT_OK2"
+
+  # 読み飛ばすのは本文だけ。heredoc の行の残りと、本文の後ろは引き続き検査する
+  COMPAT_AFTER="$SANDBOX/compat after heredoc"
+  COMPAT_SAMELINE="$SANDBOX/compat heredoc line"
+  COMPAT_UNQUOTED="$SANDBOX/compat unquoted heredoc"
+  mkdir -p "$COMPAT_AFTER" "$COMPAT_SAMELINE" "$COMPAT_UNQUOTED"
+  printf "cat <<'EOT'\nbody\nEOT\nx=\$(case \$y in a) echo 1 ;; esac)\n" > "$COMPAT_AFTER/after.sh"
+  run_compat 1 'heredoc の後ろの素の case は検出する' "$COMPAT_AFTER"
+  expect 'after.sh:4' 'heredoc の後ろの行を指す'
+  printf "cat <<'EOT' > \"\$(case \$y in a) echo 1 ;; esac)\"\nbody\nEOT\n" > "$COMPAT_SAMELINE/line.sh"
+  run_compat 1 'heredoc と同じ行の素の case は検出する' "$COMPAT_SAMELINE"
+  # 区切り語を引用しない heredoc の本文は展開される（= 中の $( ) が実行される）
+  printf 'cat <<EOT\n$(case $y in a) echo 1 ;; esac)\nEOT\n' > "$COMPAT_UNQUOTED/unquoted.sh"
+  run_compat 1 '引用しない heredoc の本文の置換は検出する' "$COMPAT_UNQUOTED"
+
+  # 複数のディレクトリを渡せる。1 つでも落ちれば失敗
+  run_compat 1 '複数ディレクトリのどれかに問題があれば落ちる' "$COMPAT_OK" "$COMPAT_BARE"
+  expect 'bare.sh' '問題のあるファイルを指す'
+  run_compat 0 '複数ディレクトリが全て通れば通る' "$COMPAT_OK" "$COMPAT_OK2"
+
+  # 引数で渡したディレクトリが無いのは指定の誤り。スタックトレースではなく理由を出す
+  run_compat 1 '存在しないディレクトリを渡したら理由を出して落ちる' "$SANDBOX/compat missing"
+  expect '検査対象のディレクトリがありません' '理由を伝える'
+  refute 'ENOENT' '未捕捉の例外にしない'
+
+  # 既定の対象は「スクリプトの位置から見た .claude/hooks/ と scripts/」。
+  # 層を外した最小構成では .claude/hooks/ が無いことがあるので、無ければ飛ばす
+  COMPAT_PROJECT="$SANDBOX/compat project"
+  mkdir -p "$COMPAT_PROJECT/scripts"
+  cp "$REPO/scripts/check-shell-compat.mjs" "$COMPAT_PROJECT/scripts/"
+  printf 'x=$(case $y in (a) echo 1 ;; esac)\n' > "$COMPAT_PROJECT/scripts/ok.sh"
+
+  # run_compat_default <期待する終了コード> <説明>: 引数なし（既定の対象）で実行する
+  run_compat_default() {
+    want=$1
+    desc=$2
+
+    LAST_OUT=$(node "$COMPAT_PROJECT/scripts/check-shell-compat.mjs" 2>&1)
+    status=$?
+
+    if [ "$status" = "$want" ]; then
+      pass=$((pass + 1))
+      printf 'ok   [%s] %s\n' "$status" "$desc"
+    else
+      fail=$((fail + 1))
+      printf 'FAIL [want %s got %s] %s\n     out: %s\n' "$want" "$status" "$desc" "$LAST_OUT"
+    fi
+  }
+
+  run_compat_default 0 '.claude/hooks/ が無い構成でも落ちない'
+  expect 'スキップ' '飛ばしたことを伝える'
+  refute 'ENOENT' '未捕捉の例外にしない'
+  printf 'x=$(case $y in a) echo 1 ;; esac)\n' > "$COMPAT_PROJECT/scripts/bare.sh"
+  run_compat_default 1 '既定で scripts/ も検査する'
+  expect 'bare.sh' 'scripts/ のファイルを指す'
+  rm -f "$COMPAT_PROJECT/scripts/bare.sh"
+  mkdir -p "$COMPAT_PROJECT/.claude/hooks"
+  printf 'x=$(case $y in a) echo 1 ;; esac)\n' > "$COMPAT_PROJECT/.claude/hooks/hook.sh"
+  run_compat_default 1 '既定で .claude/hooks/ も検査する'
+  expect 'hook.sh' 'フックのファイルを指す'
+  run_compat 0 'このリポジトリの scripts/ は通る' "$REPO/scripts"
 else
   echo 'node が無いため check-shell-compat の検証をスキップします'
 fi
