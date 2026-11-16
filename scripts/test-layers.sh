@@ -1282,6 +1282,205 @@ else
 fi
 rm -rf "$variant" "$pristine"
 
+# 残る層の定義は派生側を土台にすること（#386）。以前はテンプレートの定義で丸ごと
+# 差し替えていたため、派生が足した env・files・blocks、removable: false、外した json の
+# キーが同期のたびに巻き戻り、check-layers.mjs が落ちていた。
+#
+# 手順は Issue の再現手順どおり: 層を 1 つ外す → 残る層の定義を派生で変える →
+# check-layers が通る → テンプレートのマニフェストで sync-layers → 定義と check-layers を見る
+variant=$(make_variant)
+pristine=$(make_variant)
+remove_layers "$variant" billing > /dev/null 2>&1
+
+# 派生側の変更
+#   env    … 派生固有のキーを firebase 層に足す（.env.example にも足す）
+#   files  … 派生で足したスクリプトを firebase 層に登録する
+#   blocks … 派生で足したファイルに firebase のマーカーを置いて登録する
+#   json   … 使っていない emulators.storage を firebase.json からも定義からも外す
+#   removable / summary … 派生の値に書き換える
+# と、テンプレートで増える項目のうち派生が実体を用意したもの
+#   TEMPLATE_PLACED_KEY … firebase のマーカー内に置いた（→ 取り込まれる）
+#   TEMPLATE_MISPLACED_KEY … マーカーの外に置いた（→ 取り込むと check-layers が落ちるので入れない）
+node -e "
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = process.argv[1];
+  const file = path.join(root, 'layers.json');
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const firebase = manifest.layers.find((layer) => layer.name === 'firebase');
+  firebase.env.push('DERIVED_ONLY_KEY');
+  firebase.files.push('scripts/derived-only.sh');
+  firebase.blocks.push('derived-notes.md');
+  firebase.removable = false;
+  firebase.summary = '派生で書き換えた要約';
+  firebase.json['firebase.json'] = firebase.json['firebase.json'].filter(
+    (keys) => keys.join('.') !== 'emulators.storage'
+  );
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\\n');
+
+  const firebaseJson = path.join(root, 'firebase.json');
+  const config = JSON.parse(fs.readFileSync(firebaseJson, 'utf8'));
+  delete config.emulators.storage;
+  fs.writeFileSync(firebaseJson, JSON.stringify(config, null, 2) + '\\n');
+
+  fs.writeFileSync(path.join(root, 'scripts/derived-only.sh'), '#!/usr/bin/env bash\\n');
+  fs.writeFileSync(
+    path.join(root, 'derived-notes.md'),
+    '<!-- layer:firebase:start -->\\n派生のメモ\\n<!-- layer:firebase:end -->\\n'
+  );
+  fs.appendFileSync(
+    path.join(root, '.env.example'),
+    '\\n# layer:firebase:start\\nDERIVED_ONLY_KEY=\\nTEMPLATE_PLACED_KEY=\\n# layer:firebase:end\\nTEMPLATE_MISPLACED_KEY=\\n'
+  );
+" "$variant"
+
+if (cd "$variant" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  pass "派生で定義を変えた構成は check-layers.mjs が通る（前提）"
+else
+  fail "派生で定義を変えた構成が check-layers.mjs を通らない（テストの前提が崩れている）" \
+    "$(cd "$variant" && node scripts/check-layers.mjs 2>&1)"
+fi
+
+# テンプレート側のマニフェスト。firebase 層に新しい項目が増えている
+#   scripts/template-new.sh … 同期で届いた（→ 取り込まれる）
+#   scripts/template-not-synced.sh … 派生には届いていない（→ 入れない）
+#   TEMPLATE_ABSENT_KEY … .env* は同期されないので派生の .env.example に無い（→ 入れない）
+#   packages/shared/package.json の exports.\"./template-new\" … 派生には無い（→ 入れない）
+template_manifest=$(mktemp)
+node -e "
+  const fs = require('node:fs');
+  const [from, to] = process.argv.slice(1);
+  const manifest = JSON.parse(fs.readFileSync(from, 'utf8'));
+  const firebase = manifest.layers.find((layer) => layer.name === 'firebase');
+  firebase.files.push('scripts/template-new.sh', 'scripts/template-not-synced.sh');
+  firebase.env.push('TEMPLATE_PLACED_KEY', 'TEMPLATE_MISPLACED_KEY', 'TEMPLATE_ABSENT_KEY');
+  firebase.json['packages/shared/package.json'].push(['exports', './template-new']);
+  firebase.summary = 'テンプレートで書き換えた要約';
+  firebase.templateOnlyField = 'テンプレートで増えたスカラー';
+  fs.writeFileSync(to, JSON.stringify(manifest, null, 2) + '\\n');
+" "$pristine/layers.json" "$template_manifest"
+
+# 同期で届くもの: テンプレートの新しいファイルと、外した層のマーカーを含む同期対象
+printf '#!/usr/bin/env bash\n' > "$variant/scripts/template-new.sh"
+cp "$pristine/scripts/use-env.sh" "$variant/scripts/use-env.sh"
+
+if grep -q 'layer:billing' "$variant/scripts/use-env.sh"; then
+  pass "同期で外した層のマーカーが戻っている（前提）"
+else
+  fail "同期対象に外した層のマーカーが無い（テストの前提が崩れている）"
+fi
+
+sync_output=$(node "$variant/scripts/sync-layers.mjs" --target "$variant" \
+  --template "$template_manifest" 2>&1)
+
+# 層の定義の 1 項目を取り出す（配列は JSON 文字列の一覧として 1 行ずつ）
+layer_field() {
+  node -e "
+    const fs = require('node:fs');
+    const [file, name, field, key] = process.argv.slice(1);
+    const layer = JSON.parse(fs.readFileSync(file, 'utf8')).layers.find((l) => l.name === name);
+    let value = layer ? layer[field] : undefined;
+    if (key && value) value = value[key];
+    if (Array.isArray(value)) {
+      for (const item of value) console.log(typeof item === 'string' ? item : item.join('.'));
+    } else {
+      console.log(String(value));
+    }
+  " "$variant/layers.json" "$@"
+}
+
+assert_layer_has() {
+  local label=$1 expected=$2
+  shift 2
+  if layer_field "$@" | grep -qxF "$expected"; then
+    pass "$label"
+  else
+    fail "$label" "$sync_output
+--- $* ---
+$(layer_field "$@")"
+  fi
+}
+
+assert_layer_lacks() {
+  local label=$1 unexpected=$2
+  shift 2
+  if layer_field "$@" | grep -qxF "$unexpected"; then
+    fail "$label" "$(layer_field "$@")"
+  else
+    pass "$label"
+  fi
+}
+
+assert_layer_has "外し直しても派生が足した env キーが残る" DERIVED_ONLY_KEY firebase env
+assert_layer_has "外し直しても派生が足した files が残る" scripts/derived-only.sh firebase files
+assert_layer_has "外し直しても派生が足した blocks が残る" derived-notes.md firebase blocks
+assert_layer_has "外し直しても removable: false が残る" false firebase removable
+assert_layer_has "スカラーは派生側の値を正にする" '派生で書き換えた要約' firebase summary
+assert_layer_has "派生の定義に無いスカラーはテンプレートから補う" \
+  'テンプレートで増えたスカラー' firebase templateOnlyField
+assert_layer_lacks "派生が実体ごと外した json のキーは戻さない" \
+  emulators.storage firebase json firebase.json
+assert_layer_has "派生が残している json のキーはそのまま" firestore firebase json firebase.json
+
+assert_layer_has "テンプレートで増えた files のうち届いたものを取り込む" \
+  scripts/template-new.sh firebase files
+assert_layer_lacks "テンプレートで増えた files でも実在しないものは入れない" \
+  scripts/template-not-synced.sh firebase files
+assert_layer_has "テンプレートで増えた env のうち層の範囲に置かれたものを取り込む" \
+  TEMPLATE_PLACED_KEY firebase env
+assert_layer_lacks "層の範囲の外に置かれた env キーは入れない（入れると検証が落ちる）" \
+  TEMPLATE_MISPLACED_KEY firebase env
+assert_layer_lacks ".env.example に無い env キーは入れない" TEMPLATE_ABSENT_KEY firebase env
+assert_layer_lacks "対象の JSON に無いキーは入れない" \
+  exports../template-new firebase json packages/shared/package.json
+
+if [ "$(layer_field billing name)" = "undefined" ] &&
+  ! grep -q 'layer:billing' "$variant/scripts/use-env.sh"; then
+  pass "外した層は定義もマーカーも戻らない"
+else
+  fail "外した層の定義かマーカーが戻った" "$sync_output"
+fi
+
+if (cd "$variant" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  pass "派生の定義を保ったまま、外し直したあとも check-layers.mjs が通る"
+else
+  fail "外し直したあとに check-layers.mjs が落ちる" \
+    "$(cd "$variant" && node scripts/check-layers.mjs 2>&1)"
+fi
+
+# 同じ同期をもう一度かけても layers.json が変わらないこと。変わると、テンプレートに
+# 新しいコミットが無くても同じ内容の同期 PR が開き直される（#386 の補足）
+before=$($SHA1 < "$variant/layers.json")
+cp "$pristine/scripts/use-env.sh" "$variant/scripts/use-env.sh"
+node "$variant/scripts/sync-layers.mjs" --target "$variant" \
+  --template "$template_manifest" > /dev/null 2>&1
+if [ "$before" = "$($SHA1 < "$variant/layers.json")" ]; then
+  pass "同じ同期を繰り返しても layers.json が変わらない"
+else
+  fail "同じ同期を繰り返すと layers.json が変わる"
+fi
+
+# 派生が層をまたいで移した項目を、テンプレートの元の層へ足し戻さない（2 層に載せない）
+node -e "
+  const fs = require('node:fs');
+  const file = process.argv[1];
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const firebase = manifest.layers.find((layer) => layer.name === 'firebase');
+  const functions = manifest.layers.find((layer) => layer.name === 'functions');
+  firebase.files = firebase.files.filter((item) => item !== 'scripts/template-new.sh');
+  functions.files.push('scripts/template-new.sh');
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\\n');
+" "$variant/layers.json"
+cp "$pristine/scripts/use-env.sh" "$variant/scripts/use-env.sh"
+node "$variant/scripts/sync-layers.mjs" --target "$variant" \
+  --template "$template_manifest" > /dev/null 2>&1
+assert_layer_lacks "派生が別の層へ移した項目は、元の層へ足し戻さない" \
+  scripts/template-new.sh firebase files
+assert_layer_has "派生が別の層へ移した項目は、移した先に残る" \
+  scripts/template-new.sh functions files
+
+rm -rf "$variant" "$pristine" "$template_manifest"
+
 echo ""
 
 echo "=== 結果: ${passed} 件成功 / ${failed} 件失敗 ==="
