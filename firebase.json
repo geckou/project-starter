@@ -1,7 +1,7 @@
 {
   "functions": {
     "source": "apps/functions",
-    "runtime": "nodejs22",
+    "runtime": "nodejs24",
     "predeploy": ["yarn workspace @geckou/functions build"]
   },
   "firestore": {

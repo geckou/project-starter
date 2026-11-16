@@ -2,7 +2,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import { adminAuth, adminDb } from '@/lib/firebase-admin'
-import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
+import { nullIfInvalidSession, SESSION_COOKIE_NAME } from '@/lib/session-cookie'
 
 // 参考実装: 保護ページでのセッション検証 + SSR での Firestore データ取得パターン
 // ビルド時の静的生成をスキップし、リクエスト時に SSR で実行する
@@ -14,10 +14,12 @@ export default async function DashboardPage() {
   const sessionCookie = (await cookies()).get(SESSION_COOKIE_NAME)?.value
   if (!sessionCookie) redirect('/login?redirect=/dashboard')
 
-  // 失効チェック付きで検証（第2引数 true でログアウト・無効化済みセッションを弾く）
+  // 失効チェック付きで検証（第2引数 true でログアウト・無効化済みセッションを弾く）。
+  // /login へ戻すのは cookie が無効なときだけ。firebase-admin の設定漏れまで握ると
+  // ログインループになるので、それ以外は throw する（nullIfInvalidSession）
   const decoded = await adminAuth
     .verifySessionCookie(sessionCookie, true)
-    .catch(() => null)
+    .catch(nullIfInvalidSession)
   if (!decoded) redirect('/login?redirect=/dashboard')
 
   // サーバーサイドで Firestore からデータ取得（SSR）。

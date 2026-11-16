@@ -117,9 +117,10 @@ fi
 echo ""
 
 # Node.js バージョンチェック
-# メジャーだけでなく minor も見る。@commitlint/* が engines.node で >=22.12.0 を
-# 要求するため、22.0〜22.11 はここを通ったあと yarn install が engines で落ちる
-REQUIRED_NODE=22
+# メジャーだけでなく minor も見る。firebase-admin が引く @firebase/database-compat が
+# engines.node で >=24.12.0 を要求するため、24.0〜24.11 はここを通ったあと
+# yarn install が engines で落ちる（#392。@commitlint/* の要求は >=22.12.0）
+REQUIRED_NODE=24
 REQUIRED_NODE_MINOR=12
 CURRENT_NODE=$(node -v 2>/dev/null | tr -d 'v')
 CURRENT_NODE_MAJOR=$(printf '%s' "$CURRENT_NODE" | cut -d'.' -f1)
@@ -196,6 +197,20 @@ detect_repo() {
   fi
 
   # owner/repo を抽出（BSD sed は非貪欲量指定子 .+? を解釈できないため多段置換。末尾の / と .git も除去）
+  #
+  # 先に github.com の URL かを確かめる。sed は一致しなければ入力をそのまま返すので、
+  # GitLab 等のリモートでも REPO が空にならず、URL 全体を owner/repo として gh api に
+  # 渡して「production ブランチがまだ存在しません」という無関係な案内になる（#316）
+  case "$REMOTE_URL" in
+    *github.com[:/]*) ;;
+    *)
+      # URL は出さない（https://<トークン>@host/... の形だと資格情報が画面に残る）
+      echo "[skip] origin が github.com のリポジトリではありません"
+      echo "  → ブランチ保護とラベルの設定は GitHub のリポジトリでのみ行います"
+      return 1
+      ;;
+  esac
+
   REPO=$(echo "$REMOTE_URL" | sed -E 's#.*github\.com[:/]##; s#/$##; s#\.git$##')
   if [ -z "$REPO" ]; then
     echo "[skip] GitHub リポジトリを検出できませんでした"
@@ -344,9 +359,62 @@ setup_release_protection() {
   fi
 }
 
+# 同期される設定が前提にしているラベルを作る（#365）。
+#
+# ラベルはリポジトリの状態であってファイルではないので、Template Sync でも
+# /init-project でも作られない。無いと Issue テンプレートのラベル指定は黙って
+# 無視され、Template Sync は PR の作成で失敗する
+# （→ .claude/docs/git-workflow.md「先に `template-sync` ラベルを作る」）。
+#
+#   template-sync   .github/workflows/template-sync.yml の pr_labels
+#   dependencies    renovate/default.json の labels
+#   security        renovate/default.json の vulnerabilityAlerts.labels
+#   task            .github/ISSUE_TEMPLATE/task.yml
+#   from-downstream .github/ISSUE_TEMPLATE/bug_report.yml / improvement.yml
+#
+# 既にあるラベルには触らない（--force は色と説明を上書きするので使わない）
+REQUIRED_LABELS='template-sync:ededed dependencies:0366d6 security:d93f0b task:ededed from-downstream:ededed'
+
+setup_labels() {
+  if ! EXISTING_LABELS=$(gh label list --repo "$REPO" --limit 1000 --json name --jq '.[].name' 2>/dev/null); then
+    echo "[skip] ラベルの一覧を取得できませんでした"
+    echo "  → 手動で作る場合: gh label create <名前>（必要なラベルは scripts/setup.sh の REQUIRED_LABELS）"
+    return
+  fi
+
+  MISSING_LABELS=''
+  for entry in $REQUIRED_LABELS; do
+    if ! printf '%s\n' "$EXISTING_LABELS" | grep -qxF "${entry%%:*}"; then
+      MISSING_LABELS="$MISSING_LABELS $entry"
+    fi
+  done
+
+  if [ -z "$MISSING_LABELS" ]; then
+    echo "[skip] 必要なラベルは作成済みです"
+    return
+  fi
+
+  MISSING_NAMES=$(for entry in $MISSING_LABELS; do printf '%s ' "${entry%%:*}"; done)
+  read -p "不足しているラベル（${MISSING_NAMES% }）を作成しますか？ (Y/n): " CREATE_LABELS
+  if [ "$CREATE_LABELS" = "n" ] || [ "$CREATE_LABELS" = "N" ]; then
+    echo "[skip] ラベルの作成をスキップしました"
+    return
+  fi
+
+  for entry in $MISSING_LABELS; do
+    if gh label create "${entry%%:*}" --repo "$REPO" --color "${entry##*:}" > /dev/null 2>&1; then
+      echo "[done] ラベル ${entry%%:*} を作成しました"
+    else
+      echo "[error] ラベル ${entry%%:*} の作成に失敗しました"
+      echo "  → リポジトリの Issues への書き込み権限があるか確認してください"
+    fi
+  done
+}
+
 if detect_repo; then
   setup_branch_protection
   setup_release_protection
+  setup_labels
 fi
 
 echo ""
@@ -391,6 +459,6 @@ echo ""
 # 一度も動かないまま気付かれないので、セットアップの最後に案内だけ出す
 echo "Template Sync の設定（派生プロジェクトのみ）:"
 echo "  未登録だとテンプレートの更新が一度も届かない。GitHub App（推奨）か PAT"
-echo "  あわせて template-sync ラベルを作る（無いと初回の PR 作成が失敗する）"
+echo "  template-sync ラベルが要る（無いと初回の PR 作成が失敗する。上のラベル作成で作られる）"
 echo "  手順は .claude/docs/git-workflow.md「Template Sync の有効化」"
 echo ""

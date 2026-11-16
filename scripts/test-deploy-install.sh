@@ -90,15 +90,24 @@ else
 
   # 削り方は scripts/deploy.sh と**同じ実装**を使う（scripts/lib/workspace-names.mjs）。
   # ここを別に書くと、実際に上がるものと違う形を検査することになる
-  if ! node --input-type=module -e "
-    import { readFileSync, writeFileSync } from 'node:fs'
-    import { workspaceNames, withoutWorkspaceDependencies } from '$REPO/scripts/lib/workspace-names.mjs'
+  #
+  # パスは環境変数で渡す。JS の文字列へ直接埋め込むと、パスに ' や \ を含む
+  # 場所へ clone したときに構文が壊れるか、別のパスを読む（#385）
+  if ! REPO="$REPO" WORK="$WORK" node --input-type=module -e '
+    import { readFileSync, writeFileSync } from "node:fs"
+    import { join } from "node:path"
+    import { pathToFileURL } from "node:url"
 
-    const pkg = JSON.parse(readFileSync('$REPO/apps/functions/package.json', 'utf8'))
-    pkg.dependencies = withoutWorkspaceDependencies(pkg.dependencies, workspaceNames('$REPO'))
+    const { REPO, WORK } = process.env
+    const { workspaceNames, withoutWorkspaceDependencies } = await import(
+      pathToFileURL(join(REPO, "scripts/lib/workspace-names.mjs")).href
+    )
 
-    writeFileSync('$WORK/functions/package.json', JSON.stringify(pkg, null, 2))
-  " 2>"$WORK/gen.log"; then
+    const pkg = JSON.parse(readFileSync(join(REPO, "apps/functions/package.json"), "utf8"))
+    pkg.dependencies = withoutWorkspaceDependencies(pkg.dependencies, workspaceNames(REPO))
+
+    writeFileSync(join(WORK, "functions/package.json"), JSON.stringify(pkg, null, 2))
+  ' 2>"$WORK/gen.log"; then
     fail "apps/functions/package.json を読めない" "$(cat "$WORK/gen.log")"
   else
     # .npmrc は同じディレクトリごと上がるので、あるならそのまま持っていく
@@ -122,18 +131,21 @@ echo ""
 # --- [2] framework-backed hosting の SSR 関数 ---
 echo "[2] SSR 関数の生成物で npm i → npm ci が通る"
 
-HOSTING_SOURCE=$(node -e "
-  const fs = require('fs')
+HOSTING_SOURCE=$(REPO="$REPO" node -e '
+  const fs = require("fs")
+  const path = require("path")
 
   try {
-    const config = JSON.parse(fs.readFileSync('$REPO/firebase.json', 'utf8'))
+    const config = JSON.parse(
+      fs.readFileSync(path.join(process.env.REPO, "firebase.json"), "utf8")
+    )
     const entries = [].concat(config.hosting || [])
     const backed = entries.find((it) => it && it.frameworksBackend && it.source)
-    process.stdout.write(backed ? backed.source : '')
+    process.stdout.write(backed ? backed.source : "")
   } catch {
-    process.stdout.write('')
+    process.stdout.write("")
   }
-" 2>/dev/null)
+' 2>/dev/null)
 
 if [ -z "$HOSTING_SOURCE" ]; then
   skip "frameworksBackend の hosting が無い（SSR 関数を作らない構成）"
@@ -143,20 +155,27 @@ else
   mkdir -p "$WORK/ssr"
 
   # アダプタが読むのは、deploy.sh が workspace 依存を落としたあとの package.json
-  node --input-type=module -e "
-    import { readFileSync, writeFileSync } from 'node:fs'
-    import { workspaceNames, withoutWorkspaceDependencies } from '$REPO/scripts/lib/workspace-names.mjs'
+  REPO="$REPO" WORK="$WORK" HOSTING_SOURCE="$HOSTING_SOURCE" FRAMEWORKS_DEP="$FRAMEWORKS_DEP" \
+    node --input-type=module -e '
+    import { readFileSync, writeFileSync } from "node:fs"
+    import { join } from "node:path"
+    import { pathToFileURL } from "node:url"
 
-    const app = JSON.parse(readFileSync('$REPO/$HOSTING_SOURCE/package.json', 'utf8'))
-    const dependencies = withoutWorkspaceDependencies(app.dependencies, workspaceNames('$REPO'))
+    const { REPO, WORK, HOSTING_SOURCE, FRAMEWORKS_DEP } = process.env
+    const { workspaceNames, withoutWorkspaceDependencies } = await import(
+      pathToFileURL(join(REPO, "scripts/lib/workspace-names.mjs")).href
+    )
 
-    dependencies['firebase-frameworks'] = '$FRAMEWORKS_DEP'
+    const app = JSON.parse(readFileSync(join(REPO, HOSTING_SOURCE, "package.json"), "utf8"))
+    const dependencies = withoutWorkspaceDependencies(app.dependencies, workspaceNames(REPO))
+
+    dependencies["firebase-frameworks"] = FRAMEWORKS_DEP
 
     writeFileSync(
-      '$WORK/ssr/package.json',
-      JSON.stringify({ name: 'ssr', version: '1.0.0', dependencies }, null, 2)
+      join(WORK, "ssr/package.json"),
+      JSON.stringify({ name: "ssr", version: "1.0.0", dependencies }, null, 2)
     )
-  "
+  '
 
   # アダプタは hosting の source の .npmrc を生成先へコピーする
   if [ -f "$REPO/$HOSTING_SOURCE/.npmrc" ]; then

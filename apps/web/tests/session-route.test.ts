@@ -48,6 +48,11 @@ function buildDeleteRequest(headers: Record<string, string> = {}) {
   })
 }
 
+// firebase-admin のエラーは code を持つ（FirebaseAuthError）
+function authError(code: string, message: string) {
+  return Object.assign(new Error(message), { code })
+}
+
 describe('POST /api/session', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -127,7 +132,9 @@ describe('POST /api/session', () => {
   })
 
   it('idToken の検証に失敗した場合 401 を返す', async () => {
-    mockVerifyIdToken.mockRejectedValueOnce(new Error('invalid token'))
+    mockVerifyIdToken.mockRejectedValueOnce(
+      authError('auth/argument-error', 'invalid token')
+    )
 
     const response = await POST(
       buildPostRequest(JSON.stringify({ idToken: 'bad-token' }))
@@ -136,6 +143,42 @@ describe('POST /api/session', () => {
     expect(response.status).toBe(401)
     expect(await response.json()).toEqual({ error: 'Invalid idToken' })
     expect(mockCookieSet).not.toHaveBeenCalled()
+  })
+
+  // 回帰（#302）: firebase-admin は認証情報やプロジェクト ID が無くても初期化では
+  // throw せず、検証の時点でコードの無いエラーを返す。これを 401 にすると設定漏れが
+  // 「Invalid idToken」として現れ、原因が追えない
+  it('firebase-admin の設定漏れは 401 ではなく 500 を返して記録する', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockVerifyIdToken.mockRejectedValueOnce(
+      new Error('Unable to detect a Project Id in the current environment.')
+    )
+
+    const response = await POST(
+      buildPostRequest(JSON.stringify({ idToken: 'valid-token' }))
+    )
+
+    expect(response.status).toBe(500)
+    expect(mockCookieSet).not.toHaveBeenCalled()
+    expect(consoleError).toHaveBeenCalled()
+
+    consoleError.mockRestore()
+  })
+
+  it('認証情報が無効で cookie を作れない場合も 500 を返す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockCreateSessionCookie.mockRejectedValueOnce(
+      authError('app/invalid-credential', 'failed to fetch access token')
+    )
+
+    const response = await POST(
+      buildPostRequest(JSON.stringify({ idToken: 'valid-token' }))
+    )
+
+    expect(response.status).toBe(500)
+    expect(mockCookieSet).not.toHaveBeenCalled()
+
+    consoleError.mockRestore()
   })
 
   it('有効な idToken でセッション cookie を発行し 200 を返す', async () => {
@@ -211,7 +254,9 @@ describe('DELETE /api/session', () => {
 
   it('無効な cookie でもサインアウトは成功する', async () => {
     mockCookieGet.mockReturnValue({ value: 'expired' })
-    mockVerifySessionCookie.mockRejectedValueOnce(new Error('expired'))
+    mockVerifySessionCookie.mockRejectedValueOnce(
+      authError('auth/session-cookie-expired', 'expired')
+    )
 
     const response = await DELETE(buildDeleteRequest())
 

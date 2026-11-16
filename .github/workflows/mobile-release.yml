@@ -1,0 +1,199 @@
+name: Mobile Release
+
+# モバイルアプリを EAS でビルドし、ストア（App Store Connect / Google Play）へ提出する。
+# mobile 層のワークフロー（layers.json の mobile 層に登録してあり、層を外すと消える）。
+#
+# **「version を上げた = モバイルを出す」に揃えている。** production への push のうち、
+# apps/mobile/app.config.ts の `version` が変わったものだけで起動する。iOS は審査済みの
+# version への追加アップロードを拒否するため、version を上げずに自動で作ると失敗する。
+# buildNumber / versionCode は EAS 側で増える（eas.json の appVersionSource: remote と
+# autoIncrement）。
+#
+# 審査への提出と、Play の本番トラックへの昇格は自動化しない（各ストアの管理画面で人が行う）。
+#
+# 資格情報（署名証明書・App Store Connect API キー・Google のサービスアカウント鍵）は
+# 全て EAS 側に置く。このワークフローが持つのは EXPO_TOKEN だけ。
+# セットアップと運用は .claude/docs/git-workflow.md「ストア配信の自動化」。
+on:
+  push:
+    branches:
+      - production
+    # version が書いてあるファイルが変わった push だけを見る（version の行が実際に
+    # 変わったかは下の Detect version change で判定する）
+    paths:
+      - 'apps/mobile/app.config.ts'
+  # version を変えずに出し直したいとき（失敗した回のやり直し、片方のプラットフォームだけ
+  # 出したいとき）の手動実行。version の比較はしない
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: ビルドして提出するプラットフォーム
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+        default: all
+
+# **concurrency を置かない。** 同じ group では待機中の run が後続に置き換えられる。
+# version を上げた push の run が取り消されると、その version が一度も EAS に投入されない。
+# 各 run はその push の直前のコミットとしか比べないので、並行しても二重投入にはならない
+# （--no-wait で投入するだけなので、run 同士が長時間重なることもない）。
+
+env:
+  # actions/* の実行ランタイムを Node 24 に固定（旧 Node ランタイム非推奨警告の抑制）
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # push で自動的に出すプラットフォーム（ios | android | all）。
+  # リポジトリの Variables に RELEASE_PLATFORM を登録すると上書きできる。このファイルは
+  # Template Sync の対象なので、派生プロジェクトはここを書き換えずに Variables を使う。
+  # Play Console にアプリがまだ無いと EAS Submit が失敗するため、iOS だけ先に出す
+  # 場合に ios にする
+  RELEASE_PLATFORM: ${{ vars.RELEASE_PLATFORM || 'all' }}
+  # eas-cli はリポジトリの依存に入れていない（→ /add-mobile）。メジャー更新で
+  # コマンドの挙動が変わっても本番の提出が突然壊れないよう、メジャーを固定する
+  EAS_CLI_VERSION: '27'
+  APP_CONFIG: apps/mobile/app.config.ts
+
+# GITHUB_TOKEN はチェックアウトに必要な読み取りだけに絞る（deploy.yml と同じ）
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 鍵そのものを job の env に置かない（deploy.yml と同じ方針）。有無の判定には
+      # 値を含まない boolean を使い、EXPO_TOKEN を渡すのは eas を呼ぶ step だけにする
+      - name: Check preconditions
+        id: gate
+        env:
+          HAS_EXPO_TOKEN: ${{ secrets.EXPO_TOKEN != '' }}
+          # ブランチ名・入力値は ${{ }} をスクリプトへ直接展開せず env 経由で渡す（シェル注入対策）
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PLATFORM: ${{ inputs.platform }}
+        run: |
+          echo "run=false" >> "$GITHUB_OUTPUT"
+
+          # 手動実行は任意のブランチから起動できる。ストアへ出してよいのは
+          # production に入ったコミットだけ
+          if [ "$REF_NAME" != "production" ]; then
+            echo "::warning::${REF_NAME} はストア配信の対象ブランチではないためスキップします（production で実行してください）"
+            exit 0
+          fi
+
+          if [ "$HAS_EXPO_TOKEN" != "true" ]; then
+            echo "::warning::EXPO_TOKEN が未設定のため、モバイルのビルドと提出をスキップします（.claude/docs/git-workflow.md「ストア配信の自動化」）"
+            exit 0
+          fi
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            PLATFORM="$INPUT_PLATFORM"
+          else
+            PLATFORM="$RELEASE_PLATFORM"
+          fi
+
+          case "$PLATFORM" in
+            ios | android | all) ;;
+            *)
+              echo "::error::プラットフォームの指定が不正です: '${PLATFORM}'（ios / android / all のいずれか。Variables の RELEASE_PLATFORM を確認してください）"
+              exit 1
+              ;;
+          esac
+
+          echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        if: steps.gate.outputs.run == 'true'
+        with:
+          # push の直前のコミットを特定できなかったときに HEAD^ と比べられるようにする
+          fetch-depth: 2
+
+      # app.config.ts を評価せず、version の行を文字列で比べる。評価するには依存の
+      # インストールが要り、環境変数の有無でも結果が変わりうるため。
+      #
+      # 比べる相手は **この push の直前のコミット**（github.event.before）。HEAD^ ではない。
+      # 複数コミットをまとめた push（fast-forward のマージ等）では、version を上げた
+      # コミットが先頭とは限らない。push ごとに範囲が重ならないので、二重投入もしない
+      - name: Detect version change
+        id: version
+        if: steps.gate.outputs.run == 'true' && github.event_name == 'push'
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          # 最初に現れる `version: '…'` の行（前後の空白は無視）。無ければ空
+          version_line() {
+            { grep -m1 -E "^[[:space:]]*version:[[:space:]]*['\"]" || true; } |
+              sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'
+          }
+
+          BASE=""
+          ZERO_SHA="0000000000000000000000000000000000000000"
+
+          # before が全て 0 になるのはブランチを新しく作った push。浅い clone には
+          # before のコミットが無いので、その 1 コミットだけ取りに行く
+          if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "$ZERO_SHA" ]; then
+            if git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null ||
+              git fetch --quiet --no-tags --depth=1 origin "$BEFORE_SHA" 2>/dev/null; then
+              BASE="$BEFORE_SHA"
+            fi
+          fi
+
+          if [ -z "$BASE" ] && git rev-parse --verify --quiet "HEAD^" > /dev/null; then
+            BASE=$(git rev-parse "HEAD^")
+            echo "::notice::push の直前のコミットを特定できないため、HEAD^（${BASE}）と比べます"
+          fi
+
+          if [ -z "$BASE" ]; then
+            echo "::warning::比べる相手のコミットが無いため、version の変化を判定できません。必要なら手動実行（workflow_dispatch）で提出してください"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 直前のコミットにファイルが無い場合（mobile を足した最初の push）は空になる
+          OLD=$(git show "${BASE}:${APP_CONFIG}" 2>/dev/null | version_line || true)
+          NEW=$(version_line < "$APP_CONFIG")
+
+          echo "直前（${BASE}）: ${OLD:-（なし）}"
+          echo "今回: ${NEW:-（なし）}"
+
+          if [ -z "$NEW" ]; then
+            echo "::warning::${APP_CONFIG} に version の行が見つかりません（version: '1.0.0' の形で書かれている前提です）。提出をスキップします"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          elif [ "$OLD" = "$NEW" ]; then
+            echo "version は変わっていないため、提出をスキップします"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "version が変わったため、ビルドして提出します"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 手動実行では version step が走らない（changed は空）ので、false でないことを見る
+      - uses: actions/setup-node@v7
+        if: steps.gate.outputs.run == 'true' && steps.version.outputs.changed != 'false'
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'yarn'
+
+      # eas-cli は app.config.ts を手元で評価する（expo パッケージが要る）
+      - name: Install dependencies
+        if: steps.gate.outputs.run == 'true' && steps.version.outputs.changed != 'false'
+        run: yarn install --frozen-lockfile
+
+      # ビルドの投入だけを行い、完了は待たない（--no-wait）。ビルドと提出は EAS 上で進む。
+      # 結果は expo.dev のビルド一覧で確認する
+      - name: Build and submit with EAS
+        if: steps.gate.outputs.run == 'true' && steps.version.outputs.changed != 'false'
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          PLATFORM: ${{ steps.gate.outputs.platform }}
+        run: |
+          npx --yes "eas-cli@${EAS_CLI_VERSION}" build \
+            --profile production \
+            --platform "$PLATFORM" \
+            --auto-submit \
+            --no-wait \
+            --non-interactive

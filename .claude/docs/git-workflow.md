@@ -5,14 +5,12 @@
 ```bash
 # 1. 機能開発
 git fetch origin --prune            # 進行中の release/* を見落とさないため必須
-git checkout production && git pull
-git checkout -b feat/user-profile
+git checkout production && git pull && git checkout -b feat/user-profile
 git merge origin/release/1.0.0      # 進行中の release があり、それに載せる場合
 # ... 開発・push → develop で動作確認 ...
 
 # 2. リリース準備（出したい機能だけ選ぶ）
-git checkout production
-git checkout -b release/1.0.0
+git checkout production && git checkout -b release/1.0.0
 git merge feat/user-profile
 git merge feat/posts
 git push origin release/1.0.0  # → staging で QA（push = staging へ自動デプロイ）
@@ -36,6 +34,10 @@ git checkout -b hotfix/1.0.1 production
 # ... 修正 → staging で確認 → production に merge ...
 ```
 
+> 切り替えと分岐を 1 回のコマンドで実行するときは **`&&` で繋ぐ**。改行や `;` で並べると、
+> `git checkout production` が失敗しても次の `git checkout -b` が走り、現在のブランチから
+> 切られる。`pre-git-guard.sh` は `&&` で繋がった切り替えだけを分岐元として認める。
+
 ## 作業ブランチの切り方
 
 **`production` から切り、進行中の `release/*` があればそれをマージしてから作業する。**
@@ -43,8 +45,7 @@ git checkout -b hotfix/1.0.1 production
 ```bash
 git fetch origin --prune            # まず必ず実行する
 git branch -r --list 'origin/release/*'   # 進行中のリリースを確認
-git checkout production && git pull
-git checkout -b feat/user-profile
+git checkout production && git pull && git checkout -b feat/user-profile
 git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 ```
 
@@ -309,6 +310,14 @@ staging の `.env` でビルドしたものを production のサイトにも出�
 DEPLOY_HOSTING_TARGETS='web admin' yarn deploy:staging
 ```
 
+環境名と一致するターゲットがあるとき、**名前に環境名を含む別のターゲット**（別アプリのサイトを
+相乗りさせた `lp-production` など）には配らない。配らなかったことは警告に出るので、あわせて配るなら
+同じく `DEPLOY_HOSTING_TARGETS` で明示する（`package.json` の `deploy:*` に書いておくと漏れない）。
+
+```bash
+DEPLOY_HOSTING_TARGETS='production lp-production' yarn deploy:production
+```
+
 判定は `scripts/lib/hosting-targets.mjs` にあり、`scripts/test-deploy-targets.sh` が回帰テストする。
 
 ### デプロイ対象は `.firebaserc` の構成から決まる
@@ -506,6 +515,94 @@ gcloud services enable cloudfunctions.googleapis.com \
 
 自動有効化される場合もあるが反映に時間がかかるため、事前に有効化しておくのが確実。
 [Google Cloud Console](https://console.cloud.google.com/apis/library) からも有効化可能。
+
+<!-- layer:mobile:start -->
+
+## ストア配信の自動化
+
+モバイルは Firebase のデプロイ対象ではない（`deploy.yml` は `apps/mobile/` を見ない）。
+代わりに `.github/workflows/mobile-release.yml` が、**`apps/mobile/app.config.ts` の `version` を
+上げた変更が `production` に入ったとき**に EAS でビルドし、ストアへ提出する。
+
+```
+eas build --profile production --platform <ios|android|all> --auto-submit --no-wait
+```
+
+| 自動でやること | 人がやること |
+| --- | --- |
+| production ビルドの作成（buildNumber / versionCode は EAS が増やす） | `version` を上げる |
+| App Store Connect へのアップロード（TestFlight に出る） | 審査への提出 |
+| Google Play の `internal` トラックへのアップロード（`eas.json` の `submit.production.android.track`） | 本番トラックへの昇格 |
+
+- **「version を上げた = モバイルを出す」に揃えている。** iOS は審査済みの version への
+  追加アップロードを拒否するため、version を上げずに自動で作ると失敗する。Web だけの
+  リリースでは version を触らなければ何も起きない
+- **version は評価せず、行を文字列で比べる。** push の直前のコミットと今回とで、
+  `app.config.ts` の最初の `version: '…'` の行が違えば提出する。`version` は文字列リテラルで
+  書いたままにすること（`version: pkg.version` のような式にすると検知できず、警告を出してスキップする）
+- **buildNumber / versionCode は手で管理しない。** `eas.json` の `appVersionSource: remote` と
+  `production.autoIncrement` で EAS 側が増やす
+- **ビルドの完了は待たない**（`--no-wait`）。ワークフローは投入した時点で成功になる。
+  ビルドと提出の結果は expo.dev のビルド一覧で確認する
+- **ワークフローに `concurrency` を置いていない。** 同じ group では待機中の run が後続に
+  置き換えられ、version を上げた push の run が取り消されると、その version が一度も
+  投入されないため。各 run はその push の範囲しか比べないので、並行しても二重投入にはならない
+
+### セットアップ
+
+1. **資格情報を EAS に預ける。** 署名証明書・App Store Connect API キー・Google の
+   サービスアカウント鍵は全て EAS 側に置く（`eas credentials`）。`eas.json` の
+   `submit.production` は実値にする（`ascAppId` 等）。`android.serviceAccountKeyPath` は
+   手元のファイルを指す設定で、CI にはそのファイルが無いので、鍵を EAS に預けて行を消す
+2. **手元で一度、同じコマンドを通す。** 対話で聞かれる項目（資格情報の生成・ストア側のアプリの
+   選択）を先に済ませておく。CI は `--non-interactive` で動くので、聞かれる項目が残っていると失敗する
+
+   ```bash
+   cd apps/mobile && npx eas-cli@latest build --profile production --platform all --auto-submit
+   ```
+
+3. **`EXPO_TOKEN` を登録する。** expo.dev の Access tokens で発行し（個人のトークンではなく
+   Robot user のものを推奨）、リポジトリの Secrets に入れる。ワークフローが使う秘密はこれだけ
+
+   ```bash
+   gh secret set EXPO_TOKEN
+   ```
+
+   未登録の間は、warning を出してスキップする（失敗にはしない）
+
+4. **片方のプラットフォームだけ自動で出すなら** Variables に `RELEASE_PLATFORM`（`ios` / `android` /
+   `all`。既定は `all`）を登録する。Play Console にアプリがまだ無いと EAS Submit が失敗するので、
+   iOS だけ先に出す場合に使う。ワークフローのファイルは Template Sync の対象なので、書き換えずに
+   Variables で切り替える
+
+   ```bash
+   gh variable set RELEASE_PLATFORM --body ios
+   ```
+
+### version の上げ方（release ブランチ運用）
+
+version を上げる変更は、他の変更と同じ経路で `production` に入れる。
+
+1. `chore/bump-mobile-<バージョン>` を切り（切り方は他の作業ブランチと同じ →「作業ブランチの切り方」）、
+   `apps/mobile/app.config.ts` の `version` を上げる
+2. `release/*` へ PR でマージする（`release/*` への直接コミットは禁止）。この時点では
+   何も提出されない — ワークフローが見るのは `production` への push だけ
+3. `release/*` → `production` の PR をマージすると、Web のデプロイ（`deploy.yml`）と並んで
+   モバイルの提出が走る
+
+緊急修正（`hotfix/*`）でモバイルも出すなら、同じく `version` を上げてから `production` へ入れる。
+
+### 手動で出す
+
+Actions の「Mobile Release」を **`production` ブランチで**手動実行する（プラットフォームを選べる）。
+version の比較はせず、その時点の `production` をビルドして提出する。失敗した回のやり直しや、
+後から片方のプラットフォームだけ出すときに使う。`production` 以外のブランチで実行した場合は
+warning を出してスキップする。
+
+`eas-cli` はワークフローの `EAS_CLI_VERSION` でメジャーを固定している。上げるときは
+テンプレート側で上げ、Template Sync で受け取る。
+
+<!-- layer:mobile:end -->
 
 ## マージルールの強制（プラン別）
 
@@ -837,6 +934,17 @@ PAT だと、詰まる／詰まらない以前に次の2つが常時ついて回
 避けられるはず。
 
 scaffold 直後のリポジトリにこのラベルは無いので、先に作っておくのが確実。
+**`yarn setup` が、同期される設定の前提になっているラベルをまとめて作る**（不足分だけ。既にある
+ラベルには触らない）。ラベルはリポジトリの状態であってファイルではないので、Template Sync でも
+`/init-project` でも届かない。
+
+| ラベル | 要求しているもの |
+|---|---|
+| `template-sync` | `.github/workflows/template-sync.yml` の `pr_labels` |
+| `dependencies` / `security` | `renovate/default.json` |
+| `task` / `from-downstream` | `.github/ISSUE_TEMPLATE/` |
+
+手で作るなら次のとおり。
 
 ```bash
 gh label create template-sync

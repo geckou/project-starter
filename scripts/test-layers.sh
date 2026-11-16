@@ -191,6 +191,104 @@ else
 fi
 rm -rf "$broken"
 
+# 層専用の env キーが、マーカーの外にも書かれているとき。どれか 1 行が範囲内に
+# あるだけで通すと、その層を減算しても外側の行が残る（#311）
+broken=$(make_variant)
+printf '\nSTRIPE_PRICE_IDS=\n' >> "$broken/.env.example"
+output=$(cd "$broken" && node scripts/check-layers.mjs 2>&1)
+if echo "$output" | grep -q 'billing.env のキーが layer:billing のマーカーの外にあります.*STRIPE_PRICE_IDS'; then
+  pass "マーカーの外にも書かれた層専用の env キーを検出する"
+else
+  fail "マーカーの外にも書かれた層専用の env キーを見逃す" "$output"
+fi
+rm -rf "$broken"
+
+# コメントアウトした代入行も同じ扱い（減算で残るのは同じ）
+broken=$(make_variant)
+printf '\n# STRIPE_PRICE_IDS=price_xxx\n' >> "$broken/.env.example"
+if (cd "$broken" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  fail "マーカーの外のコメントアウトされた env キーを見逃す"
+else
+  pass "マーカーの外のコメントアウトされた env キーも検出する"
+fi
+rm -rf "$broken"
+
+# 複数の層を列挙したマーカー（層の交点）の中にあるぶんは、その層の範囲内として数える
+marker_case_env=$(node --input-type=module -e "
+  import { envKeyPlacement } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const env = ['CORE=', '# layer:billing:start', 'KEY=', '# layer:billing:end', '# layer:billing,mobile:start', '# KEY=x', '# layer:billing,mobile:end'].join('\n')
+  const billing = { name: 'billing', requires: 'functions' }
+  const core = { name: 'core', requires: null }
+  const results = [
+    envKeyPlacement(env, billing, 'KEY'),
+    envKeyPlacement(env + '\nKEY=', billing, 'KEY'),
+    envKeyPlacement(env, billing, 'NONE'),
+    envKeyPlacement(env, core, 'CORE'),
+    envKeyPlacement(env, core, 'KEY'),
+  ].join(' ')
+  console.log(results)
+" 2>&1)
+if [ "$marker_case_env" = "ok misplaced missing ok misplaced" ]; then
+  pass "env キーの位置判定（全行が範囲内 / 外に 1 行 / 無い / core）"
+else
+  fail "env キーの位置判定が期待と違う" "$marker_case_env"
+fi
+
+# .env.example が無い派生（.env* は Template Sync の対象外）。生の ENOENT で落ちると、
+# それまでに集めた指摘が 1 つも出ない（#313）
+broken=$(make_variant)
+rm -f "$broken/.env.example"
+node -e "
+  const fs = require('fs');
+  const manifest = JSON.parse(fs.readFileSync('$broken/layers.json', 'utf8'));
+  manifest.layers.find((l) => l.name === 'firebase').files.push('apps/web/src/lib/does-not-exist.ts');
+  fs.writeFileSync('$broken/layers.json', JSON.stringify(manifest, null, 2) + '\n');
+"
+output=$(cd "$broken" && node scripts/check-layers.mjs 2>&1)
+if echo "$output" | grep -q 'ENOENT'; then
+  fail ".env.example が無いと ENOENT のスタックトレースで落ちる" "$output"
+elif echo "$output" | grep -q '\.env\.example がありません'; then
+  pass ".env.example が無いことを指摘として報告する"
+else
+  fail ".env.example が無いことを報告していない" "$output"
+fi
+if echo "$output" | grep -q 'does-not-exist.ts'; then
+  pass ".env.example が無くても他の検査結果を出力する"
+else
+  fail ".env.example が無いと他の検査結果が出ない" "$output"
+fi
+
+# env を宣言している層が無ければ（blocks からも外してあれば）、.env.example が無くても
+# 検査するものが無い
+node -e "
+  const fs = require('fs');
+  const manifest = JSON.parse(fs.readFileSync('$broken/layers.json', 'utf8'));
+  for (const layer of manifest.layers) {
+    delete layer.env;
+    if (layer.blocks) layer.blocks = layer.blocks.filter((file) => file !== '.env.example');
+    layer.files = (layer.files ?? []).filter((file) => !file.includes('does-not-exist'));
+  }
+  fs.writeFileSync('$broken/layers.json', JSON.stringify(manifest, null, 2) + '\n');
+"
+if (cd "$broken" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  pass "env を宣言していなければ .env.example が無くても通す"
+else
+  fail "env を宣言していないのに .env.example の不在で落ちる" "$(cd "$broken" && node scripts/check-layers.mjs 2>&1)"
+fi
+rm -rf "$broken"
+
+# .env.example のマーカーが壊れているとき。3-4 が報告したあと、env の節がもう一度
+# findBlocks を呼んで生の例外で落ちると、やはり指摘の一覧が出ない（#313）
+broken=$(make_variant)
+printf '\n# layer:billing:start\n' >> "$broken/.env.example"
+output=$(cd "$broken" && node scripts/check-layers.mjs 2>&1)
+if echo "$output" | grep -q '^  - \.env\.example: 閉じていないマーカー'; then
+  pass ".env.example の壊れたマーカーを指摘の一覧として報告する"
+else
+  fail ".env.example の壊れたマーカーで指摘の一覧が出ない" "$output"
+fi
+rm -rf "$broken"
+
 # ワークスペースの公開区分。private も publishConfig も無いと、add-layer の
 # スコープ書き換えから黙って漏れる（型チェックにもテストにも引っかからない）
 set_workspace_manifest() {
@@ -826,6 +924,37 @@ else
   fail "層を外していない構成でファイルが変わった"
 fi
 
+# 全部入りの派生でも、テンプレートが既存の層に足した項目は取り込む。
+# layers.json は同期対象外なので、ここで入らないと同期されたファイルのマーカーが
+# 未登録として check-layers.mjs に検出される
+all_in=$(make_variant)
+node -e '
+  const fs = require("fs")
+  const [, target, template] = process.argv
+  const manifest = JSON.parse(fs.readFileSync(target, "utf8"))
+  fs.writeFileSync(template, JSON.stringify(manifest, null, 2))
+
+  // 派生側は、テンプレートが mobile 層に足したブロックをまだ知らない状態にする
+  const mobile = manifest.layers.find((layer) => layer.name === "mobile")
+  mobile.blocks = mobile.blocks.filter((file) => file !== ".claude/docs/git-workflow.md")
+  fs.writeFileSync(target, JSON.stringify(manifest, null, 2) + "\n")
+' "$all_in/layers.json" "$all_in/template-layers.json"
+
+if (cd "$all_in" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  fail "前提: ブロックを外した定義で check-layers が通ってしまう"
+else
+  node "$all_in/scripts/sync-layers.mjs" --target "$all_in" \
+    --template "$all_in/template-layers.json" > /dev/null 2>&1
+  rm -f "$all_in/template-layers.json"
+
+  if check_output=$(cd "$all_in" && node scripts/check-layers.mjs 2>&1); then
+    pass "全部入りの構成でも、テンプレートで増えた項目を取り込む"
+  else
+    fail "全部入りの構成で、テンプレートで増えた項目が取り込まれない" "$check_output"
+  fi
+fi
+rm -rf "$all_in"
+
 # layers.json を持たない派生ではスキップする（CI から無条件に呼ばれるため）
 rm -f "$variant/layers.json"
 if node "$variant/scripts/sync-layers.mjs" --target "$variant" \
@@ -1048,6 +1177,68 @@ marker_case '同じ行で閉じてから開き直す形も追う' "
   if (stripBlocks(before, ['m']) !== 'k1\nk2') process.exit(1)
 "
 
+# 同じ層のマーカーの入れ子。findBlocks は有効な構文として受け付けるので、
+# stripBlocks も外側の end まで消す。内側の end で止めると、それ以降の内容と
+# 外側の end マーカーが残る（#312）
+marker_case '同じ層の入れ子は外側の end まで消す' "
+  import { stripBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const before = ['a', '// layer:billing:start', 'b', '// layer:billing:start', 'c', '// layer:billing:end', 'd', '// layer:billing:end', 'e'].join('\n')
+  const after = stripBlocks(before, ['billing'])
+  if (after !== 'a\ne') {
+    console.error(JSON.stringify(after))
+    process.exit(1)
+  }
+"
+
+marker_case '同じ層の入れ子を findBlocks は 2 つの範囲として数える（stripBlocks と揃う）' "
+  import { findBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const blocks = findBlocks(['a', '// layer:billing:start', 'b', '// layer:billing:start', 'c', '// layer:billing:end', 'd', '// layer:billing:end', 'e'].join('\n'))
+  const spans = blocks.map((block) => block.startLine + '-' + block.endLine).sort().join(' ')
+  if (spans !== '1-7 3-5') {
+    console.error(spans)
+    process.exit(1)
+  }
+"
+
+# 層指定の書き方が違っても同じ層指定として深さを数える。別の層指定の入れ子は数えない
+marker_case '入れ子の深さは正規化した層指定で数える' "
+  import { stripBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const before = ['a', '# layer:mobile,billing:start', '# layer:billing:start', 'x', '# layer:billing:end', '# layer:mobile, billing:start', 'y', '# layer:mobile,billing:end', 'z', '# layer:mobile, billing:end', 'b'].join('\n')
+  const after = stripBlocks(before, ['billing'])
+  if (after !== 'a\nb') {
+    console.error(JSON.stringify(after))
+    process.exit(1)
+  }
+"
+
+# 入れ子を閉じたあとの内容は残す（深さを戻し忘れると後続が巻き込まれる）
+marker_case '入れ子を閉じたあとの同じ層の範囲も、それぞれ閉じた所で止まる' "
+  import { stripBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const before = ['# layer:m:start', '# layer:m:start', 'x', '# layer:m:end', '# layer:m:end', 'keep', '# layer:m:start', 'y', '# layer:m:end', 'tail'].join('\n')
+  const after = stripBlocks(before, ['m'])
+  if (after !== 'keep\ntail') {
+    console.error(JSON.stringify(after))
+    process.exit(1)
+  }
+"
+
+# 実際の減算でも、入れ子を含むファイルが壊れずに残りの層の検証まで通る
+variant=$(make_variant)
+printf 'keep1\n<!-- layer:billing:start -->\nouter\n<!-- layer:billing:start -->\ninner\n<!-- layer:billing:end -->\nouter2\n<!-- layer:billing:end -->\nkeep2\n' > "$variant/nested-marker.md"
+nested_output=$(remove_layers "$variant" billing)
+if [ "$(cat "$variant/nested-marker.md")" = "$(printf 'keep1\nkeep2')" ]; then
+  pass "同じ層の入れ子を含むファイルを減算できる"
+else
+  fail "同じ層の入れ子の減算結果が期待と違う" "$nested_output
+$(cat "$variant/nested-marker.md")"
+fi
+if (cd "$variant" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  pass "入れ子を減算したあとも check-layers.mjs が通る"
+else
+  fail "入れ子を減算したあとに check-layers.mjs が落ちる" "$(cd "$variant" && node scripts/check-layers.mjs 2>&1)"
+fi
+rm -rf "$variant"
+
 # 壊れたマーカーを持つファイルがあるとき、減算は黙って切り詰めずに落ちる
 variant=$(make_variant)
 printf 'keep1\n# layer:mobile:start\nkeep2\n' > "$variant/broken-marker.md"
@@ -1121,6 +1312,205 @@ else
   fail "外し直しで source がテンプレートの値に巻き戻った"
 fi
 rm -rf "$variant" "$pristine"
+
+# 残る層の定義は派生側を土台にすること（#386）。以前はテンプレートの定義で丸ごと
+# 差し替えていたため、派生が足した env・files・blocks、removable: false、外した json の
+# キーが同期のたびに巻き戻り、check-layers.mjs が落ちていた。
+#
+# 手順は Issue の再現手順どおり: 層を 1 つ外す → 残る層の定義を派生で変える →
+# check-layers が通る → テンプレートのマニフェストで sync-layers → 定義と check-layers を見る
+variant=$(make_variant)
+pristine=$(make_variant)
+remove_layers "$variant" billing > /dev/null 2>&1
+
+# 派生側の変更
+#   env    … 派生固有のキーを firebase 層に足す（.env.example にも足す）
+#   files  … 派生で足したスクリプトを firebase 層に登録する
+#   blocks … 派生で足したファイルに firebase のマーカーを置いて登録する
+#   json   … 使っていない emulators.storage を firebase.json からも定義からも外す
+#   removable / summary … 派生の値に書き換える
+# と、テンプレートで増える項目のうち派生が実体を用意したもの
+#   TEMPLATE_PLACED_KEY … firebase のマーカー内に置いた（→ 取り込まれる）
+#   TEMPLATE_MISPLACED_KEY … マーカーの外に置いた（→ 取り込むと check-layers が落ちるので入れない）
+node -e "
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = process.argv[1];
+  const file = path.join(root, 'layers.json');
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const firebase = manifest.layers.find((layer) => layer.name === 'firebase');
+  firebase.env.push('DERIVED_ONLY_KEY');
+  firebase.files.push('scripts/derived-only.sh');
+  firebase.blocks.push('derived-notes.md');
+  firebase.removable = false;
+  firebase.summary = '派生で書き換えた要約';
+  firebase.json['firebase.json'] = firebase.json['firebase.json'].filter(
+    (keys) => keys.join('.') !== 'emulators.storage'
+  );
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\\n');
+
+  const firebaseJson = path.join(root, 'firebase.json');
+  const config = JSON.parse(fs.readFileSync(firebaseJson, 'utf8'));
+  delete config.emulators.storage;
+  fs.writeFileSync(firebaseJson, JSON.stringify(config, null, 2) + '\\n');
+
+  fs.writeFileSync(path.join(root, 'scripts/derived-only.sh'), '#!/usr/bin/env bash\\n');
+  fs.writeFileSync(
+    path.join(root, 'derived-notes.md'),
+    '<!-- layer:firebase:start -->\\n派生のメモ\\n<!-- layer:firebase:end -->\\n'
+  );
+  fs.appendFileSync(
+    path.join(root, '.env.example'),
+    '\\n# layer:firebase:start\\nDERIVED_ONLY_KEY=\\nTEMPLATE_PLACED_KEY=\\n# layer:firebase:end\\nTEMPLATE_MISPLACED_KEY=\\n'
+  );
+" "$variant"
+
+if (cd "$variant" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  pass "派生で定義を変えた構成は check-layers.mjs が通る（前提）"
+else
+  fail "派生で定義を変えた構成が check-layers.mjs を通らない（テストの前提が崩れている）" \
+    "$(cd "$variant" && node scripts/check-layers.mjs 2>&1)"
+fi
+
+# テンプレート側のマニフェスト。firebase 層に新しい項目が増えている
+#   scripts/template-new.sh … 同期で届いた（→ 取り込まれる）
+#   scripts/template-not-synced.sh … 派生には届いていない（→ 入れない）
+#   TEMPLATE_ABSENT_KEY … .env* は同期されないので派生の .env.example に無い（→ 入れない）
+#   packages/shared/package.json の exports.\"./template-new\" … 派生には無い（→ 入れない）
+template_manifest=$(mktemp)
+node -e "
+  const fs = require('node:fs');
+  const [from, to] = process.argv.slice(1);
+  const manifest = JSON.parse(fs.readFileSync(from, 'utf8'));
+  const firebase = manifest.layers.find((layer) => layer.name === 'firebase');
+  firebase.files.push('scripts/template-new.sh', 'scripts/template-not-synced.sh');
+  firebase.env.push('TEMPLATE_PLACED_KEY', 'TEMPLATE_MISPLACED_KEY', 'TEMPLATE_ABSENT_KEY');
+  firebase.json['packages/shared/package.json'].push(['exports', './template-new']);
+  firebase.summary = 'テンプレートで書き換えた要約';
+  firebase.templateOnlyField = 'テンプレートで増えたスカラー';
+  fs.writeFileSync(to, JSON.stringify(manifest, null, 2) + '\\n');
+" "$pristine/layers.json" "$template_manifest"
+
+# 同期で届くもの: テンプレートの新しいファイルと、外した層のマーカーを含む同期対象
+printf '#!/usr/bin/env bash\n' > "$variant/scripts/template-new.sh"
+cp "$pristine/scripts/use-env.sh" "$variant/scripts/use-env.sh"
+
+if grep -q 'layer:billing' "$variant/scripts/use-env.sh"; then
+  pass "同期で外した層のマーカーが戻っている（前提）"
+else
+  fail "同期対象に外した層のマーカーが無い（テストの前提が崩れている）"
+fi
+
+sync_output=$(node "$variant/scripts/sync-layers.mjs" --target "$variant" \
+  --template "$template_manifest" 2>&1)
+
+# 層の定義の 1 項目を取り出す（配列は JSON 文字列の一覧として 1 行ずつ）
+layer_field() {
+  node -e "
+    const fs = require('node:fs');
+    const [file, name, field, key] = process.argv.slice(1);
+    const layer = JSON.parse(fs.readFileSync(file, 'utf8')).layers.find((l) => l.name === name);
+    let value = layer ? layer[field] : undefined;
+    if (key && value) value = value[key];
+    if (Array.isArray(value)) {
+      for (const item of value) console.log(typeof item === 'string' ? item : item.join('.'));
+    } else {
+      console.log(String(value));
+    }
+  " "$variant/layers.json" "$@"
+}
+
+assert_layer_has() {
+  local label=$1 expected=$2
+  shift 2
+  if layer_field "$@" | grep -qxF "$expected"; then
+    pass "$label"
+  else
+    fail "$label" "$sync_output
+--- $* ---
+$(layer_field "$@")"
+  fi
+}
+
+assert_layer_lacks() {
+  local label=$1 unexpected=$2
+  shift 2
+  if layer_field "$@" | grep -qxF "$unexpected"; then
+    fail "$label" "$(layer_field "$@")"
+  else
+    pass "$label"
+  fi
+}
+
+assert_layer_has "外し直しても派生が足した env キーが残る" DERIVED_ONLY_KEY firebase env
+assert_layer_has "外し直しても派生が足した files が残る" scripts/derived-only.sh firebase files
+assert_layer_has "外し直しても派生が足した blocks が残る" derived-notes.md firebase blocks
+assert_layer_has "外し直しても removable: false が残る" false firebase removable
+assert_layer_has "スカラーは派生側の値を正にする" '派生で書き換えた要約' firebase summary
+assert_layer_has "派生の定義に無いスカラーはテンプレートから補う" \
+  'テンプレートで増えたスカラー' firebase templateOnlyField
+assert_layer_lacks "派生が実体ごと外した json のキーは戻さない" \
+  emulators.storage firebase json firebase.json
+assert_layer_has "派生が残している json のキーはそのまま" firestore firebase json firebase.json
+
+assert_layer_has "テンプレートで増えた files のうち届いたものを取り込む" \
+  scripts/template-new.sh firebase files
+assert_layer_lacks "テンプレートで増えた files でも実在しないものは入れない" \
+  scripts/template-not-synced.sh firebase files
+assert_layer_has "テンプレートで増えた env のうち層の範囲に置かれたものを取り込む" \
+  TEMPLATE_PLACED_KEY firebase env
+assert_layer_lacks "層の範囲の外に置かれた env キーは入れない（入れると検証が落ちる）" \
+  TEMPLATE_MISPLACED_KEY firebase env
+assert_layer_lacks ".env.example に無い env キーは入れない" TEMPLATE_ABSENT_KEY firebase env
+assert_layer_lacks "対象の JSON に無いキーは入れない" \
+  exports../template-new firebase json packages/shared/package.json
+
+if [ "$(layer_field billing name)" = "undefined" ] &&
+  ! grep -q 'layer:billing' "$variant/scripts/use-env.sh"; then
+  pass "外した層は定義もマーカーも戻らない"
+else
+  fail "外した層の定義かマーカーが戻った" "$sync_output"
+fi
+
+if (cd "$variant" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  pass "派生の定義を保ったまま、外し直したあとも check-layers.mjs が通る"
+else
+  fail "外し直したあとに check-layers.mjs が落ちる" \
+    "$(cd "$variant" && node scripts/check-layers.mjs 2>&1)"
+fi
+
+# 同じ同期をもう一度かけても layers.json が変わらないこと。変わると、テンプレートに
+# 新しいコミットが無くても同じ内容の同期 PR が開き直される（#386 の補足）
+before=$($SHA1 < "$variant/layers.json")
+cp "$pristine/scripts/use-env.sh" "$variant/scripts/use-env.sh"
+node "$variant/scripts/sync-layers.mjs" --target "$variant" \
+  --template "$template_manifest" > /dev/null 2>&1
+if [ "$before" = "$($SHA1 < "$variant/layers.json")" ]; then
+  pass "同じ同期を繰り返しても layers.json が変わらない"
+else
+  fail "同じ同期を繰り返すと layers.json が変わる"
+fi
+
+# 派生が層をまたいで移した項目を、テンプレートの元の層へ足し戻さない（2 層に載せない）
+node -e "
+  const fs = require('node:fs');
+  const file = process.argv[1];
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const firebase = manifest.layers.find((layer) => layer.name === 'firebase');
+  const functions = manifest.layers.find((layer) => layer.name === 'functions');
+  firebase.files = firebase.files.filter((item) => item !== 'scripts/template-new.sh');
+  functions.files.push('scripts/template-new.sh');
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\\n');
+" "$variant/layers.json"
+cp "$pristine/scripts/use-env.sh" "$variant/scripts/use-env.sh"
+node "$variant/scripts/sync-layers.mjs" --target "$variant" \
+  --template "$template_manifest" > /dev/null 2>&1
+assert_layer_lacks "派生が別の層へ移した項目は、元の層へ足し戻さない" \
+  scripts/template-new.sh firebase files
+assert_layer_has "派生が別の層へ移した項目は、移した先に残る" \
+  scripts/template-new.sh functions files
+
+rm -rf "$variant" "$pristine" "$template_manifest"
 
 echo ""
 

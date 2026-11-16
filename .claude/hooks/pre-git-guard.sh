@@ -208,7 +208,14 @@ cmd=$(printf '%s' "$cmd" | awk '
 # 外側が引用されている場合（コミットメッセージ中の言及）は展開しない
 unwrap_pass() {
   awk '
-    BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
+    BEGIN {
+      sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92)
+      # 展開した中身の終わりの印。中身の末尾が `# コメント` のとき、後段の
+      # コメント読み飛ばしが行末まで進むと、同じ行に続く本物のコマンド
+      # （`sh -c '"'"'echo a # b'"'"'; git push origin production` の push）まで
+      # 落としてしまう。コメントは引用の中で終わるので、その位置を伝える（#298）
+      eoc = sprintf("%c", 3)
+    }
 
     # ANSI-C クォート（ドル記号 + 引用符）の中の空白のエスケープを元に戻す。
     # 戻さないと git\x20push のような書き方が 1 トークンのままで検査に当たらない
@@ -232,7 +239,7 @@ unwrap_pass() {
               out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
             j = i + 1; inner = ""
             while (j <= n && substr(line, j, 1) != ch) { inner = inner substr(line, j, 1); j++ }
-            if (j <= n) { out = out "( " decode(inner) " )"; i = j + 1; continue }
+            if (j <= n) { out = out "( " decode(inner) " " eoc ")"; i = j + 1; continue }
           }
           out = out ch; state = ch; i++; continue
         }
@@ -433,8 +440,11 @@ GUARDED_SUBCOMMAND_RE='(^|[[:space:]])(commit|push|merge|rebase|pull|cherry-pick
 
 # husky を環境変数から無効化する経路。HUSKY=0 は husky v9 が公式に用意した
 # 無効化手段、GIT_CONFIG_* は -c を使わずに core.hooksPath を注入する経路
-# （GIT_CONFIG_PARAMETERS は git 内部用だが、外から与えても効く）
-ENV_BYPASS_RE='(HUSKY=0([[:space:]]|;|$)|GIT_CONFIG_(COUNT|KEY_[0-9]+|VALUE_[0-9]+|PARAMETERS|GLOBAL|SYSTEM|NOSYSTEM)=)'
+# （GIT_CONFIG_PARAMETERS は git 内部用だが、外から与えても効く）。
+# 対象は**設定を注入できる変数だけ**。GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM /
+# GIT_CONFIG_NOSYSTEM はグローバル・システム設定の読み先を変えるだけで、
+# リポジトリローカルの core.hooksPath（husky が書く）を上書きできない（#315）
+ENV_BYPASS_RE='(HUSKY=0([[:space:]]|;|$)|GIT_CONFIG_(COUNT|KEY_[0-9]+|VALUE_[0-9]+|PARAMETERS)=)'
 
 segments=$(printf '%s' "$cmd" | awk '
   BEGIN {
@@ -447,6 +457,8 @@ segments=$(printf '%s' "$cmd" | awk '
     seg_end = sprintf("%c.", 1)
     subst_cmd_end = sprintf("%csubstend", 1)
     sep_and = sprintf("%csep&&", 1); sep_seq = sprintf("%csep", 1)
+    # unwrap_pass が sh -c / eval の中身の終わりに置く印（コメントの終端）
+    eoc = sprintf("%c", 3)
   }
   # セグメントは改行を含みうるので、1 件ごとに終端の行を添えて渡す
   function emit(s) { print s; print seg_end }
@@ -461,6 +473,26 @@ segments=$(printf '%s' "$cmd" | awk '
   }
   # 行末のバックスラッシュは行の継続。文字として残すと `git commit -m \` の
   # 次の行のメッセージが、値ではなく別のトークンとして読まれる
+    # seg の中で ${ が閉じていないか（開きの数が } の数より多い）
+    # ${ の外にある } は数えない（`echo } ${x:= #}` を「閉じている」と読まない）
+    function in_param(text,    k, len, ch, d) {
+      d = 0
+      len = length(text)
+      for (k = 1; k <= len; k++) {
+        ch = substr(text, k, 1)
+        if (ch == "$" && substr(text, k + 1, 1) == "{") { d++; k++; continue }
+        if (ch == "}" && d > 0) d--
+      }
+      return d > 0
+    }
+    # 位置 pos と同じ行の、pos より前に (( があるか。算術式の中の # は基数の指定
+    # （`(( 16#ff ))` / `(( 1 #2 ))`）で、コメントではない
+    function in_arith(pos,    k, line) {
+      k = pos - 1
+      while (k >= 1 && substr(all, k, 1) != "\n") k--
+      line = substr(all, k + 1, pos - k - 1)
+      return index(line, "((") > 0
+    }
   function cont(i) { return (substr(all, i + 1, 1) == "\n") }
   # start から closer までの置換の中身に git の呼び出しがあるか。
   # ダブルクォートの中の置換を切り出すかどうかの判定に使う（切り出すのは
@@ -470,6 +502,15 @@ segments=$(printf '%s' "$cmd" | awk '
     body = ""
     for (j = start; j <= length(all); j++) {
       ch = substr(all, j, 1)
+      # 印の付いた行はコミットメッセージの本文（データ）。本文に書いた
+      # `git commit -n` のような例や括弧を、置換の中身として数えない。
+      # 数えると -m "$(cat <<EOF …)" の置換が切り出され、メッセージの値が
+      # 空になって規約どおりのコミットが弾かれる（#299）
+      if (ch == msg) {
+        while (j <= length(all) && substr(all, j, 1) != "\n") j++
+        body = body "\n"
+        continue
+      }
       if (closer == ")") {
         if (ch == "(") d++
         else if (ch == ")") { d--; if (d == 0) break }
@@ -494,6 +535,8 @@ segments=$(printf '%s' "$cmd" | awk '
         i = j - 1
         continue
       }
+      # 展開した中身の終わりの印は、コメントの終端としてだけ使う（下の # の分岐）
+      if (c == eoc) continue
       if (q == sq) { seg = seg c; if (c == sq) q = ""; continue }
       if (q == dq) {
         if (c == bs) { if (cont(i)) { i++; continue }
@@ -532,6 +575,32 @@ segments=$(printf '%s' "$cmd" | awk '
       if (c == bs) { if (cont(i)) { i++; continue }
                      seg = seg c substr(all, i + 1, 1); i++; continue }
       if (c == sq || c == dq) { q = c; seg = seg c; continue }
+      # 引用の外で語の先頭に来た # から行末まではコメント。落とさないと、コメント中の
+      # 語が refspec やフラグとして読まれる（`git push origin feat/x # not to production`
+      # が production への push に見える。#298）。語の途中の #（`fix#12`）と引用の中の #
+      # （`-m "fix: #12"`）はコメントではない。heredoc_marker と同じ規則。
+      # 終端は改行のほか、sh -c / eval を展開した中身の終わり（eoc）と、
+      # バッククォートの置換の閉じ（シェルは置換の文字列を先に切り出す）
+      #
+      # 「語の先頭」は直前の生の文字だけでは決まらない。次の形の # はコメントではなく、
+      # シェルは行の続きを実行する。コメントとして落とすと、続きが検査から丸ごと消える:
+      #   - 直前の空白がエスケープされている（`a\ #; git commit -n`）
+      #   - 行継続の直後（`a\<改行>#b; …`）
+      #   - ${ … } の中（`${x:= #}; …`）
+      #   - (( … )) の中（`(( 1 #2 )); …`）
+      # 判定に迷う形はコメント扱いしない（検査する側へ倒す）
+      if (c == "#" && (i == 1 || (substr(all, i - 1, 1) ~ /[ \t\n]/ &&
+                                  substr(all, i - 2, 1) != bs && !in_param(seg) &&
+                                  !in_arith(i)))) {
+        j = i
+        while (j <= n) {
+          ch = substr(all, j, 1)
+          if (ch == "\n" || ch == eoc || (bt_open && ch == bt)) break
+          j++
+        }
+        i = j - 1
+        continue
+      }
       if (c == "(" || c == ")") {
         if (c == "(") {
           # $( … ) がコマンド位置に来ているか。直前が「空白と（あれば）引用符 + $」
@@ -585,6 +654,24 @@ segments=$(printf '%s' "$cmd" | awk '
   }
 ')
 
+# cd / pushd の引数（最初の 1 語）を target に入れる。
+# クォート付きのパスは閉じクォートまでを 1 引数として取る。
+# 空白までで切ると `cd "/path/with spaces"` が解決できず、
+# 別リポジトリなのに検査対象に残ってしまう
+first_arg() {
+  target=$1
+  target=${target#"${target%%[![:space:]]*}"}
+  case $target in
+    (\'*) target=${target#\'}; target=${target%%\'*} ;;
+    (\"*) target=${target#\"}; target=${target%%\"*} ;;
+    (*) target=${target%%[[:space:]]*} ;;
+  esac
+}
+
+# pushd のディレクトリスタックの区切りと、中身が分からなくなったことを表す印
+PD_SEP=$(printf '\001')
+PD_UNKNOWN='?'
+
 # このリポジトリを対象にした git 呼び出しだけを残す。cd の効果は後続の
 # セグメントへ引き継ぐが、サブシェルを抜けたら元へ戻す。戻さないと
 # `(cd /other && git status) && git commit` の commit まで別リポジトリ扱いになり、
@@ -593,6 +680,10 @@ cmd=$(printf '%s\n' "$segments" | {
   work_dir=$(pwd -P)
   prev_dir=$work_dir
   dir_stack=''
+  # pushd / popd のスタック（新しい順。各要素の後ろに PD_SEP）。
+  # cd と同じく追跡しないと、`pushd <別リポジトリ> && git commit …; popd` に
+  # このリポジトリの規約を当ててしまう（#315）
+  pd_stack=''
   buf=''
   # コマンド位置の置換（`which git` … / $(which git) …）の直後を待っている状態。
   # 区切りを跨いだら「別のコマンド」なので降ろす
@@ -611,7 +702,7 @@ cmd=$(printf '%s\n' "$segments" | {
 
     case $seg in
       ("$SUB_OPEN")
-        dir_stack="$work_dir$NL$prev_dir$NL$dir_stack"
+        dir_stack="$work_dir$NL$prev_dir$NL$pd_stack$NL$dir_stack"
         continue
         ;;
       ("$SUB_CLOSE")
@@ -619,6 +710,8 @@ cmd=$(printf '%s\n' "$segments" | {
           work_dir=${dir_stack%%"$NL"*}
           dir_stack=${dir_stack#*"$NL"}
           prev_dir=${dir_stack%%"$NL"*}
+          dir_stack=${dir_stack#*"$NL"}
+          pd_stack=${dir_stack%%"$NL"*}
           dir_stack=${dir_stack#*"$NL"}
         fi
         continue
@@ -629,9 +722,12 @@ cmd=$(printf '%s\n' "$segments" | {
         ;;
       ("$SEP_AND")
         pending_subst=''
+        after_and=1
         continue
         ;;
       ("$SEP_SEQ")
+        # && の直後の改行は区切りではない（`a &&⏎b` はシェル上 && で繋がっている）
+        [ -n "$after_and" ] && continue
         # && 以外の区切り。前のコマンドが失敗しても次が走るので、
         # 直前のブランチ切り替えを前提にできないことを後段へ伝える
         pending_subst=''
@@ -642,6 +738,7 @@ cmd=$(printf '%s\n' "$segments" | {
 
     seg=${seg#"${seg%%[![:space:]]*}"}
     seg=${seg%"${seg##*[![:space:]]}"}
+    [ -n "$seg" ] && after_and=''
     [ -z "$seg" ] && continue
 
     # 印だけで始まるセグメントはコミットメッセージの本文（データ）。
@@ -668,22 +765,65 @@ cmd=$(printf '%s\n' "$segments" | {
 
     case $seg in
       (cd | cd[[:space:]]*)
-        target=${seg#cd}
-        target=${target#"${target%%[![:space:]]*}"}
-        # クォート付きのパスは閉じクォートまでを 1 引数として取る。
-        # 空白までで切ると `cd "/path/with spaces"` が解決できず、
-        # 別リポジトリなのに検査対象に残ってしまう
-        case $target in
-          (\'*) target=${target#\'}; target=${target%%\'*} ;;
-          (\"*) target=${target#\"}; target=${target%%\"*} ;;
-          (*) target=${target%%[[:space:]]*} ;;
-        esac
+        first_arg "${seg#cd}"
         last_dir=$work_dir
         case $target in
           ('') work_dir=$HOME ;;
           ('-') work_dir=$prev_dir ;;
           (*) work_dir=$(resolve_dir "$target" "$work_dir") || work_dir='' ;;
         esac
+        prev_dir=$last_dir
+        continue
+        ;;
+      (pushd | pushd[[:space:]]*)
+        first_arg "${seg#pushd}"
+        # `pushd > /dev/null` のリダイレクトは引数ではない
+        case $target in
+          ([\<\>]* | [0-9][\<\>]*) target='' ;;
+        esac
+        last_dir=$work_dir
+        case $target in
+          ('')
+            # 引数なしはスタックの先頭と現在地の入れ替え。空なら何も起きない
+            if [ -n "$pd_stack" ]; then
+              pd_top=${pd_stack%%"$PD_SEP"*}
+              if [ "$pd_top" = "$PD_UNKNOWN" ]; then
+                work_dir=''
+              else
+                pd_stack="$work_dir$PD_SEP${pd_stack#*"$PD_SEP"}"
+                work_dir=$pd_top
+              fi
+            fi
+            ;;
+          ([-+]*)
+            # -n（移動しない）や +N / -N（回転）は追わない。以降は現在地もスタックも
+            # 判定不能として、安全側（検査対象に残す）に倒す
+            work_dir=''
+            pd_stack="$PD_UNKNOWN$PD_SEP"
+            ;;
+          (*)
+            pd_stack="$work_dir$PD_SEP$pd_stack"
+            work_dir=$(resolve_dir "$target" "$work_dir") || work_dir=''
+            ;;
+        esac
+        prev_dir=$last_dir
+        continue
+        ;;
+      (popd | popd[[:space:]]*)
+        last_dir=$work_dir
+        if printf '%s' "${seg#popd}" | grep -Eq '(^|[[:space:]])[-+]'; then
+          work_dir=''
+          pd_stack="$PD_UNKNOWN$PD_SEP"
+        elif [ -n "$pd_stack" ]; then
+          # スタックが空の popd は失敗して現在地が変わらないので、何もしない
+          pd_top=${pd_stack%%"$PD_SEP"*}
+          if [ "$pd_top" = "$PD_UNKNOWN" ]; then
+            work_dir=''
+          else
+            pd_stack=${pd_stack#*"$PD_SEP"}
+            work_dir=$pd_top
+          fi
+        fi
         prev_dir=$last_dir
         continue
         ;;
@@ -1101,18 +1241,6 @@ cmd=$(printf '%s\n' "$segments" | {
 
 [ -n "$cmd" ] || exit 0
 
-hooks_path_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_HOOKSPATH$")
-env_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ENV_BYPASS$")
-alias_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ALIAS$")
-indirect=$(printf '%s\n' "$cmd" | grep -c "^$MARK_INDIRECT$")
-undecidable=$(printf '%s\n' "$cmd" | grep -c "^$MARK_UNDECIDABLE$")
-unknown_opt=$(printf '%s\n' "$cmd" | grep -c "^$MARK_UNKNOWN_OPT$")
-guard_dir=$(printf '%s\n' "$cmd" | sed -n "s/^$MARK_DIR//p" | head -1)
-cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_DIR" |
-  grep -v "^$MARK_HOOKSPATH$" | grep -v "^$MARK_ENV_BYPASS$" |
-  grep -v "^$MARK_ALIAS$" | grep -v "^$MARK_INDIRECT$" |
-  grep -v "^$MARK_UNDECIDABLE$" | grep -v "^$MARK_UNKNOWN_OPT$")
-
 # --- 短縮フラグの束を 1 文字ずつに展開する ------------------------------
 # git は `-am` のようにフラグを束ねて書ける。束のままだと -m / -F / -n の検出が
 # 「単独トークンの -m」しか見ないため全て素通りし、コミット規約も -n 禁止も効かない。
@@ -1174,6 +1302,8 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
     # 印の付いた行はコミットメッセージの本文。フラグとしては読まない
     # （本文に書いた `git commit -n` のようなコマンド例で止めないため）
     if (substr(line, 1, 1) == sprintf("%c", 2)) { print line; next }
+    # 絞り込みループが出した印の行（実行ディレクトリ等）もコマンドではない
+    if (substr(line, 1, 1) == sprintf("%c", 1)) { print line; next }
     # checkout / switch / worktree も通す。`-qb feat/x`（束）と `-bfoo`（値の連結）は
     # 実 git で有効なブランチ作成なので、単独トークンの `-b` しか見ないと
     # 命名・分岐元・コミット先の判定がまとめて外れる（#354）
@@ -1211,6 +1341,22 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
     if (is_commit && saw_n) print mark
   }
 ')
+
+# 印（実行ディレクトリ・メッセージ本文）が残っている形。commit ごとの -F / -t を
+# 「その commit が動くディレクトリ」と対で取り出すのに使う（下の commit_opts）
+cmd_marked=$cmd
+
+hooks_path_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_HOOKSPATH$")
+env_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ENV_BYPASS$")
+alias_bypass=$(printf '%s\n' "$cmd" | grep -c "^$MARK_ALIAS$")
+indirect=$(printf '%s\n' "$cmd" | grep -c "^$MARK_INDIRECT$")
+undecidable=$(printf '%s\n' "$cmd" | grep -c "^$MARK_UNDECIDABLE$")
+unknown_opt=$(printf '%s\n' "$cmd" | grep -c "^$MARK_UNKNOWN_OPT$")
+guard_dir=$(printf '%s\n' "$cmd" | sed -n "s/^$MARK_DIR//p" | head -1)
+cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_DIR" |
+  grep -v "^$MARK_HOOKSPATH$" | grep -v "^$MARK_ENV_BYPASS$" |
+  grep -v "^$MARK_ALIAS$" | grep -v "^$MARK_INDIRECT$" |
+  grep -v "^$MARK_UNDECIDABLE$" | grep -v "^$MARK_UNKNOWN_OPT$")
 
 commit_n_bundle=$(printf '%s\n' "$cmd" | grep -c "^$MARK_COMMIT_N$")
 # メッセージ本文の印はここまでで役目を終える。以降はメッセージの値そのものを
@@ -1332,7 +1478,7 @@ if [ "${hooks_path_bypass:-0}" -gt 0 ]; then
 fi
 
 if [ "${env_bypass:-0}" -gt 0 ]; then
-  deny 'HUSKY=0 / GIT_CONFIG_* の前置きによる husky の無効化は禁止です（--no-verify と同じ迂回）。失敗したら迂回せず原因を直してください。'
+  deny 'HUSKY=0 / GIT_CONFIG_*（GIT_CONFIG_COUNT 等の設定を注入する変数）の前置きによる husky の無効化は禁止です（--no-verify と同じ迂回）。失敗したら迂回せず原因を直してください。'
 fi
 
 if [ "${alias_bypass:-0}" -gt 0 ]; then
@@ -1548,14 +1694,96 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
     esac
   fi
 
-  # --fil 以降は --file に一意（--fi は --fixup と曖昧で git 自身が弾く）
-  if has '(^|[[:space:]])(-F|--fil[a-z]*)([[:space:]]|=|$)'; then
-    # クォート付きの値は閉じクォートまでを 1 引数として取る（cd の処理と同じ方針）。
-    # 空白までで切ると `-F "my file.txt"` が `"my` になり、分かりにくいエラーで止まる
-    msg_file=$(printf '%s' "$cmd" |
-      grep -oE "(^|[[:space:]])(-F|--fil[a-z]*)[[:space:]=]+(\"[^\"]*\"|'[^']*'|[^[:space:];&|]+)" |
-      head -1 | sed -E 's/.*(-F|--fil[a-z]*)[[:space:]=]+//')
-    msg_file=$(unquote "$msg_file")
+  # -F / --file と -t / --template は **git commit のセグメントに書かれたものだけ**を見る。
+  # コマンド全体から探すと、`git commit -m … && git grep -F TODO` の -F や
+  # `git checkout -t -b …` の -t に反応する（#301）。commit_opts は commit ごとに
+  # 「T」（-t あり）か「F <実行ディレクトリ> <ファイル>」を 1 行で出す。
+  # --fil 以降は --file に一意（--fi は --fixup と曖昧で git 自身が弾く）。
+  # --te 以降は --template に一意（--t は --trailer と曖昧で git 自身が弾く）
+  OPT_SEP=$(printf '\001')
+  commit_opts=$(printf '%s\n' "$cmd_marked" | awk -v mark_dir="$MARK_DIR" '
+    BEGIN {
+      sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92)
+      ctl = sprintf("%c", 1); msg = sprintf("%c", 2)
+      text = ""; dir = ""
+    }
+
+    function is_message(t) {
+      return (t == "-m" || (substr(t, 1, 2) == "--" && length(t) > 2 &&
+        substr("message", 1, length(t) - 2) == substr(t, 3)))
+    }
+
+    # 前後のクォートを 1 組だけ剥がす（クォート付きのパスは 1 引数として渡る）
+    function unq(v,   c) {
+      c = substr(v, 1, 1)
+      if ((c == sq || c == dq) && length(v) > 1 && substr(v, length(v), 1) == c)
+        return substr(v, 2, length(v) - 2)
+      return v
+    }
+
+    # 1 セグメント分をクォートを保ったままトークンへ分け、commit なら -F / -t を出す
+    function flush(   n, q, tok, len, i, c, t, e, g) {
+      n = 0; q = ""; tok = ""; len = length(text)
+      for (i = 1; i <= len; i++) {
+        c = substr(text, i, 1)
+        if (q == sq) { tok = tok c; if (c == sq) q = ""; continue }
+        if (q == dq) {
+          if (c == bs) { tok = tok c substr(text, i + 1, 1); i++; continue }
+          tok = tok c
+          if (c == dq) q = ""
+          continue
+        }
+        if (c == bs) { tok = tok c substr(text, i + 1, 1); i++; continue }
+        if (c == sq || c == dq) { q = c; tok = tok c; continue }
+        if (c == " " || c == "\t" || c == "\n") {
+          if (tok != "") T[++n] = tok
+          tok = ""
+          continue
+        }
+        tok = tok c
+      }
+      if (tok != "") T[++n] = tok
+      text = ""
+
+      # サブコマンドは「git の直後」。グローバルオプションは上流で剥がしてある
+      g = 0
+      for (i = 1; i <= n; i++) if (T[i] == "git") { g = i; break }
+      if (g == 0 || g + 1 > n || T[g + 1] != "commit") return
+
+      for (i = g + 2; i <= n; i++) {
+        t = T[i]
+        # -m の値はメッセージ。中に書いた -F / -t はフラグではない
+        if (is_message(t)) { i++; continue }
+        if (substr(t, 1, 1) != "-") continue
+        if (t == "-t" || t ~ /^--te[a-z]*(=|$)/) { print "T"; continue }
+        if (t == "-F" || t ~ /^--fil[a-z]*$/) {
+          print "F" ctl dir ctl (i < n ? unq(T[i + 1]) : "")
+          i++
+          continue
+        }
+        if (t ~ /^--fil[a-z]*=/) {
+          e = index(t, "=")
+          print "F" ctl dir ctl unq(substr(t, e + 1))
+        }
+      }
+    }
+
+    # 実行ディレクトリの印が git のセグメントの切れ目
+    index($0, mark_dir) == 1 { flush(); dir = substr($0, length(mark_dir) + 1); next }
+    # その他の印の行と、メッセージ本文の行はコマンドのトークンではない
+    substr($0, 1, 1) == ctl || substr($0, 1, 1) == msg { next }
+    { text = text $0 "\n" }
+    END { flush() }
+  ')
+
+  # -t / --template はエディタ起動前提でメッセージを事前に検証できない
+  if printf '%s\n' "$commit_opts" | grep -qx 'T'; then
+    deny "-t / --template は使用できません。メッセージを事前に検証できないため、-m または -F でメッセージを渡してください。"
+  fi
+
+  # 1 コマンドに commit が複数あれば、それぞれの -F を検証する
+  while IFS=$OPT_SEP read -r opt_kind msg_dir msg_file; do
+    [ "$opt_kind" = "F" ] || continue
 
     # フックはコマンド文字列をそのまま見るため、変数や置換を含むパスは展開されない。
     # 検証できないものを黙って通すと素通りの経路になるので、リテラルのパスを求める。
@@ -1586,22 +1814,28 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
           grep -Eq "^($TYPES)(\([^)]+\))?!?: [^[:space:]]" || deny "$msg_ng"
         ;;
       *)
-        [ -r "$msg_file" ] ||
+        # 相対パスは、その commit が動くディレクトリ（直前の cd / git -C を反映したもの）を
+        # 基準に解決する。フックの cwd で見ると `cd apps/web && git commit -F msg.txt` の
+        # ファイルが「読めない」ことになる（#301）。ディレクトリを特定できなかった
+        # ときは従来どおりフックの cwd で見る
+        msg_path=$msg_file
+        case "$msg_file" in
+          /*) ;;
+          *) [ -n "$msg_dir" ] && msg_path=$msg_dir/$msg_file ;;
+        esac
+
+        [ -r "$msg_path" ] ||
           deny "コミットメッセージのファイル '$msg_file' が読めないため規約を検証できません。先にファイルを作成するか、-m でメッセージを渡してください。"
 
-        if ! grep -m1 -v '^[[:space:]]*$' "$msg_file" |
+        if ! grep -m1 -v '^[[:space:]]*$' "$msg_path" |
           grep -Eq "^($TYPES)(\([^)]+\))?!?: [^[:space:]]"; then
           deny "$msg_ng（'$msg_file' の1行目）"
         fi
         ;;
     esac
-  fi
-
-  # -t / --template はエディタ起動前提でメッセージを事前に検証できない
-  # （--te 以降は --template に一意。--t は --trailer と曖昧で git 自身が弾く）
-  if has '(^|[[:space:]])(-t|--te[a-z]*)([[:space:]]|=)'; then
-    deny "-t / --template は使用できません。メッセージを事前に検証できないため、-m または -F でメッセージを渡してください。"
-  fi
+  done <<EOF
+$commit_opts
+EOF
 fi
 
 # --- push ---------------------------------------------------------------
@@ -2047,9 +2281,78 @@ if [ -n "$newbranch" ]; then
   [ -n "$copy_base" ] && base=$copy_base
 
   # 同一コマンド内で production へ切り替えてから分岐する（ドキュメントの手順）ケースを
-  # 現在ブランチ起点と誤判定しないよう、チェーンの前半を分岐元として扱う
-  if [ -z "$base" ] && has '(^|[[:space:]])git[[:space:]]+(checkout|switch)[[:space:]]+production([[:space:]]|$|&|;)'; then
-    base="production"
+  # 現在ブランチ起点と誤判定しないよう、チェーンの前半を分岐元として扱う。
+  #
+  # 見方はコミット先の判定（switch_info）と揃える（#387）:
+  #   - フラグは読み飛ばして最初の非フラグ語を切り替え先とする。`checkout` の直後に
+  #     `production` が来る形だけを見ていると、`git checkout -q production && …` が外れる
+  #   - ブランチを作るコマンドより**前**の切り替えだけを見る
+  #   - && 以外の区切り（; 改行 | & ||）を跨いだら、切り替えの成功を前提にできない。
+  #     `git checkout production ; git checkout -b feat/x` は checkout が失敗しても
+  #     分岐が走り、現在ブランチから切られる
+  if [ -z "$base" ]; then
+    switched_to=$(printf '%s\n' "$cmd_flags" |
+      awk -v seq_break="$MARK_SEQ" -v name="$newbranch" '
+      BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34) }
+      function bare(t) { gsub(sq, "", t); gsub(dq, "", t); return t }
+      $0 == seq_break { found = ""; next }
+      {
+        g = 0
+        for (i = 1; i <= NF; i++) if ($i == "git") { g = i; break }
+        if (g == 0) next
+        s = $(g + 1)
+        if (s != "checkout" && s != "switch" && s != "branch" && s != "worktree") next
+
+        # 作ろうとしているブランチの名前が現れる行が「分岐するコマンド」。
+        # worktree add <パス> は basename(パス) が名前になる
+        for (j = g + 2; j <= NF; j++) {
+          t = bare($j)
+          sub(/\/+$/, "", t)
+          if (t == name || (s == "worktree" && length(t) > length(name) &&
+              substr(t, length(t) - length(name)) == "/" name)) {
+            print found
+            exit
+          }
+        }
+        if (s != "checkout" && s != "switch") next
+
+        # パスの復元（`checkout production -- file` / `checkout -p production`）は
+        # ブランチを切り替えない。切り替えとして数えると、現在ブランチのまま
+        # 「production から切った」ことになる
+        #
+        # 復元とみなすのは checkout の、`--` の後ろにパスがある形・-p・ブランチ名の
+        # 後ろに語が続く形（`checkout production README.md`）。`checkout <branch> --`
+        # （後ろが空）は切り替え。switch にパスの復元は無い。
+        # ブランチを作る形（-b <名前> <起点>）は語が 2 つあっても復元ではない
+        restores = 0; creates = 0; words = 0; after_dd = -1
+        for (j = g + 2; j <= NF; j++) {
+          if (after_dd >= 0) { after_dd++; continue }
+          if ($j == "--") { after_dd = 0; continue }
+          if ($j == "-p" || $j == "--patch") restores = 1
+          if ($j == "-b" || $j == "-B" || $j == "--orphan") creates = 1
+          if (substr($j, 1, 1) != "-") words++
+        }
+        if (s == "checkout" && !creates && (restores || after_dd > 0 || words > 1)) next
+
+        for (j = g + 2; j <= NF; j++) {
+          t = $j
+          if (t == "--") break
+          # `checkout -` は直前のブランチへ戻る。行き先はここからは分からない
+          if (t == "-") { found = ""; break }
+          if (substr(t, 1, 1) == "-") {
+            # 別のブランチを作って移る形。以降の現在地はそのブランチ
+            if (t == "-b" || t == "-B" || t == "-c" || t == "-C" || t == "--create") {
+              if (j < NF) found = bare($(j + 1))
+              break
+            }
+            continue
+          }
+          found = bare(t)
+          break
+        }
+      }')
+
+    [ "$switched_to" = "production" ] && base="production"
   fi
   [ -z "$base" ] && base="$current"
   base=${base#refs/remotes/origin/}

@@ -13,6 +13,7 @@ set -u
 #   7. 外部パッケージ（ローカルに無い名前）は見ない
 #   8. 判定できないレンジ（複合レンジ・git 参照）は警告して素通しする
 #   9. dependencies 以外のフィールドも見る
+#  10. ルートの package.json のレンジも見る
 
 cd "$(dirname "$0")/.."
 SCRIPT="$(pwd)/scripts/check-workspace-ranges.mjs"
@@ -213,6 +214,49 @@ if [ "$status" -ne 0 ]; then
   pass "peerDependencies も検査する"
 else
   fail "peerDependencies も検査する" "$output"
+fi
+
+echo "10. ルートの package.json のレンジも見る（#303）"
+
+# prettier-config / commitlint-config のように、ルートだけが参照するパッケージ
+make_repo 0.3.0 '^0.3.0'
+cat > "$WORK/repo/package.json" <<JSON
+{ "name": "root", "private": true, "devDependencies": { "@geckou/lib": "^0.2.0" } }
+JSON
+output=$(run)
+status=$?
+
+if [ "$status" -ne 0 ] && echo "$output" | grep -q '^  package.json$' &&
+  echo "$output" | grep -q '"\^0.2.0" → "\^0.3.0"'; then
+  pass "ルートのレンジずれで止まって上げ先を示す"
+else
+  fail "ルートのレンジずれで止まって上げ先を示す" "$output"
+fi
+
+cat > "$WORK/repo/package.json" <<JSON
+{ "name": "root", "private": true, "devDependencies": { "@geckou/lib": "^0.3.0" } }
+JSON
+output=$(run)
+status=$?
+
+if [ "$status" -eq 0 ]; then
+  pass "ルートのレンジが満たしていれば通る"
+else
+  fail "ルートのレンジが満たしていれば通る" "$output"
+fi
+
+# ルートは依存元としてだけ見る。name / version を持っていても参照先にはしない
+make_repo 0.3.0 '^0.3.0' devDependencies root-package
+cat > "$WORK/repo/package.json" <<JSON
+{ "name": "root-package", "version": "9.0.0", "private": true }
+JSON
+output=$(run)
+status=$?
+
+if [ "$status" -eq 0 ]; then
+  pass "ルートの name と同じ外部パッケージは見ない"
+else
+  fail "ルートの name と同じ外部パッケージは見ない" "$output"
 fi
 
 echo ""

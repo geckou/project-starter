@@ -43,8 +43,9 @@
       "automerge": false
     },
     {
-      "description": "@geckou/* は自分たちのパッケージ（geckou/kit・geckou/ui）。テンプレート側の修正を素早く取り込みたいので即時に PR を作る",
+      "description": "@geckou/* は自分たちのパッケージ（geckou/kit・geckou/ui）。テンプレート側の修正を素早く取り込みたいので即時に PR を作る。groupName を分けているのは、minor / patch が上の「minor and patch」グループへ入ると、グループの schedule が週次と即時で衝突するため（グループの設定は所属する依存のマージ結果から決まる）",
       "matchPackageNames": ["@geckou/**"],
+      "groupName": "@geckou packages",
       "schedule": ["at any time"]
     }
   ],

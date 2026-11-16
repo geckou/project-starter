@@ -1,7 +1,7 @@
 // 層マニフェスト（layers.json）を読むための共通処理。
 // remove-layer.mjs（減算）・add-layer.mjs（加算）・check-layers.mjs（検証）から使う。
 //
-// node_modules に依存しない（Node 22 の標準 API のみ）。yarn install なしで動く。
+// node_modules に依存しない（Node の標準 API のみ）。yarn install なしで動く。
 
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -370,6 +370,11 @@ function isSeamBlank(line) {
 /**
  * removal に含まれる層のマーカー範囲を削除する。
  * 削除対象の範囲に入れ子になっている他層のマーカーも、範囲ごと消える。
+ *
+ * 同じ層指定の入れ子（start A / start A / end A / end A）は findBlocks が
+ * 有効な構文として受け付けるので、こちらも深さを数えて**外側の end まで**消す。
+ * 最初の end で止めると、内側の end 以降の内容と外側の end マーカーが残り、
+ * 続く pruneManifest / check-layers が「対応が取れません」で落ちる（#312）
  */
 export function stripBlocks(content, removal) {
   const removed = new Set(removal)
@@ -377,6 +382,7 @@ export function stripBlocks(content, removal) {
   const kept = []
 
   let dropUntil = null
+  let dropDepth = 0
   let justDropped = false
 
   for (const line of lines) {
@@ -386,7 +392,12 @@ export function stripBlocks(content, removal) {
 
     for (const { spec, key, kind } of markerMatches(line)) {
       if (dropUntil !== null) {
-        if (kind === 'end' && key === dropUntil) dropUntil = null
+        // 範囲の中では、同じ層指定のマーカーだけを数える（他の層指定は範囲ごと消える）
+        if (key !== dropUntil) continue
+
+        dropDepth += kind === 'start' ? 1 : -1
+
+        if (dropDepth === 0) dropUntil = null
 
         continue
       }
@@ -396,6 +407,7 @@ export function stripBlocks(content, removal) {
       if (!markerLayers(spec).some((name) => removed.has(name))) continue
 
       dropUntil = key
+      dropDepth = 1
       dropLine = true
     }
 
@@ -489,6 +501,44 @@ export function pruneManifest(root, manifest) {
   })
 
   return { ...manifest, layers }
+}
+
+/**
+ * .env.example の中で、層の環境変数キーが置かれるべき場所にあるかを判定する。
+ * 返り値は 'missing'（代入行が無い）/ 'misplaced'（場所が違う）/ 'ok'。
+ *
+ * 見るのは**そのキーの全ての代入行**（コメントアウトされたものも含む）。
+ * 「どれか 1 行が範囲内にあればよい」とすると、同じキーをマーカーの外にも書いた
+ * 状態が通り、その層を減算しても外側の行が残る（#311）。
+ *
+ * core は層のマーカーを持たない（マーカー外＝core）ので、どの範囲にも入っていないこと、
+ * それ以外の層は全行がその層のマーカーの範囲に入っていることを求める。
+ * マーカーが壊れていると findBlocks が throw する（呼び出し側で先に検証しておく）。
+ */
+export function envKeyPlacement(envExample, layer, key) {
+  const pattern = new RegExp(`^#?\\s*${key}=`)
+
+  const lines = envExample
+    .split('\n')
+    .map((line, index) => (pattern.test(line) ? index : -1))
+    .filter((index) => index >= 0)
+
+  if (lines.length === 0) return 'missing'
+
+  const blocks = findBlocks(envExample)
+
+  const within = (line, candidates) =>
+    candidates.some((block) => line > block.startLine && line < block.endLine)
+
+  if (layer.requires === null) {
+    return lines.some((line) => within(line, blocks)) ? 'misplaced' : 'ok'
+  }
+
+  const own = blocks.filter((block) =>
+    markerLayers(block.spec).includes(layer.name)
+  )
+
+  return lines.every((line) => within(line, own)) ? 'ok' : 'misplaced'
 }
 
 /** resolveJsonPath と同じだが、途中のオブジェクトが無ければ作る（加算用） */

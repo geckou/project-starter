@@ -31,7 +31,12 @@ function getAdminApp() {
 // メタデータサーバー経由で認証するため GOOGLE_APPLICATION_CREDENTIALS が付かず、
 // 「本番は ADC を使う」という .env.example どおりの設定で保護ページが 500 になる。
 // テンプレート初期状態（認証情報がまったく無い）でもビルドは通す必要があるため、
-// throw は握って Proxy へフォールバックする
+// throw は握って Proxy へフォールバックする。
+//
+// ここで捕まるのは FIREBASE_SERVICE_ACCOUNT_KEY の内容が不正な場合だけ。
+// 認証情報やプロジェクト ID が**無い**だけでは initializeApp() は throw せず、
+// verifySessionCookie 等の呼び出し時に reject する。そちらは呼び出し側が
+// isInvalidSessionError（session-cookie.ts）で「無効なセッション」と区別する（#302）
 function initAdminApp() {
   try {
     return getAdminApp()

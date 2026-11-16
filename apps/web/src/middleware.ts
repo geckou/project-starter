@@ -18,6 +18,21 @@ const NO_STORE_CACHE_CONTROL = 'private, no-store'
 // - disabled:     BASIC_AUTH_CREDENTIALS 未設定（認証無効）
 type BasicAuthResult = 'allow' | 'unauthorized' | 'disabled'
 
+// バイト列を定数時間で比べる。=== は最初に食い違った位置で打ち切るので、応答時間から
+// 認証情報を先頭から 1 文字ずつ絞り込める。長さが違っても、受け取った側の長さぶんは
+// 必ず走査する（打ち切るのは長さの情報だけにする）。
+// Edge runtime には node:crypto の timingSafeEqual が無いので自前で持つ
+function timingSafeEqual(received: Uint8Array, expected: Uint8Array) {
+  let difference = received.length ^ expected.length
+
+  for (let index = 0; index < received.length; index++) {
+    // 範囲外は undefined → 0。expected が短いときも received を最後まで読む
+    difference |= received[index] ^ (expected[index] ?? 0)
+  }
+
+  return difference === 0
+}
+
 // Basic 認証を評価する純粋関数
 // credentials が未設定（undefined / 空文字）なら認証無効。
 // production では BASIC_AUTH_CREDENTIALS を設定しないことで無効化する
@@ -35,11 +50,15 @@ function evaluateBasicAuth(
 
     if (encoded && encoded.length <= MAX_BASIC_AUTH_HEADER_LENGTH) {
       try {
-        const decoded = atob(encoded)
-        const [user, ...passwordParts] = decoded.split(':')
-        const password = passwordParts.join(':')
+        // atob が返すのは 1 文字 = 1 バイトの文字列（Latin-1）。ブラウザは認証情報を
+        // UTF-8 で送るので、文字列のまま比べると非 ASCII を含む認証情報が
+        // 一致しなくなる（#306）。バイト列に戻して、UTF-8 同士で比べる
+        const received = Uint8Array.from(atob(encoded), (char) =>
+          char.charCodeAt(0)
+        )
+        const expected = new TextEncoder().encode(credentials)
 
-        if (`${user}:${password}` === credentials) return 'allow'
+        if (timingSafeEqual(received, expected)) return 'allow'
       } catch {
         // 不正な Base64 は未認証扱い
       }

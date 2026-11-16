@@ -53,6 +53,34 @@ describe('createApiClient: 応答の解釈', () => {
     })
   })
 
+  // 回帰（#307）: error を無条件に String() へかけると "[object Object]" / "null" に
+  // なり、メッセージも HTTP ステータスも失われる
+  it('error がオブジェクトなら、その message を返す', async () => {
+    fetchMock.mockResolvedValue(
+      respond(403, JSON.stringify({ error: { message: 'forbidden', code: 7 } }))
+    )
+
+    expect(await client()('/me')).toEqual({
+      success: false,
+      error: 'forbidden',
+    })
+  })
+
+  it.each([
+    ['message の無いオブジェクト', { error: { code: 1 } }],
+    ['null', { error: null }],
+    ['数値', { error: 500 }],
+    ['空文字', { error: '' }],
+    ['文字列でない message', { error: { message: { detail: 'x' } } }],
+  ])('error が%sなら HTTP ステータスを返す', async (_label, body) => {
+    fetchMock.mockResolvedValue(respond(502, JSON.stringify(body)))
+
+    expect(await client()('/me')).toEqual({
+      success: false,
+      error: 'HTTP 502',
+    })
+  })
+
   // 回帰: Express の未定義ルートは HTML を返す。response.json() を先に呼ぶと
   // そこで throw し、HTTP ステータスの情報が消える
   it('JSON でないエラー応答は HTTP ステータスを返す', async () => {

@@ -9,7 +9,7 @@ CLAUDE.md にはフックの一覧だけを置き、各フックが何を見る�
 |---|---|---|
 | SessionStart | `session-start-git-context.sh` | `git fetch origin --prune` を実行し、現在ブランチ・`origin/production` との差分・進行中の `release/*` を文脈に入れる（古い情報のまま作業を始めるのを防ぐ） |
 | SessionStart | `session-start-questions.sh` | 未回答の確認事項（`.claude/docs/questions.md`）を冒頭の文脈に入れる |
-| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名（改名・複製を含む）・分岐元・fetch 鮮度・コミットメッセージ形式・husky の迂回（`--no-verify`（commit / push / merge / rebase）、`-c core.hooksPath`、`git config` での設定・`--unset` / `--remove-section`、`HUSKY=0` / `GIT_CONFIG_*` の前置きと別セグメントでの `export`）・alias 定義経由の呼び出し・`production` への直接 push と force push を**実行前にブロック**。`sh -c` / `eval` / バッククォートで包んだ形も中身を展開して検査し、`command` / `exec` / `time` / `nohup` / `sudo` と `{ }` / `if` / `then` / `do` などの予約語の後ろにある git も同じ検査に載せる。git 自身やサブコマンド・refspec が置換・グロブで書かれていて判定できない形は拒否する。**サブコマンドの前に、このフックが知らないグローバルオプションが残る形も拒否する**（素通しすると以降の判定が全て外れる＝ fail-open になるため。必要なオプションは `GIT_OPT_WITH_VALUE` / `GIT_OPT_BOOL` に足す。`--version` / `--help` のようなサブコマンドを取らない情報表示は通す）。短縮フラグは束ねた形（`checkout -qb <名前>`）でもブランチ作成として検出する。コミットの可否は同じコマンド内の `checkout -b` / `switch -c` / `checkout <既存ブランチ>` を反映した「コミット時のブランチ」で判定する。**ユーザー承認を求める**もの: `release/*` / `hotfix/*` への push と `--prune`、`xargs` / パイプ / 中身を静的に読めない `eval`・`source` 経由の間接実行、`gh pr merge`（PR のマージ）、ブランチの削除（ローカル / リモート）、作業ブランチとタグへの force push、`feat/*` 同士の取り込み（`merge` / `rebase` / `pull` / `cherry-pick`。自分のブランチを取り込むだけの形は対象外）。検査対象は**このリポジトリで git を実行するコマンドだけ**（`gh pr merge` を除く。コマンド中の `cd` / `git -C` を解釈し、別リポジトリへの操作と、`gh pr create --body` のような引数に書いたコマンド例は素通しする） |
+| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名（改名・複製を含む）・分岐元・fetch 鮮度・コミットメッセージ形式・husky の迂回（`--no-verify`（commit / push / merge / rebase）、`-c core.hooksPath`、`git config` での設定・`--unset` / `--remove-section`、`HUSKY=0` と、設定を注入する `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` / `GIT_CONFIG_VALUE_n` / `GIT_CONFIG_PARAMETERS` の前置きと別セグメントでの `export`。読み先を変えるだけの `GIT_CONFIG_GLOBAL` / `GIT_CONFIG_SYSTEM` / `GIT_CONFIG_NOSYSTEM` は対象外）・alias 定義経由の呼び出し・`production` への直接 push と force push を**実行前にブロック**。`sh -c` / `eval` / バッククォートで包んだ形も中身を展開して検査し、`command` / `exec` / `time` / `nohup` / `sudo` と `{ }` / `if` / `then` / `do` などの予約語の後ろにある git も同じ検査に載せる。git 自身やサブコマンド・refspec が置換・グロブで書かれていて判定できない形は拒否する。**サブコマンドの前に、このフックが知らないグローバルオプションが残る形も拒否する**（素通しすると以降の判定が全て外れる＝ fail-open になるため。必要なオプションは `GIT_OPT_WITH_VALUE` / `GIT_OPT_BOOL` に足す。`--version` / `--help` のようなサブコマンドを取らない情報表示は通す）。短縮フラグは束ねた形（`checkout -qb <名前>`）でもブランチ作成として検出する。コミットの可否は同じコマンド内の `checkout -b` / `switch -c` / `checkout <既存ブランチ>` を反映した「コミット時のブランチ」で判定する。分岐元も同じ見方で、ブランチを作るコマンドより前に `&&` で繋いだ `checkout production` / `switch production`（`-q` などのフラグを挟んでもよい）があれば production から切ったものとして扱う（`;` や改行で区切った形は、切り替えが失敗しても分岐が走るので前提にしない）。**ユーザー承認を求める**もの: `release/*` / `hotfix/*` への push と `--prune`、`xargs` / パイプ / 中身を静的に読めない `eval`・`source` 経由の間接実行、`gh pr merge`（PR のマージ）、ブランチの削除（ローカル / リモート）、作業ブランチとタグへの force push、`feat/*` 同士の取り込み（`merge` / `rebase` / `pull` / `cherry-pick`。自分のブランチを取り込むだけの形は対象外）。検査対象は**このリポジトリで git を実行するコマンドだけ**（`gh pr merge` を除く。コマンド中の `cd` / `pushd` / `popd` / `git -C` を解釈し、別リポジトリへの操作と、`gh pr create --body` のような引数に書いたコマンド例は素通しする） |
 | PostToolUse (Bash) | `post-git-branch-reminder.sh` | ブランチ作成直後、進行中の `release/*` があればマージ要否の確認を促す |
 | PostToolUse (Edit/Write) | `post-edit-reminder.sh` | `firestore.rules` / `packages/shared` 変更時に検証コマンドをリマインド |
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD（type-check / lint / test）を自動実行し、失敗なら終了をブロック |
@@ -17,9 +17,13 @@ CLAUDE.md にはフックの一覧だけを置き、各フックが何を見る�
 | Stop | `stop-questions-reminder.sh` | この作業で確認事項を積んだのに提示していなければ、終了前に一覧を出させる |
 | Stop | `stop-pr-reminder.sh` | 作業ブランチが push 済みで、`origin/production` へ未マージのコミットがあるのに open な PR が無ければ終了をブロック（CLAUDE.md「PR は出す、マージは人が決める」）。PR の有無は `gh` に聞くため、`gh` が無い / 未認証 / API が失敗したときは何もしない。探す先は remote の URL から決めた `owner/repo`（`gh` の既定リポジトリに任せると、比べた remote と別のリポジトリの PR を数えてしまう）。URL から `owner/repo` を作れないときと、ホストが github.com でも `HOOK_PR_GITHUB_HOST` でもないときも何もしない。`production` と `release/*` は対象外（`release/*` への push はデプロイであって、`production` への PR は後から出す） |
 
-Stop フックは 4 つとも同じ `stop_hook_active` を受け取る。DoD がブロックした後の継続でも
-残りの判定が走るように、**フックごとに「1 セッションで 1 回だけブロックする」**形にしてある
-（DoD は実行コストが高いため、継続中はこれまでどおり実行しない）。
+Stop フックは 4 つとも同じ `stop_hook_active` を受け取る。どれかがブロックした後の継続でも
+残りの判定が走るように、**フックごとに「自分がブロックしたか」をセッション単位の印で持ち、
+継続中のブロックは 1 セッションで 1 回まで**にしてある。DoD も同じ方式（#363）— 一律に
+抜けると、先に roadmap などがブロックした継続では DoD が一度も再検証されず、type-check /
+lint / test が落ちたまま終われてしまう。代わりに、他のフックがブロックした継続のたびに
+DoD がもう一度走る（コードの未コミット変更があるときだけ）。`session_id` を受け取れない
+環境では、どのフックも従来どおり継続中は何もしない。
 
 ## スタック依存の値は `config.sh` に置く
 
@@ -56,6 +60,11 @@ node_modules に依存しないので `yarn install` なしで走る。CI でも
 フックを変更したら `yarn test:hooks`（実体は `scripts/test-hooks.sh`）を実行する。
 node_modules に依存しないので `yarn install` なしでも `bash scripts/test-hooks.sh` で走る。
 CI でも実行される。
+
+同じテストの冒頭で `node scripts/check-shell-compat.mjs` が、`.claude/hooks/*.sh` と
+`scripts/*.sh` に bash 3.2（macOS の `/bin/sh`）で構文解析できない書き方（コマンド置換の中の、
+`(` で開いていない `case` パターン）が無いかを見る。CI は Linux で走るので、ここで見ないと
+macOS の手元でだけ壊れる。
 
 **フックを追加・変更したらテストも足す。** 設定で挙動が変わるフックは、
 設定が効くことと `config.sh` が無くても既定値で動くことの両方を検証する。

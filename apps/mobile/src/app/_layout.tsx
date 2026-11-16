@@ -2,7 +2,12 @@ import '../global.css'
 import { Stack } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 
-export default function RootLayout() {
+import { initSentry, wrapWithSentry } from '@/lib/sentry'
+
+// wrapWithSentry より先に呼ぶ。DSN 未設定・パッケージ未インストールなら何もしない
+initSentry()
+
+function RootLayout() {
   return (
     <>
       <Stack
@@ -14,3 +19,5 @@ export default function RootLayout() {
     </>
   )
 }
+
+export default wrapWithSentry(RootLayout)

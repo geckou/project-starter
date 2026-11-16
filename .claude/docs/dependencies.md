@@ -84,6 +84,27 @@
    （依存更新はリリース単位に束ねる意味が薄いため）。マージ = 本番デプロイになる点は
    変わらないので、タイミングは人が選ぶ
 
+## Node のバージョンは 3 か所を揃える
+
+Node の要求バージョンは `.nvmrc`（開発機と CI。`ci.yml` / `deploy.yml` が読む）で決めているが、
+同じ値を前提にした設定が別に 2 か所ある。**`.nvmrc` は Template Sync で届き、残りは届かない**
+（`apps/` と `firebase.json` は派生のもの）ので、`.nvmrc` の同期を取り込んだら手で揃える。
+
+| 場所 | 何を決めるか | 同期 |
+|---|---|---|
+| `.nvmrc` / `scripts/setup.sh` の検査 | 開発機と CI の Node | 届く |
+| `apps/functions/package.json` の `engines.node` と `build` の `--target` | Functions のビルド対象。**`.nvmrc` と食い違うと `yarn install` が engines の検査で落ちる** | 届かない |
+| `firebase.json` の `functions.runtime` | Cloud Functions のランタイム | 届かない |
+
+- **Web の SSR 関数も `.nvmrc` に追従する。** `apps/web` は `engines` を持たないので、
+  framework-backed Hosting の SSR 関数は「デプロイを実行した Node」のバージョンで作られる
+  （`deploy.yml` は `.nvmrc` を読む）。Functions だけの話ではない
+- mobile 層を EAS でビルドする場合、ビルド機の Node も `engines` を満たす必要がある
+  （**未確認**: EAS の既定の Node。足りなければ `eas.json` の `build.<profile>.node` で指定する）
+
+現在の値は 24（24.12 以上）。`firebase-admin` が引く `@firebase/database-compat` が
+`>=24.12.0` を要求するため（#392）。
+
 ## 配れないもの（構造的な死角）
 
 ルート `package.json` の `resolutions` は **preset では配れない**。
