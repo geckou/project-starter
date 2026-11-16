@@ -205,7 +205,9 @@ gh api repos/geckou/project-starter/contents/layers.json --jq '.content' \
 node scripts/sync-layers.mjs --template /tmp/template-layers.json --dry-run
 ```
 
-層を 1 つも外していない派生と、`layers.json` を消した派生では何もしない。
+`layers.json` を消した派生では何もしない。層を 1 つも外していない派生では、外し直しは行わず、
+下の「テンプレートで増えた項目の取り込み」だけを行う（`layers.json` は同期対象外なので、ここで
+入れないと、同期されたファイルに増えたマーカーが未登録として `check-layers.mjs` に検出される）。
 
 **残る層の定義は派生の `layers.json` を土台にする**（テンプレートの定義で差し替えない）。
 派生が足した `env` / `files` / `blocks`、`removable: false`、外した `json` のキーは

@@ -249,20 +249,24 @@ function main() {
     .map((layer) => layer.name)
     .filter((name) => !localNames.has(name))
 
+  // 外した層が無くても、ここで終わらせない。layers.json は同期対象外なので、
+  // テンプレートが既存の層に足した項目（新しいファイル・マーカー）は下の取り込みでしか
+  // 派生の定義に入らない。入らないと、同期されたファイルのマーカーが「未登録」として
+  // check-layers.mjs に検出され、全部入りの派生だけ同期 PR が赤くなる
+  const changes = []
+
   if (missing.length === 0) {
     console.log('[ok] 外した層はありません（全部入りの構成）')
-    return
+  } else {
+    const removal = resolveRemoval(template, missing)
+
+    console.log(`[plan] 取り込んだ差分から外し直す層: ${removal.join(', ')}`)
+
+    changes.push(
+      ...applyRemoval(root, template, removal, { dryRun: options.dryRun })
+    )
+    changes.push(`manifest layers.json: ${removal.join(', ')} を削除`)
   }
-
-  const removal = resolveRemoval(template, missing)
-
-  console.log(`[plan] 取り込んだ差分から外し直す層: ${removal.join(', ')}`)
-
-  const changes = applyRemoval(root, template, removal, {
-    dryRun: options.dryRun,
-  })
-
-  changes.push(`manifest layers.json: ${removal.join(', ')} を削除`)
 
   if (!options.dryRun) {
     // 残る層の定義は派生側を土台にし、テンプレートで増えた項目のうち実在するものだけを
@@ -286,11 +290,17 @@ function main() {
     // 派生プロジェクト側を正にする。テンプレートのものを被せると、派生が自分の
     // scaffold 元を指すよう書き換えた source が毎回巻き戻り、以後 add-layer が
     // 誤ったリポジトリを clone する（#356）
-    writeJson(
-      path.join(root, 'layers.json'),
-      pruneManifest(root, { ...local, layers })
-    )
+    //
+    // 変更が無いときは書かない（整形だけの差分を同期 PR に混ぜない）
+    if (changes.length > 0) {
+      writeJson(
+        path.join(root, 'layers.json'),
+        pruneManifest(root, { ...local, layers })
+      )
+    }
   }
+
+  if (changes.length === 0) return
 
   for (const change of changes) console.log(`  ${change}`)
 

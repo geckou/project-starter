@@ -924,6 +924,37 @@ else
   fail "層を外していない構成でファイルが変わった"
 fi
 
+# 全部入りの派生でも、テンプレートが既存の層に足した項目は取り込む。
+# layers.json は同期対象外なので、ここで入らないと同期されたファイルのマーカーが
+# 未登録として check-layers.mjs に検出される
+all_in=$(make_variant)
+node -e '
+  const fs = require("fs")
+  const [, target, template] = process.argv
+  const manifest = JSON.parse(fs.readFileSync(target, "utf8"))
+  fs.writeFileSync(template, JSON.stringify(manifest, null, 2))
+
+  // 派生側は、テンプレートが mobile 層に足したブロックをまだ知らない状態にする
+  const mobile = manifest.layers.find((layer) => layer.name === "mobile")
+  mobile.blocks = mobile.blocks.filter((file) => file !== ".claude/docs/git-workflow.md")
+  fs.writeFileSync(target, JSON.stringify(manifest, null, 2) + "\n")
+' "$all_in/layers.json" "$all_in/template-layers.json"
+
+if (cd "$all_in" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  fail "前提: ブロックを外した定義で check-layers が通ってしまう"
+else
+  node "$all_in/scripts/sync-layers.mjs" --target "$all_in" \
+    --template "$all_in/template-layers.json" > /dev/null 2>&1
+  rm -f "$all_in/template-layers.json"
+
+  if check_output=$(cd "$all_in" && node scripts/check-layers.mjs 2>&1); then
+    pass "全部入りの構成でも、テンプレートで増えた項目を取り込む"
+  else
+    fail "全部入りの構成で、テンプレートで増えた項目が取り込まれない" "$check_output"
+  fi
+fi
+rm -rf "$all_in"
+
 # layers.json を持たない派生ではスキップする（CI から無条件に呼ばれるため）
 rm -f "$variant/layers.json"
 if node "$variant/scripts/sync-layers.mjs" --target "$variant" \
