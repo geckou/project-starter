@@ -45,8 +45,7 @@ git checkout -b hotfix/1.0.1 production
 ```bash
 git fetch origin --prune            # まず必ず実行する
 git branch -r --list 'origin/release/*'   # 進行中のリリースを確認
-git checkout production && git pull
-git checkout -b feat/user-profile
+git checkout production && git pull && git checkout -b feat/user-profile
 git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 ```
 

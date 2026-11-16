@@ -474,11 +474,24 @@ segments=$(printf '%s' "$cmd" | awk '
   # 行末のバックスラッシュは行の継続。文字として残すと `git commit -m \` の
   # 次の行のメッセージが、値ではなく別のトークンとして読まれる
     # seg の中で ${ が閉じていないか（開きの数が } の数より多い）
-    function in_param(text,    opens, closes, copy) {
-      copy = text
-      opens = gsub(/[$][{]/, "", copy)
-      closes = gsub(/[}]/, "", copy)
-      return opens > closes
+    # ${ の外にある } は数えない（`echo } ${x:= #}` を「閉じている」と読まない）
+    function in_param(text,    k, len, ch, d) {
+      d = 0
+      len = length(text)
+      for (k = 1; k <= len; k++) {
+        ch = substr(text, k, 1)
+        if (ch == "$" && substr(text, k + 1, 1) == "{") { d++; k++; continue }
+        if (ch == "}" && d > 0) d--
+      }
+      return d > 0
+    }
+    # 位置 pos と同じ行の、pos より前に (( があるか。算術式の中の # は基数の指定
+    # （`(( 16#ff ))` / `(( 1 #2 ))`）で、コメントではない
+    function in_arith(pos,    k, line) {
+      k = pos - 1
+      while (k >= 1 && substr(all, k, 1) != "\n") k--
+      line = substr(all, k + 1, pos - k - 1)
+      return index(line, "((") > 0
     }
   function cont(i) { return (substr(all, i + 1, 1) == "\n") }
   # start から closer までの置換の中身に git の呼び出しがあるか。
@@ -574,9 +587,11 @@ segments=$(printf '%s' "$cmd" | awk '
       #   - 直前の空白がエスケープされている（`a\ #; git commit -n`）
       #   - 行継続の直後（`a\<改行>#b; …`）
       #   - ${ … } の中（`${x:= #}; …`）
+      #   - (( … )) の中（`(( 1 #2 )); …`）
       # 判定に迷う形はコメント扱いしない（検査する側へ倒す）
       if (c == "#" && (i == 1 || (substr(all, i - 1, 1) ~ /[ \t\n]/ &&
-                                  substr(all, i - 2, 1) != bs && !in_param(seg)))) {
+                                  substr(all, i - 2, 1) != bs && !in_param(seg) &&
+                                  !in_arith(i)))) {
         j = i
         while (j <= n) {
           ch = substr(all, j, 1)
@@ -707,9 +722,12 @@ cmd=$(printf '%s\n' "$segments" | {
         ;;
       ("$SEP_AND")
         pending_subst=''
+        after_and=1
         continue
         ;;
       ("$SEP_SEQ")
+        # && の直後の改行は区切りではない（`a &&⏎b` はシェル上 && で繋がっている）
+        [ -n "$after_and" ] && continue
         # && 以外の区切り。前のコマンドが失敗しても次が走るので、
         # 直前のブランチ切り替えを前提にできないことを後段へ伝える
         pending_subst=''
@@ -720,6 +738,7 @@ cmd=$(printf '%s\n' "$segments" | {
 
     seg=${seg#"${seg%%[![:space:]]*}"}
     seg=${seg%"${seg##*[![:space:]]}"}
+    [ -n "$seg" ] && after_and=''
     [ -z "$seg" ] && continue
 
     # 印だけで始まるセグメントはコミットメッセージの本文（データ）。
@@ -2300,15 +2319,26 @@ if [ -n "$newbranch" ]; then
         # パスの復元（`checkout production -- file` / `checkout -p production`）は
         # ブランチを切り替えない。切り替えとして数えると、現在ブランチのまま
         # 「production から切った」ことになる
-        restores = 0
+        #
+        # 復元とみなすのは checkout の、`--` の後ろにパスがある形・-p・ブランチ名の
+        # 後ろに語が続く形（`checkout production README.md`）。`checkout <branch> --`
+        # （後ろが空）は切り替え。switch にパスの復元は無い。
+        # ブランチを作る形（-b <名前> <起点>）は語が 2 つあっても復元ではない
+        restores = 0; creates = 0; words = 0; after_dd = -1
         for (j = g + 2; j <= NF; j++) {
-          if ($j == "--" || $j == "-p" || $j == "--patch") restores = 1
+          if (after_dd >= 0) { after_dd++; continue }
+          if ($j == "--") { after_dd = 0; continue }
+          if ($j == "-p" || $j == "--patch") restores = 1
+          if ($j == "-b" || $j == "-B" || $j == "--orphan") creates = 1
+          if (substr($j, 1, 1) != "-") words++
         }
-        if (restores) next
+        if (s == "checkout" && !creates && (restores || after_dd > 0 || words > 1)) next
 
         for (j = g + 2; j <= NF; j++) {
           t = $j
           if (t == "--") break
+          # `checkout -` は直前のブランチへ戻る。行き先はここからは分からない
+          if (t == "-") { found = ""; break }
           if (substr(t, 1, 1) == "-") {
             # 別のブランチを作って移る形。以降の現在地はそのブランチ
             if (t == "-b" || t == "-B" || t == "-c" || t == "-C" || t == "--create") {

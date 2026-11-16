@@ -1779,6 +1779,12 @@ run 2 '行継続の直後の # はコメントにしない' \
 #b; git commit --no-verify -m wip' feat/existing
 run 2 '置換の中のエスケープされた空白のあとの # はコメントにしない' \
   'echo $(echo a\ #b; git push origin production)' feat/existing
+run 2 '${ } の外の } を閉じとして数えない' \
+  'echo a}b ${y:= #} && git push origin production' feat/existing
+run 2 '行頭側に } があっても ${ } の中の # はコメントにしない' \
+  "echo } \${x:= #}; git commit -n -m 'feat: x'" feat/existing
+run 2 '(( )) の中の # はコメントにしない' \
+  "(( 1 #2 )); git commit -n -m 'feat: x'" feat/existing
 run 0 '${ } を閉じたあとの # はコメントとして読む' \
   'echo ${a:-b} # not to production
 git push origin feat/existing' feat/existing
@@ -1940,6 +1946,28 @@ run 2 'export GIT_CONFIG_COUNT も引き続き止める' \
 
 echo
 echo '=== production へ切り替えてから分岐する形の分岐元（#387）==='
+
+# && の直後で改行しても、シェル上は && で繋がっている
+run 0 '&& の直後で改行した形も production 起点と見る' \
+  'git checkout production &&
+git checkout -b feat/new1' feat/existing
+run 0 '&& と改行で 3 行に分けた形' \
+  'git checkout production &&
+  git pull &&
+  git checkout -b feat/new1' feat/existing
+
+# `checkout <branch> --`（後ろが空）と switch は切り替え。復元として読み飛ばすと、
+# その前の production への切り替えが分岐元として残る
+run 2 'checkout <branch> -- は切り替えとして数える' \
+  'git checkout production && git checkout feat/other -- && git checkout -b feat/new1' feat/existing
+run 2 'switch <branch> -- も切り替えとして数える' \
+  'git checkout production && git switch feat/other -- && git switch -c feat/new1' feat/existing
+run 2 'checkout production <file> は切り替えとして数えない' \
+  'git checkout production README.md && git checkout -b feat/b' feat/existing
+run 2 'checkout - の行き先は分岐元にしない' \
+  'git checkout production && git checkout - && git checkout -b feat/b' feat/existing
+run 0 'checkout -b <名前> <起点> は復元と読まない' \
+  'git checkout production && git checkout -b feat/b production' feat/existing
 
 # パスの復元はブランチを切り替えない
 run 2 'checkout production -- <file> は切り替えとして数えない' \
