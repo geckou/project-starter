@@ -104,7 +104,7 @@ import { AuthProvider } from '@/components/auth/AuthProvider'
 - コメント記号は言語に合わせる（`//` `#` `<!-- -->`）
 - `layer:billing,mobile:start` のように複数列挙すると、**いずれかの層が外れたときに消える**
   （層の交点。RevenueCat 関連がこれにあたる）
-- 範囲の入れ子は可（`functions` の中に `billing` 等）
+- 範囲の入れ子は可（`functions` の中に `billing` 等）。同じ層どうしの入れ子も、外側の `end` までが消える
 - 削除で前後に空行が重なる場合は、継ぎ目の1行だけが自動で詰められる
 
 範囲を消すのではなく**別の内容に置き換えたい**場合はマーカーではなく `layers.json` の

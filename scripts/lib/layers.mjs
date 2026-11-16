@@ -370,6 +370,11 @@ function isSeamBlank(line) {
 /**
  * removal に含まれる層のマーカー範囲を削除する。
  * 削除対象の範囲に入れ子になっている他層のマーカーも、範囲ごと消える。
+ *
+ * 同じ層指定の入れ子（start A / start A / end A / end A）は findBlocks が
+ * 有効な構文として受け付けるので、こちらも深さを数えて**外側の end まで**消す。
+ * 最初の end で止めると、内側の end 以降の内容と外側の end マーカーが残り、
+ * 続く pruneManifest / check-layers が「対応が取れません」で落ちる（#312）
  */
 export function stripBlocks(content, removal) {
   const removed = new Set(removal)
@@ -377,6 +382,7 @@ export function stripBlocks(content, removal) {
   const kept = []
 
   let dropUntil = null
+  let dropDepth = 0
   let justDropped = false
 
   for (const line of lines) {
@@ -386,7 +392,12 @@ export function stripBlocks(content, removal) {
 
     for (const { spec, key, kind } of markerMatches(line)) {
       if (dropUntil !== null) {
-        if (kind === 'end' && key === dropUntil) dropUntil = null
+        // 範囲の中では、同じ層指定のマーカーだけを数える（他の層指定は範囲ごと消える）
+        if (key !== dropUntil) continue
+
+        dropDepth += kind === 'start' ? 1 : -1
+
+        if (dropDepth === 0) dropUntil = null
 
         continue
       }
@@ -396,6 +407,7 @@ export function stripBlocks(content, removal) {
       if (!markerLayers(spec).some((name) => removed.has(name))) continue
 
       dropUntil = key
+      dropDepth = 1
       dropLine = true
     }
 

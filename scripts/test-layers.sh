@@ -1146,6 +1146,68 @@ marker_case '同じ行で閉じてから開き直す形も追う' "
   if (stripBlocks(before, ['m']) !== 'k1\nk2') process.exit(1)
 "
 
+# 同じ層のマーカーの入れ子。findBlocks は有効な構文として受け付けるので、
+# stripBlocks も外側の end まで消す。内側の end で止めると、それ以降の内容と
+# 外側の end マーカーが残る（#312）
+marker_case '同じ層の入れ子は外側の end まで消す' "
+  import { stripBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const before = ['a', '// layer:billing:start', 'b', '// layer:billing:start', 'c', '// layer:billing:end', 'd', '// layer:billing:end', 'e'].join('\n')
+  const after = stripBlocks(before, ['billing'])
+  if (after !== 'a\ne') {
+    console.error(JSON.stringify(after))
+    process.exit(1)
+  }
+"
+
+marker_case '同じ層の入れ子を findBlocks は 2 つの範囲として数える（stripBlocks と揃う）' "
+  import { findBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const blocks = findBlocks(['a', '// layer:billing:start', 'b', '// layer:billing:start', 'c', '// layer:billing:end', 'd', '// layer:billing:end', 'e'].join('\n'))
+  const spans = blocks.map((block) => block.startLine + '-' + block.endLine).sort().join(' ')
+  if (spans !== '1-7 3-5') {
+    console.error(spans)
+    process.exit(1)
+  }
+"
+
+# 層指定の書き方が違っても同じ層指定として深さを数える。別の層指定の入れ子は数えない
+marker_case '入れ子の深さは正規化した層指定で数える' "
+  import { stripBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const before = ['a', '# layer:mobile,billing:start', '# layer:billing:start', 'x', '# layer:billing:end', '# layer:mobile, billing:start', 'y', '# layer:mobile,billing:end', 'z', '# layer:mobile, billing:end', 'b'].join('\n')
+  const after = stripBlocks(before, ['billing'])
+  if (after !== 'a\nb') {
+    console.error(JSON.stringify(after))
+    process.exit(1)
+  }
+"
+
+# 入れ子を閉じたあとの内容は残す（深さを戻し忘れると後続が巻き込まれる）
+marker_case '入れ子を閉じたあとの同じ層の範囲も、それぞれ閉じた所で止まる' "
+  import { stripBlocks } from '$REPO_ROOT/scripts/lib/layers.mjs'
+  const before = ['# layer:m:start', '# layer:m:start', 'x', '# layer:m:end', '# layer:m:end', 'keep', '# layer:m:start', 'y', '# layer:m:end', 'tail'].join('\n')
+  const after = stripBlocks(before, ['m'])
+  if (after !== 'keep\ntail') {
+    console.error(JSON.stringify(after))
+    process.exit(1)
+  }
+"
+
+# 実際の減算でも、入れ子を含むファイルが壊れずに残りの層の検証まで通る
+variant=$(make_variant)
+printf 'keep1\n<!-- layer:billing:start -->\nouter\n<!-- layer:billing:start -->\ninner\n<!-- layer:billing:end -->\nouter2\n<!-- layer:billing:end -->\nkeep2\n' > "$variant/nested-marker.md"
+nested_output=$(remove_layers "$variant" billing)
+if [ "$(cat "$variant/nested-marker.md")" = "$(printf 'keep1\nkeep2')" ]; then
+  pass "同じ層の入れ子を含むファイルを減算できる"
+else
+  fail "同じ層の入れ子の減算結果が期待と違う" "$nested_output
+$(cat "$variant/nested-marker.md")"
+fi
+if (cd "$variant" && node scripts/check-layers.mjs > /dev/null 2>&1); then
+  pass "入れ子を減算したあとも check-layers.mjs が通る"
+else
+  fail "入れ子を減算したあとに check-layers.mjs が落ちる" "$(cd "$variant" && node scripts/check-layers.mjs 2>&1)"
+fi
+rm -rf "$variant"
+
 # 壊れたマーカーを持つファイルがあるとき、減算は黙って切り詰めずに落ちる
 variant=$(make_variant)
 printf 'keep1\n# layer:mobile:start\nkeep2\n' > "$variant/broken-marker.md"
