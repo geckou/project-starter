@@ -165,7 +165,7 @@ project-starter/
 
 | ツール       | バージョン | 確認コマンド         |
 | ------------ | ---------- | -------------------- |
-| Node.js      | 22 以上    | `node -v`            |
+| Node.js      | 24.12 以上 | `node -v`            |
 | yarn         | 1.x        | `yarn -v`            |
 | Firebase CLI | リポジトリで固定 | `npx firebase --version`（`yarn install` で入る） |
 
