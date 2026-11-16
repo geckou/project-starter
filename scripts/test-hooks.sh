@@ -163,6 +163,9 @@ run 2 'production への直接 push' 'git push origin production'
 run 2 'release/* への force push' 'git push --force origin release/1.0.0' feat/existing
 run 0 'release/* への push は ask（deny ではない）' \
   'git push origin release/1.0.0' feat/existing
+# 許可と ask はどちらも exit 0。メッセージを見ないと、黙って allow になる退行が通る（#317）
+expect '"permissionDecision": "ask"' 'release/* への push は確認を求める'
+expect 'staging への自動デプロイ' 'デプロイが発火することを伝える'
 run 2 '--no-verify による検証スキップ' "git commit --no-verify -m 'feat: x'" feat/existing
 run 2 '束ねた短縮フラグ（-am）でも規約を検証する' \
   "git commit -am 'wip'" feat/existing
@@ -222,6 +225,7 @@ echo
 echo '=== hotfix/* への push も確認を求める（staging へデプロイされる） ==='
 run 0 'hotfix/* への push は ask（deny ではない）' \
   'git push origin hotfix/1.0.1' feat/existing
+expect '"permissionDecision": "ask"' 'hotfix/* への push は確認を求める'
 
 echo
 echo '=== 検査の迂回を止める ==='
@@ -454,8 +458,10 @@ run 2 'サブコマンドが置換（判定不能）' 'git $(echo commit) -n -m 
 run 0 'git --version はサブコマンド無しでも通す' 'git --version' feat/existing
 run 0 'xargs へ渡す形は ask（deny ではない）' \
   "printf 'commit' | xargs git" feat/existing
+expect '"permissionDecision": "ask"' 'xargs 経由の実行は確認を求める'
 run 0 'パイプでシェルへ流す形は ask（deny ではない）' \
   "echo 'git commit -n -m wip' | sh" feat/existing
+expect '"permissionDecision": "ask"' 'パイプ経由のシェル実行は確認を求める'
 run 2 'パス付きシェルの heredoc も本文を検査する' \
   "/bin/sh <<'EOF'
 git commit -n -m wip
@@ -476,6 +482,7 @@ run 2 'refspec のグロブ（プレフィックス）' \
 run 2 'refspec に変数' 'git push origin HEAD:$b' feat/existing
 run 0 '--prune は ask（deny ではない）' \
   "git push --prune origin feat/existing" feat/existing
+expect '"permissionDecision": "ask"' '--prune は確認を求める'
 
 # #238: PR / Issue 本文に書いた git コマンドで止めない
 run 0 'gh pr create の本文に push の例を書く' \
@@ -1153,12 +1160,45 @@ echo 'export const x = 1' > "$SESSION/probe.ts"
 
 echo
 echo '=== stop-dod-check: config.sh が無くても既定値で動く ==='
-# 既定のランナー（yarn）が無い環境では何もせず終了する
-run_dod 0 '既定値でも入力の判定は変わらない' '{"stop_hook_active":true}' \
-  "$NOCONFIG/stop-dod-check.sh"
-
-rm -f "$SESSION/probe.ts"
+# 既定のランナーは yarn、タスクは type-check / lint / test、対象は ts などの拡張子。
+# 呼ばれ方を記録する偽の yarn を PATH の先頭に置き、既定値の経路が実際に走ることを見る
+# （#317。以前は stop_hook_active=true を渡していて、config.sh も既定値も読む前に
+# exit していたため、「既定値で動く」は検証されていなかった）
 unset HOOK_RUNNER
+YARN_LOG=$SANDBOX/yarn-calls.log
+export YARN_LOG
+mkdir -p "$SANDBOX/yarn-bin"
+cat > "$SANDBOX/yarn-bin/yarn" <<'YARN'
+#!/bin/sh
+echo "$*" >> "$YARN_LOG"
+[ "$2" = lint ] && { echo "lint error"; exit 1; }
+exit 0
+YARN
+chmod +x "$SANDBOX/yarn-bin/yarn"
+SAVED_PATH=$PATH
+PATH=$SANDBOX/yarn-bin:$PATH
+
+: > "$YARN_LOG"
+run_dod 2 '既定のランナー（yarn）で DoD が走り、失敗すればブロックする' '{}' \
+  "$NOCONFIG/stop-dod-check.sh"
+expect 'yarn run lint' '既定のランナー名で失敗を伝える'
+LAST_OUT=$(cat "$YARN_LOG")
+expect 'run type-check' '既定のタスク（type-check）を実行する'
+expect 'run lint' '既定のタスク（lint）を実行する'
+expect 'run test' '既定のタスク（test）を実行する'
+
+# 既定の拡張子に当たらない変更では走らせない
+rm -f "$SESSION/probe.ts"
+echo 'memo' > "$SESSION/notes.md"
+: > "$YARN_LOG"
+run_dod 0 '既定の拡張子に当たらない変更では走らせない' '{}' \
+  "$NOCONFIG/stop-dod-check.sh"
+LAST_OUT=$(cat "$YARN_LOG")
+refute 'run' '対象外の変更ではランナーを呼ばない'
+rm -f "$SESSION/notes.md"
+
+PATH=$SAVED_PATH
+unset YARN_LOG
 
 # ---- session-start-questions.sh / stop-questions-reminder.sh ----
 #
