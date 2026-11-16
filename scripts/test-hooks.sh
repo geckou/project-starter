@@ -1848,6 +1848,37 @@ run 2 'GIT_CONFIG_PARAMETERS での注入も引き続き止める' \
 run 2 'export GIT_CONFIG_COUNT も引き続き止める' \
   "export GIT_CONFIG_COUNT=1; git commit -m 'feat: x'" feat/existing
 
+echo
+echo '=== production へ切り替えてから分岐する形の分岐元（#387）==='
+
+# checkout と production の間にフラグを挟むと、分岐元が production と判定されず、
+# 実行時点の HEAD（別の作業ブランチ）から切ったものとして拒否されていた
+run 0 'checkout -q production のあとの分岐を production 起点と見る' \
+  'git checkout -q production && git checkout -b fix/b' feat/existing
+run 0 'switch --quiet production のあとの switch -c' \
+  'git switch --quiet production && git switch -c feat/b' feat/existing
+run 0 'フラグ・pull・束ねた -qb を挟んでも同じ' \
+  'git checkout -f production && git pull && git checkout -qb feat/b' feat/existing
+run 0 'git branch <名前> で切る形でも同じ' \
+  'git checkout -q production && git branch feat/b' feat/existing
+run 0 'フラグ無しの形は従来どおり通す' \
+  'git checkout production && git pull && git checkout -b feat/b' feat/existing
+
+# production へ切り替えたと言えない形は、現在ブランチを分岐元として止める
+run 2 '別のブランチへ切り替えてからの分岐は止める' \
+  'git checkout -q feat/other && git checkout -b feat/b' feat/existing
+expect '分岐元' '分岐元の違反として伝える'
+run 2 '分岐元を明示していれば、そちらを見る' \
+  'git checkout -q production && git checkout -b feat/b release/1.0.0' feat/existing
+run 2 '; で区切った形は切り替えの成功を前提にしない' \
+  'git checkout -q production ; git checkout -b feat/b' feat/existing
+run 2 '|| で繋いだ形も前提にしない' \
+  'git checkout production || git checkout -b feat/b' feat/existing
+run 2 '分岐より後ろの checkout production は分岐元ではない' \
+  'git checkout -b feat/b && git checkout production' feat/existing
+run 2 'production のあとに別のブランチへ移っていれば止める' \
+  'git checkout production && git checkout -q feat/other && git checkout -b feat/b' feat/existing
+
 
 # ---- scripts/check-shell-compat.mjs ----
 #

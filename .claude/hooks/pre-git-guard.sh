@@ -2247,9 +2247,58 @@ if [ -n "$newbranch" ]; then
   [ -n "$copy_base" ] && base=$copy_base
 
   # 同一コマンド内で production へ切り替えてから分岐する（ドキュメントの手順）ケースを
-  # 現在ブランチ起点と誤判定しないよう、チェーンの前半を分岐元として扱う
-  if [ -z "$base" ] && has '(^|[[:space:]])git[[:space:]]+(checkout|switch)[[:space:]]+production([[:space:]]|$|&|;)'; then
-    base="production"
+  # 現在ブランチ起点と誤判定しないよう、チェーンの前半を分岐元として扱う。
+  #
+  # 見方はコミット先の判定（switch_info）と揃える（#387）:
+  #   - フラグは読み飛ばして最初の非フラグ語を切り替え先とする。`checkout` の直後に
+  #     `production` が来る形だけを見ていると、`git checkout -q production && …` が外れる
+  #   - ブランチを作るコマンドより**前**の切り替えだけを見る
+  #   - && 以外の区切り（; 改行 | & ||）を跨いだら、切り替えの成功を前提にできない。
+  #     `git checkout production ; git checkout -b feat/x` は checkout が失敗しても
+  #     分岐が走り、現在ブランチから切られる
+  if [ -z "$base" ]; then
+    switched_to=$(printf '%s\n' "$cmd_flags" |
+      awk -v seq_break="$MARK_SEQ" -v name="$newbranch" '
+      BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34) }
+      function bare(t) { gsub(sq, "", t); gsub(dq, "", t); return t }
+      $0 == seq_break { found = ""; next }
+      {
+        g = 0
+        for (i = 1; i <= NF; i++) if ($i == "git") { g = i; break }
+        if (g == 0) next
+        s = $(g + 1)
+        if (s != "checkout" && s != "switch" && s != "branch" && s != "worktree") next
+
+        # 作ろうとしているブランチの名前が現れる行が「分岐するコマンド」。
+        # worktree add <パス> は basename(パス) が名前になる
+        for (j = g + 2; j <= NF; j++) {
+          t = bare($j)
+          sub(/\/+$/, "", t)
+          if (t == name || (s == "worktree" && length(t) > length(name) &&
+              substr(t, length(t) - length(name)) == "/" name)) {
+            print found
+            exit
+          }
+        }
+        if (s != "checkout" && s != "switch") next
+
+        for (j = g + 2; j <= NF; j++) {
+          t = $j
+          if (t == "--") break
+          if (substr(t, 1, 1) == "-") {
+            # 別のブランチを作って移る形。以降の現在地はそのブランチ
+            if (t == "-b" || t == "-B" || t == "-c" || t == "-C" || t == "--create") {
+              if (j < NF) found = bare($(j + 1))
+              break
+            }
+            continue
+          }
+          found = bare(t)
+          break
+        }
+      }')
+
+    [ "$switched_to" = "production" ] && base="production"
   fi
   [ -z "$base" ] && base="$current"
   base=${base#refs/remotes/origin/}
