@@ -139,9 +139,12 @@ import { AuthProvider } from '@/components/auth/AuthProvider'
 
 登録しないものの代表が `.github/` 配下（ワークフロー・ルールセット・Issue / PR テンプレート・
 `copilot-instructions.md`）。CI・デプロイ・ブランチ保護・テンプレート同期は、
-どの層を選んだ派生プロジェクトでも同じように要る。例外は `deploy.yml` の中の
-**層マーカーで囲んだ範囲**（firebase / functions / mobile のデプロイ手順）で、
-これはファイルごと消すのではなく中身が削られるため、各層の `blocks` に登録してある。
+どの層を選んだ派生プロジェクトでも同じように要る。例外は 2 つ。
+
+- `deploy.yml` の中の**層マーカーで囲んだ範囲**（firebase / functions / mobile のデプロイ手順）。
+  ファイルごと消すのではなく中身が削られるため、各層の `blocks` に登録してある
+- `mobile-release.yml`（EAS でのビルドとストア提出）。丸ごと mobile 層のものなので、
+  mobile 層の `files` に登録してある（層を外すとファイルごと消える）
 
 同じ理由で、`.claude/hooks/` や `CLAUDE.md` のような第0層（制約層）も `files` には登録しない
 （→ CLAUDE.md「プロジェクト概要」の 2 層構成）。迷ったら

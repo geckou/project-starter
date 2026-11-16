@@ -209,10 +209,12 @@
       "files": [
         "apps/mobile",
         "packages/eslint-config/expo.js",
-        "renovate/mobile.json"
+        "renovate/mobile.json",
+        ".github/workflows/mobile-release.yml"
       ],
       "blocks": [
         ".claude/docs/architecture.md",
+        ".claude/docs/git-workflow.md",
         ".env.example",
         "scripts/use-env.sh",
         "lint-staged.config.cjs",
@@ -240,7 +242,8 @@
       ],
       "notes": [
         "mobile が functions を要求するのは、API を Cloud Functions の1本に集約する規約（architecture.md）を全構成で維持するため。",
-        "ESLint の共通設定は ./expo のサブパスだけが mobile 層に属する（expo.js とその依存・exports）。"
+        "ESLint の共通設定は ./expo のサブパスだけが mobile 層に属する（expo.js とその依存・exports）。",
+        ".github/ 配下は原則として層に登録しないが、mobile-release.yml（EAS でのビルドとストア提出）は丸ごと mobile 層に属する。mobile を外した構成では起動条件のファイル（apps/mobile/app.config.ts）ごと無くなるため、ファイルごと消す。"
       ],
       "deps": {
         "packages/eslint-config/package.json": [

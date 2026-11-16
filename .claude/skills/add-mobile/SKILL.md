@@ -72,6 +72,8 @@ Expo は `NEXT_PUBLIC_*` ではなく `FIREBASE_*` を `app.config.ts` の `extr
 - 送信側（`apps/functions/src/lib/push-notifications.ts`）は functions 層にある。
   受信側の権限要求とトークン登録は `apps/mobile/src/lib/push-notifications.ts`
 - iOS は Apple Developer Program、Android は Google Play Console のアカウントが要る
+- ストアへの提出は、`version` を上げた変更が `production` に入ると自動で走る
+  （`EXPO_TOKEN` の登録が要る。→ `.claude/docs/git-workflow.md`「ストア配信の自動化」）
 - アプリ内課金を売るなら `/add-billing`（RevenueCat 側の設定が別途必要）
 
 ## 3. 確認
