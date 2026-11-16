@@ -1099,7 +1099,35 @@ HOOK_CODE_EXTENSIONS='rules'
 export HOOK_CODE_EXTENSIONS
 run_dod 0 '対象拡張子から外れていれば走らせない' '{}'
 unset HOOK_CODE_EXTENSIONS
-run_dod 0 'stop_hook_active はコード変更があっても優先される' '{"stop_hook_active":true}'
+run_dod 0 'session_id が無ければ、継続中はコード変更があっても走らせない' \
+  '{"stop_hook_active":true}'
+
+# 回帰(#363): Stop フックは 4 つとも同じ stop_hook_active を受け取る。DoD だけが
+# 一律に早期 exit していたため、先に roadmap などがブロックした継続では DoD が
+# 一度も走らず、失敗したまま終了できていた
+DOD_MARKER="${TMPDIR:-/tmp}/claude-stop-dod-s-dod"
+rm -f "$DOD_MARKER"
+run_dod 2 '他のフックが先にブロックした継続でも DoD は走る' \
+  '{"stop_hook_active":true,"session_id":"s-dod"}'
+expect 'DoD 未達' 'DoD の失敗として伝える'
+run_dod 0 '同じセッションで 2 回目はブロックしない（無限ループ防止）' \
+  '{"stop_hook_active":true,"session_id":"s-dod"}'
+run_dod 2 '継続ではない次の Stop では改めて検査する' '{"session_id":"s-dod"}'
+run_dod 0 '自分がブロックした直後の継続は通す' \
+  '{"stop_hook_active":true,"session_id":"s-dod"}'
+HOOK_DOD_TASKS='type-check'
+export HOOK_DOD_TASKS
+run_dod 0 'DoD が通れば終了できる' '{"session_id":"s-dod"}'
+unset HOOK_DOD_TASKS
+run_dod 2 '通ったあとは印が消え、次の継続でまた検査する' \
+  '{"stop_hook_active":true,"session_id":"s-dod"}'
+rm -f "$DOD_MARKER"
+HOOK_DOD_TASKS='type-check'
+export HOOK_DOD_TASKS
+run_dod 0 '継続中でも DoD が通っていればブロックしない' \
+  '{"stop_hook_active":true,"session_id":"s-dod"}'
+unset HOOK_DOD_TASKS
+rm -f "$DOD_MARKER"
 
 # 回帰(#241): git status --porcelain は未追跡ディレクトリを 1 行にまとめるため、
 # 新しいディレクトリを丸ごと追加した作業で DoD が走らなかった
