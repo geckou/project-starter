@@ -5,7 +5,10 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
 import { adminAuth } from '@/lib/firebase-admin'
-import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
+import {
+  isInvalidSessionError,
+  SESSION_COOKIE_NAME,
+} from '@/lib/session-cookie'
 
 const SESSION_EXPIRES_IN_MS = 1000 * 60 * 60 * 24 * 5 // 5日
 
@@ -103,7 +106,19 @@ export async function POST(request: Request) {
     })
 
     return NextResponse.json({ success: true })
-  } catch {
+  } catch (error) {
+    // 「idToken が無効」と「サーバー側が検証できない」を分ける。firebase-admin の
+    // 認証情報やプロジェクト ID の設定漏れまで 401 にすると、正しくサインインした
+    // ユーザーに「Invalid idToken」が返り続け、原因がログにも残らない（#302）
+    if (!isInvalidSessionError(error)) {
+      console.error('セッション cookie を発行できませんでした', error)
+
+      return NextResponse.json(
+        { error: 'Failed to create session' },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json({ error: 'Invalid idToken' }, { status: 401 })
   }
 }
@@ -130,8 +145,12 @@ export async function DELETE(request: Request) {
     try {
       const decoded = await adminAuth.verifySessionCookie(sessionCookie)
       await adminAuth.revokeRefreshTokens(decoded.sub)
-    } catch {
-      // 既に無効な cookie。サインアウト自体は成功として扱う
+    } catch (error) {
+      // 既に無効な cookie なら何もしない。それ以外（設定漏れ・通信失敗）は失効できて
+      // いないので記録する。どちらでもサインアウト自体は成功として扱う
+      if (!isInvalidSessionError(error)) {
+        console.error('リフレッシュトークンを失効できませんでした', error)
+      }
     }
   }
 

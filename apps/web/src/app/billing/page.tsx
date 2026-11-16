@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 
 import { BillingActions } from '@/components/billing/BillingActions'
 import { adminAuth, adminDb } from '@/lib/firebase-admin'
-import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
+import { nullIfInvalidSession, SESSION_COOKIE_NAME } from '@/lib/session-cookie'
 
 // 参考実装: Web 決済（Stripe）の購入・管理導線。
 // 権利状態は users/{uid}.subscription を単一の正とし、
@@ -17,7 +17,7 @@ export default async function BillingPage() {
 
   const decoded = await adminAuth
     .verifySessionCookie(sessionCookie, true)
-    .catch(() => null)
+    .catch(nullIfInvalidSession)
   if (!decoded) redirect('/login?redirect=/billing')
 
   const userDoc = await adminDb.collection('users').doc(decoded.uid).get()

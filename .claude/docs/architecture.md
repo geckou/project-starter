@@ -156,7 +156,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import { adminAuth, adminDb } from '@/lib/firebase-admin'
-import { SESSION_COOKIE_NAME } from '@/lib/session-cookie'
+import { nullIfInvalidSession, SESSION_COOKIE_NAME } from '@/lib/session-cookie'
 
 export default async function DashboardPage() {
   // middleware は Cookie の存在チェックのみ（Edge runtime では firebase-admin が
@@ -166,7 +166,7 @@ export default async function DashboardPage() {
 
   const decoded = await adminAuth
     .verifySessionCookie(sessionCookie, true)
-    .catch(() => null)
+    .catch(nullIfInvalidSession)
   if (!decoded) redirect('/login?redirect=/dashboard')
 
   // 検証済みの uid にスコープして読む。コレクション全件を読む形にしない
@@ -176,6 +176,11 @@ export default async function DashboardPage() {
   return <p>{user?.displayName}</p>
 }
 ```
+
+**検証の失敗を `.catch(() => null)` で全部握らない。** firebase-admin は認証情報やプロジェクト ID が
+無くても初期化では throw せず、検証の時点で reject する。全部を「未ログイン」として `/login` へ戻すと、
+設定漏れがログインループとして現れる。`nullIfInvalidSession` は cookie が無効なときだけ null を返し、
+それ以外は原因を付けて throw する（`error.tsx` とサーバーログに出る）。
 
 クライアントでリアルタイム更新が必要な場合のみ `'use client'` + Firebase クライアント SDK を使う。
 

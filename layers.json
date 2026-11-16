@@ -82,6 +82,7 @@
         "apps/web/src/app/dashboard",
         "apps/web/src/components/auth",
         "apps/web/tests/session-route.test.ts",
+        "apps/web/tests/session-cookie.test.ts",
         "apps/web/tests/sanitize-redirect.test.ts",
         "packages/shared/src/firebase",
         "packages/shared/src/firestore",
