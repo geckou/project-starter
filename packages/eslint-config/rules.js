@@ -38,6 +38,6 @@ export const vueRules = {
   curly: ['error', 'all'],
   // 1 語のコンポーネント名（Button.vue 等）を許可する
   'vue/multi-word-component-names': 'off',
-  'vue/attribute-hyphenation': ['error', 'never', { ignore: ['custom-prop'] }],
+  'vue/attribute-hyphenation': ['error', 'never'],
   'vue/v-on-event-hyphenation': ['error', 'never', { autofix: false }],
 }
