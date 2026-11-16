@@ -1762,6 +1762,27 @@ run 2 'eval の中のコメントも引用の中で終わる' \
 run 2 'バッククォートの中のコメントは閉じで終わる' \
   'echo `echo a # b` && git push origin production'
 
+# 直前の生の文字が空白でも、語の先頭とは限らない。次の # をコメントとして落とすと、
+# シェルが実行する続きのコマンドが検査から丸ごと消える
+run 2 'エスケープされた空白のあとの # はコメントにしない' \
+  "echo a\\ #; git commit -n -m 'wip'" feat/existing
+run 2 'エスケープされた空白のあとの # より後ろの force push を止める' \
+  'echo a\ # ; git push --force origin production' feat/existing
+run 2 '${ } の中の # はコメントにしない（:=）' \
+  ': ${x:= #}; git push --no-verify origin production' feat/existing
+run 2 '${ } の中の # はコメントにしない（:-）' \
+  'echo ${a:- #b}; git push origin production' feat/existing
+run 2 '${ } の中の # はコメントにしない（置換）' \
+  'echo ${a/ #/x}; git push origin production' feat/existing
+run 2 '行継続の直後の # はコメントにしない' \
+  'echo a\
+#b; git commit --no-verify -m wip' feat/existing
+run 2 '置換の中のエスケープされた空白のあとの # はコメントにしない' \
+  'echo $(echo a\ #b; git push origin production)' feat/existing
+run 0 '${ } を閉じたあとの # はコメントとして読む' \
+  'echo ${a:-b} # not to production
+git push origin feat/existing' feat/existing
+
 echo
 echo '=== commit -m "$(cat <<EOF …)" の本文中の git で止めない（#299）==='
 
@@ -1919,6 +1940,12 @@ run 2 'export GIT_CONFIG_COUNT も引き続き止める' \
 
 echo
 echo '=== production へ切り替えてから分岐する形の分岐元（#387）==='
+
+# パスの復元はブランチを切り替えない
+run 2 'checkout production -- <file> は切り替えとして数えない' \
+  'git checkout -q production -- README.md && git checkout -b feat/b' feat/existing
+run 2 'checkout -p production は切り替えとして数えない' \
+  'git checkout -p production && git checkout -b feat/b' feat/existing
 
 # checkout と production の間にフラグを挟むと、分岐元が production と判定されず、
 # 実行時点の HEAD（別の作業ブランチ）から切ったものとして拒否されていた

@@ -473,6 +473,13 @@ segments=$(printf '%s' "$cmd" | awk '
   }
   # 行末のバックスラッシュは行の継続。文字として残すと `git commit -m \` の
   # 次の行のメッセージが、値ではなく別のトークンとして読まれる
+    # seg の中で ${ が閉じていないか（開きの数が } の数より多い）
+    function in_param(text,    opens, closes, copy) {
+      copy = text
+      opens = gsub(/[$][{]/, "", copy)
+      closes = gsub(/[}]/, "", copy)
+      return opens > closes
+    }
   function cont(i) { return (substr(all, i + 1, 1) == "\n") }
   # start から closer までの置換の中身に git の呼び出しがあるか。
   # ダブルクォートの中の置換を切り出すかどうかの判定に使う（切り出すのは
@@ -561,7 +568,15 @@ segments=$(printf '%s' "$cmd" | awk '
       # （`-m "fix: #12"`）はコメントではない。heredoc_marker と同じ規則。
       # 終端は改行のほか、sh -c / eval を展開した中身の終わり（eoc）と、
       # バッククォートの置換の閉じ（シェルは置換の文字列を先に切り出す）
-      if (c == "#" && (i == 1 || substr(all, i - 1, 1) ~ /[ \t\n]/)) {
+      #
+      # 「語の先頭」は直前の生の文字だけでは決まらない。次の形の # はコメントではなく、
+      # シェルは行の続きを実行する。コメントとして落とすと、続きが検査から丸ごと消える:
+      #   - 直前の空白がエスケープされている（`a\ #; git commit -n`）
+      #   - 行継続の直後（`a\<改行>#b; …`）
+      #   - ${ … } の中（`${x:= #}; …`）
+      # 判定に迷う形はコメント扱いしない（検査する側へ倒す）
+      if (c == "#" && (i == 1 || (substr(all, i - 1, 1) ~ /[ \t\n]/ &&
+                                  substr(all, i - 2, 1) != bs && !in_param(seg)))) {
         j = i
         while (j <= n) {
           ch = substr(all, j, 1)
@@ -2281,6 +2296,15 @@ if [ -n "$newbranch" ]; then
           }
         }
         if (s != "checkout" && s != "switch") next
+
+        # パスの復元（`checkout production -- file` / `checkout -p production`）は
+        # ブランチを切り替えない。切り替えとして数えると、現在ブランチのまま
+        # 「production から切った」ことになる
+        restores = 0
+        for (j = g + 2; j <= NF; j++) {
+          if ($j == "--" || $j == "-p" || $j == "--patch") restores = 1
+        }
+        if (restores) next
 
         for (j = g + 2; j <= NF; j++) {
           t = $j

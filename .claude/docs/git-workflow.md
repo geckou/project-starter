@@ -5,14 +5,12 @@
 ```bash
 # 1. 機能開発
 git fetch origin --prune            # 進行中の release/* を見落とさないため必須
-git checkout production && git pull
-git checkout -b feat/user-profile
+git checkout production && git pull && git checkout -b feat/user-profile
 git merge origin/release/1.0.0      # 進行中の release があり、それに載せる場合
 # ... 開発・push → develop で動作確認 ...
 
 # 2. リリース準備（出したい機能だけ選ぶ）
-git checkout production
-git checkout -b release/1.0.0
+git checkout production && git checkout -b release/1.0.0
 git merge feat/user-profile
 git merge feat/posts
 git push origin release/1.0.0  # → staging で QA（push = staging へ自動デプロイ）
@@ -35,6 +33,10 @@ git checkout production && git pull
 git checkout -b hotfix/1.0.1 production
 # ... 修正 → staging で確認 → production に merge ...
 ```
+
+> 切り替えと分岐を 1 回のコマンドで実行するときは **`&&` で繋ぐ**。改行や `;` で並べると、
+> `git checkout production` が失敗しても次の `git checkout -b` が走り、現在のブランチから
+> 切られる。`pre-git-guard.sh` は `&&` で繋がった切り替えだけを分岐元として認める。
 
 ## 作業ブランチの切り方
 
