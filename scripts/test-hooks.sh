@@ -1693,6 +1693,45 @@ run 2 'eval の中のコメントも引用の中で終わる' \
 run 2 'バッククォートの中のコメントは閉じで終わる' \
   'echo `echo a # b` && git push origin production'
 
+echo
+echo '=== commit -m "$(cat <<EOF …)" の本文中の git で止めない（#299）==='
+
+# 本文の行に空白区切りの git があると、$( … ) が「git を実行する置換」として
+# 切り出され、-m の値が空になって規約違反と判定されていた
+run 0 '本文にコマンド例を書いたコミットを通す' \
+  "git commit -m \"\$(cat <<'EOF'
+feat: x
+
+- 実行例: git commit -n を止めた
+EOF
+)\"" feat/existing
+run 0 '本文に括弧と git が混ざっていても通す' \
+  "git commit -m \"\$(cat <<'EOF'
+fix: 判定を直す
+
+- 置換の形 ( git push origin production ) を説明する
+EOF
+)\"" feat/existing
+run 2 '本文にコマンド例があっても件名の規約は検証する' \
+  "git commit -m \"\$(cat <<'EOF'
+wip
+
+- 実行例: git commit -n を止めた
+EOF
+)\"" feat/existing
+run 2 '本文にコマンド例があっても production への直接コミットは止める' \
+  "git commit -m \"\$(cat <<'EOF'
+feat: x
+
+- 実行例: git commit -n を止めた
+EOF
+)\""
+
+# 本物のコマンド置換は引き続き検査する
+run 2 '置換の中の commit -n も検査する' \
+  'git commit -m "feat: $(git commit -n -m wip)"' feat/existing
+run 0 '読み出すだけの置換は通す' \
+  'git commit -m "feat: x $(git rev-parse --short HEAD)"' feat/existing
 
 # ---- scripts/check-shell-compat.mjs ----
 #

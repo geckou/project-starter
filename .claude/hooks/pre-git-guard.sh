@@ -479,6 +479,15 @@ segments=$(printf '%s' "$cmd" | awk '
     body = ""
     for (j = start; j <= length(all); j++) {
       ch = substr(all, j, 1)
+      # 印の付いた行はコミットメッセージの本文（データ）。本文に書いた
+      # `git commit -n` のような例や括弧を、置換の中身として数えない。
+      # 数えると -m "$(cat <<EOF …)" の置換が切り出され、メッセージの値が
+      # 空になって規約どおりのコミットが弾かれる（#299）
+      if (ch == msg) {
+        while (j <= length(all) && substr(all, j, 1) != "\n") j++
+        body = body "\n"
+        continue
+      }
       if (closer == ")") {
         if (ch == "(") d++
         else if (ch == ")") { d--; if (d == 0) break }
