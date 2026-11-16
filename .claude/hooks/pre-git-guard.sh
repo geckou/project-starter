@@ -440,8 +440,11 @@ GUARDED_SUBCOMMAND_RE='(^|[[:space:]])(commit|push|merge|rebase|pull|cherry-pick
 
 # husky を環境変数から無効化する経路。HUSKY=0 は husky v9 が公式に用意した
 # 無効化手段、GIT_CONFIG_* は -c を使わずに core.hooksPath を注入する経路
-# （GIT_CONFIG_PARAMETERS は git 内部用だが、外から与えても効く）
-ENV_BYPASS_RE='(HUSKY=0([[:space:]]|;|$)|GIT_CONFIG_(COUNT|KEY_[0-9]+|VALUE_[0-9]+|PARAMETERS|GLOBAL|SYSTEM|NOSYSTEM)=)'
+# （GIT_CONFIG_PARAMETERS は git 内部用だが、外から与えても効く）。
+# 対象は**設定を注入できる変数だけ**。GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM /
+# GIT_CONFIG_NOSYSTEM はグローバル・システム設定の読み先を変えるだけで、
+# リポジトリローカルの core.hooksPath（husky が書く）を上書きできない（#315）
+ENV_BYPASS_RE='(HUSKY=0([[:space:]]|;|$)|GIT_CONFIG_(COUNT|KEY_[0-9]+|VALUE_[0-9]+|PARAMETERS)=)'
 
 segments=$(printf '%s' "$cmd" | awk '
   BEGIN {
@@ -621,6 +624,24 @@ segments=$(printf '%s' "$cmd" | awk '
   }
 ')
 
+# cd / pushd の引数（最初の 1 語）を target に入れる。
+# クォート付きのパスは閉じクォートまでを 1 引数として取る。
+# 空白までで切ると `cd "/path/with spaces"` が解決できず、
+# 別リポジトリなのに検査対象に残ってしまう
+first_arg() {
+  target=$1
+  target=${target#"${target%%[![:space:]]*}"}
+  case $target in
+    (\'*) target=${target#\'}; target=${target%%\'*} ;;
+    (\"*) target=${target#\"}; target=${target%%\"*} ;;
+    (*) target=${target%%[[:space:]]*} ;;
+  esac
+}
+
+# pushd のディレクトリスタックの区切りと、中身が分からなくなったことを表す印
+PD_SEP=$(printf '\001')
+PD_UNKNOWN='?'
+
 # このリポジトリを対象にした git 呼び出しだけを残す。cd の効果は後続の
 # セグメントへ引き継ぐが、サブシェルを抜けたら元へ戻す。戻さないと
 # `(cd /other && git status) && git commit` の commit まで別リポジトリ扱いになり、
@@ -629,6 +650,10 @@ cmd=$(printf '%s\n' "$segments" | {
   work_dir=$(pwd -P)
   prev_dir=$work_dir
   dir_stack=''
+  # pushd / popd のスタック（新しい順。各要素の後ろに PD_SEP）。
+  # cd と同じく追跡しないと、`pushd <別リポジトリ> && git commit …; popd` に
+  # このリポジトリの規約を当ててしまう（#315）
+  pd_stack=''
   buf=''
   # コマンド位置の置換（`which git` … / $(which git) …）の直後を待っている状態。
   # 区切りを跨いだら「別のコマンド」なので降ろす
@@ -647,7 +672,7 @@ cmd=$(printf '%s\n' "$segments" | {
 
     case $seg in
       ("$SUB_OPEN")
-        dir_stack="$work_dir$NL$prev_dir$NL$dir_stack"
+        dir_stack="$work_dir$NL$prev_dir$NL$pd_stack$NL$dir_stack"
         continue
         ;;
       ("$SUB_CLOSE")
@@ -655,6 +680,8 @@ cmd=$(printf '%s\n' "$segments" | {
           work_dir=${dir_stack%%"$NL"*}
           dir_stack=${dir_stack#*"$NL"}
           prev_dir=${dir_stack%%"$NL"*}
+          dir_stack=${dir_stack#*"$NL"}
+          pd_stack=${dir_stack%%"$NL"*}
           dir_stack=${dir_stack#*"$NL"}
         fi
         continue
@@ -704,22 +731,65 @@ cmd=$(printf '%s\n' "$segments" | {
 
     case $seg in
       (cd | cd[[:space:]]*)
-        target=${seg#cd}
-        target=${target#"${target%%[![:space:]]*}"}
-        # クォート付きのパスは閉じクォートまでを 1 引数として取る。
-        # 空白までで切ると `cd "/path/with spaces"` が解決できず、
-        # 別リポジトリなのに検査対象に残ってしまう
-        case $target in
-          (\'*) target=${target#\'}; target=${target%%\'*} ;;
-          (\"*) target=${target#\"}; target=${target%%\"*} ;;
-          (*) target=${target%%[[:space:]]*} ;;
-        esac
+        first_arg "${seg#cd}"
         last_dir=$work_dir
         case $target in
           ('') work_dir=$HOME ;;
           ('-') work_dir=$prev_dir ;;
           (*) work_dir=$(resolve_dir "$target" "$work_dir") || work_dir='' ;;
         esac
+        prev_dir=$last_dir
+        continue
+        ;;
+      (pushd | pushd[[:space:]]*)
+        first_arg "${seg#pushd}"
+        # `pushd > /dev/null` のリダイレクトは引数ではない
+        case $target in
+          ([\<\>]* | [0-9][\<\>]*) target='' ;;
+        esac
+        last_dir=$work_dir
+        case $target in
+          ('')
+            # 引数なしはスタックの先頭と現在地の入れ替え。空なら何も起きない
+            if [ -n "$pd_stack" ]; then
+              pd_top=${pd_stack%%"$PD_SEP"*}
+              if [ "$pd_top" = "$PD_UNKNOWN" ]; then
+                work_dir=''
+              else
+                pd_stack="$work_dir$PD_SEP${pd_stack#*"$PD_SEP"}"
+                work_dir=$pd_top
+              fi
+            fi
+            ;;
+          ([-+]*)
+            # -n（移動しない）や +N / -N（回転）は追わない。以降は現在地もスタックも
+            # 判定不能として、安全側（検査対象に残す）に倒す
+            work_dir=''
+            pd_stack="$PD_UNKNOWN$PD_SEP"
+            ;;
+          (*)
+            pd_stack="$work_dir$PD_SEP$pd_stack"
+            work_dir=$(resolve_dir "$target" "$work_dir") || work_dir=''
+            ;;
+        esac
+        prev_dir=$last_dir
+        continue
+        ;;
+      (popd | popd[[:space:]]*)
+        last_dir=$work_dir
+        if printf '%s' "${seg#popd}" | grep -Eq '(^|[[:space:]])[-+]'; then
+          work_dir=''
+          pd_stack="$PD_UNKNOWN$PD_SEP"
+        elif [ -n "$pd_stack" ]; then
+          # スタックが空の popd は失敗して現在地が変わらないので、何もしない
+          pd_top=${pd_stack%%"$PD_SEP"*}
+          if [ "$pd_top" = "$PD_UNKNOWN" ]; then
+            work_dir=''
+          else
+            pd_stack=${pd_stack#*"$PD_SEP"}
+            work_dir=$pd_top
+          fi
+        fi
         prev_dir=$last_dir
         continue
         ;;
@@ -1374,7 +1444,7 @@ if [ "${hooks_path_bypass:-0}" -gt 0 ]; then
 fi
 
 if [ "${env_bypass:-0}" -gt 0 ]; then
-  deny 'HUSKY=0 / GIT_CONFIG_* の前置きによる husky の無効化は禁止です（--no-verify と同じ迂回）。失敗したら迂回せず原因を直してください。'
+  deny 'HUSKY=0 / GIT_CONFIG_*（GIT_CONFIG_COUNT 等の設定を注入する変数）の前置きによる husky の無効化は禁止です（--no-verify と同じ迂回）。失敗したら迂回せず原因を直してください。'
 fi
 
 if [ "${alias_bypass:-0}" -gt 0 ]; then

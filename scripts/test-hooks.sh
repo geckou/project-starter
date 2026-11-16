@@ -1787,6 +1787,67 @@ run 2 '他のコマンドのあとの commit -t も止める' \
   'git grep -F TODO; git commit -t template.txt' feat/existing
 rm -rf "$SESSION/sub" "$SESSION/rootmsg.txt"
 
+echo
+echo '=== pushd / popd の追跡と、設定を注入できない GIT_CONFIG_*（#315）==='
+
+# pushd は cd と同じく実行ディレクトリを変える。追跡しないと、別リポジトリへの
+# commit にこのリポジトリの規約を当ててしまう
+run 0 'pushd で別リポジトリへ移動してから commit' \
+  "pushd $OTHER && git commit -m 'wip'; popd"
+run 0 'pushd のリダイレクト付きでも追跡する' \
+  "pushd $OTHER > /dev/null && git commit -m 'wip' && popd > /dev/null"
+run 0 'pushd のパスに空白がある' \
+  "pushd \"$SPACED\" && git commit -m 'なにか'"
+run 0 'サブシェル内の pushd' "(pushd $OTHER && git commit -m 'wip')"
+run 0 '引数なしの pushd は先頭と入れ替える（別リポジトリへ戻る）' \
+  "cd $OTHER && pushd $SESSION && pushd && git commit -m 'wip'"
+
+# popd で戻ってきたあと・追跡できない形は、引き続き検査する
+run 2 'popd で戻ったあとの production 直コミット' \
+  "pushd $OTHER && git status && popd && git commit -m 'feat: x'"
+run 2 'popd のリダイレクト付きでも戻ったと判定する' \
+  "pushd $OTHER >/dev/null; git status; popd >/dev/null 2>&1; git commit -m 'feat: x'"
+run 2 'pushd でセッションのリポジトリへ入ってからの commit' \
+  "cd $OTHER && pushd $SESSION && git commit -m 'feat: x'"
+run 2 'サブシェルの pushd は親スコープへ漏らさない' \
+  "(pushd $OTHER && git status) && git commit -m 'feat: x'"
+run 2 'サブシェルを抜けたら pushd のスタックも戻る' \
+  "pushd $OTHER && (popd) && popd && git commit -m 'feat: x'"
+run 2 'スタックが空の popd では移動しない' \
+  "popd; git commit -m 'feat: x'"
+run 2 '引数なしの pushd で戻ってきたあとも検査する' \
+  "pushd $OTHER && pushd && git commit -m 'feat: x'"
+run 2 '解決できないパスへの pushd は安全側（検査対象に残す）' \
+  'pushd "$OTHER_REPO" && git commit -m "なにか"'
+run 2 'pushd -n（移動しない）は安全側' \
+  "pushd -n $OTHER && git commit -m 'feat: x'"
+run 2 'pushd +N（回転）は安全側' \
+  "pushd $OTHER && pushd +1 && git commit -m 'feat: x'"
+run 2 'popd +N のあとは安全側' \
+  "pushd $OTHER && popd +0; git commit -m 'feat: x'"
+
+# グローバル・システム設定の読み先を変えるだけの変数は、リポジトリローカルの
+# core.hooksPath を上書きできない。設定を注入できる変数だけを止める
+run 0 'GIT_CONFIG_NOSYSTEM は husky の迂回ではない' \
+  "GIT_CONFIG_NOSYSTEM=1 git commit -m 'feat: x'" feat/existing
+run 0 'GIT_CONFIG_GLOBAL も対象外' \
+  "GIT_CONFIG_GLOBAL=/dev/null git commit -m 'feat: x'" feat/existing
+run 0 'GIT_CONFIG_SYSTEM も対象外' \
+  "GIT_CONFIG_SYSTEM=/dev/null git commit -m 'feat: x'" feat/existing
+run 0 'export GIT_CONFIG_NOSYSTEM も対象外' \
+  "export GIT_CONFIG_NOSYSTEM=1; git commit -m 'feat: x'" feat/existing
+run 2 '対象外の変数を前置きしても規約は検証する' \
+  "GIT_CONFIG_NOSYSTEM=1 git commit -m 'wip'" feat/existing
+run 2 'GIT_CONFIG_COUNT での注入は引き続き止める' \
+  "GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m 'feat: x'" \
+  feat/existing
+expect 'husky の無効化は禁止' '迂回として伝える'
+run 2 'GIT_CONFIG_PARAMETERS での注入も引き続き止める' \
+  "GIT_CONFIG_PARAMETERS=\"'core.hooksPath=/dev/null'\" git commit -m 'feat: x'" \
+  feat/existing
+run 2 'export GIT_CONFIG_COUNT も引き続き止める' \
+  "export GIT_CONFIG_COUNT=1; git commit -m 'feat: x'" feat/existing
+
 
 # ---- scripts/check-shell-compat.mjs ----
 #
