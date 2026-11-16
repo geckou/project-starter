@@ -65,6 +65,59 @@ describe('middleware basic auth', () => {
       expect(response.headers.get('cache-control')).toBe('private, no-store')
     })
 
+    // 回帰（#306）: 前方一致・部分一致・長さ違いを通さない
+    it.each([
+      ['a prefix of the credentials', 'user:pas'],
+      ['the credentials plus a suffix', 'user:passX'],
+      ['an empty value', ''],
+    ])('returns 401 for %s', (_label, value) => {
+      const response = middleware(
+        buildRequest('/', {
+          authorization: `Basic ${Buffer.from(value).toString('base64')}`,
+        })
+      )
+
+      expect(response.status).toBe(401)
+    })
+
+    it('keeps colons in the password', () => {
+      process.env.BASIC_AUTH_CREDENTIALS = 'user:pa:ss'
+
+      const response = middleware(
+        buildRequest('/', {
+          authorization: `Basic ${Buffer.from('user:pa:ss').toString('base64')}`,
+        })
+      )
+
+      expect(response.status).toBe(200)
+    })
+
+    // 回帰（#306）: ブラウザは認証情報を UTF-8 で送る。atob の戻り値（Latin-1）を
+    // そのまま比べると、非 ASCII の認証情報では誰も認証を通れなかった
+    it('passes non-ASCII credentials sent as UTF-8', () => {
+      process.env.BASIC_AUTH_CREDENTIALS = 'ユーザー:パスワード'
+
+      const response = middleware(
+        buildRequest('/', {
+          authorization: `Basic ${Buffer.from('ユーザー:パスワード', 'utf8').toString('base64')}`,
+        })
+      )
+
+      expect(response.status).toBe(200)
+    })
+
+    it('returns 401 on wrong non-ASCII credentials', () => {
+      process.env.BASIC_AUTH_CREDENTIALS = 'ユーザー:パスワード'
+
+      const response = middleware(
+        buildRequest('/', {
+          authorization: `Basic ${Buffer.from('ユーザー:パスワート', 'utf8').toString('base64')}`,
+        })
+      )
+
+      expect(response.status).toBe(401)
+    })
+
     // layer:firebase:start
     it('sets no-store on the login redirect for protected paths', () => {
       const response = middleware(
