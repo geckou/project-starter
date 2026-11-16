@@ -309,6 +309,14 @@ staging の `.env` でビルドしたものを production のサイトにも出�
 DEPLOY_HOSTING_TARGETS='web admin' yarn deploy:staging
 ```
 
+環境名と一致するターゲットがあるとき、**名前に環境名を含む別のターゲット**（別アプリのサイトを
+相乗りさせた `lp-production` など）には配らない。配らなかったことは警告に出るので、あわせて配るなら
+同じく `DEPLOY_HOSTING_TARGETS` で明示する（`package.json` の `deploy:*` に書いておくと漏れない）。
+
+```bash
+DEPLOY_HOSTING_TARGETS='production lp-production' yarn deploy:production
+```
+
 判定は `scripts/lib/hosting-targets.mjs` にあり、`scripts/test-deploy-targets.sh` が回帰テストする。
 
 ### デプロイ対象は `.firebaserc` の構成から決まる

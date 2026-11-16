@@ -67,7 +67,27 @@ export function selectHostingTargets(hosting, env, explicit) {
 
   if (declared.length === 0) return { targets: [], warnings: [] }
 
-  if (declared.includes(env)) return { targets: [env], warnings: [] }
+  if (declared.includes(env)) {
+    // 環境名を区切り（- / _）付きで含むターゲット（lp-production のような、同じ
+    // プロジェクトに相乗りさせた別アプリのサイト）は、この環境のものに見えるのに
+    // 既定では配られない。黙って落とすと片方のサイトだけ古いまま残るので知らせる
+    // （#361）。自動では拾わない — #323 で塞いだ「意図しないサイトへ配る」側へ
+    // 倒れるより、配らずに知らせるほうが取り返しがつく。develop / staging のような
+    // 他の環境のターゲットは、絞り込みの目的そのものなので警告しない
+    const related = declared.filter(
+      (name) => name !== env && name.split(/[-_]/).includes(env)
+    )
+
+    const warnings =
+      related.length > 0
+        ? [
+            `hosting のターゲット "${env}" だけに配ります。名前に "${env}" を含む次のターゲットには配りません: ${related.join(', ')}`,
+            `  あわせて配るなら DEPLOY_HOSTING_TARGETS='${[env, ...related].join(' ')}' のように配る先を明示してください。`,
+          ]
+        : []
+
+    return { targets: [env], warnings }
+  }
 
   const warnings =
     declared.length > 1

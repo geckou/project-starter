@@ -101,6 +101,36 @@ else
   pass "staging のデプロイに production が混ざらない"
 fi
 
+run "$PER_ENV" staging
+if [ -z "$RUN_ERR" ]; then
+  pass "他の環境のターゲットを落としても警告しない"
+else
+  fail "環境名どおりの構成で警告が出た" "$RUN_ERR"
+fi
+
+# 同じプロジェクトに別アプリのサイトを相乗りさせた構成（#361）
+WITH_PREFIXED='[
+  { "target": "develop", "source": "apps/web" },
+  { "target": "production", "source": "apps/web" },
+  { "target": "lp-develop", "source": "apps/lp" },
+  { "target": "lp-production", "source": "apps/lp" }
+]'
+expect_targets "環境名を含む追加ターゲットは既定では配らない" "production" "$WITH_PREFIXED" production
+
+run "$WITH_PREFIXED" production
+if printf '%s' "$RUN_ERR" | grep -q 'lp-production' &&
+  printf '%s' "$RUN_ERR" | grep -q "DEPLOY_HOSTING_TARGETS='production lp-production'"; then
+  pass "配らなかった追加ターゲットを警告する"
+else
+  fail "環境名を含む追加ターゲットが無警告で落ちた（#361）" "$RUN_ERR"
+fi
+
+if printf '%s' "$RUN_ERR" | grep -q 'lp-develop'; then
+  fail "他の環境の追加ターゲットまで警告している" "$RUN_ERR"
+else
+  pass "他の環境の追加ターゲットは警告しない"
+fi
+
 echo ""
 echo "[3] 環境名と無関係なターゲット名の構成"
 expect_targets "絞り込めない構成では従来どおり全部出す" "web admin" "$PER_ROLE" staging
