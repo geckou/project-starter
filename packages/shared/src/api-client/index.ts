@@ -72,12 +72,10 @@ export function createApiClient({
       const data = parseJson(text)
 
       if (!response.ok) {
-        const message =
-          data !== null && typeof data === 'object' && 'error' in data
-            ? String((data as { error: unknown }).error)
-            : `HTTP ${response.status}`
-
-        return { success: false, error: message }
+        return {
+          success: false,
+          error: errorMessage(data) ?? `HTTP ${response.status}`,
+        }
       }
 
       return { success: true, data: data as T }
@@ -88,6 +86,31 @@ export function createApiClient({
       }
     }
   }
+}
+
+/**
+ * エラー本文からメッセージを取り出す。取り出せなければ undefined
+ *（呼び出し側が HTTP ステータスで代替する）。
+ *
+ * `error` を無条件に String() へかけない。`{ error: { message, code } }` を返す API や
+ * プロキシに当たると `"[object Object]"` になり、メッセージもステータスも失われる
+ */
+function errorMessage(data: unknown): string | undefined {
+  if (data === null || typeof data !== 'object' || !('error' in data)) {
+    return undefined
+  }
+
+  const { error } = data as { error: unknown }
+
+  if (typeof error === 'string' && error !== '') return error
+
+  if (error !== null && typeof error === 'object' && 'message' in error) {
+    const { message } = error as { message: unknown }
+
+    if (typeof message === 'string' && message !== '') return message
+  }
+
+  return undefined
 }
 
 /** JSON として読めなければ undefined（HTML のエラーページ・空ボディ） */
