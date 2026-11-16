@@ -5,7 +5,32 @@ const path = require('path')
 const projectRoot = __dirname
 const monorepoRoot = path.resolve(projectRoot, '../..')
 
-const config = getDefaultConfig(projectRoot)
+// @sentry/react-native が入っていれば getSentryExpoConfig を使う。getDefaultConfig の
+// ままだとバンドルに Debug ID が埋まらず、アップロードしたソースマップがイベントに
+// 紐づかない（スタックが圧縮後のコードを指す）。任意依存なので、未インストールなら
+// 従来どおり getDefaultConfig にフォールバックする
+function loadGetConfig() {
+  try {
+    return require('@sentry/react-native/metro').getSentryExpoConfig
+  } catch (error) {
+    // パッケージが無い場合だけフォールバックする。入っているのに読み込みで
+    // 落ちた場合は握らない（黙って Debug ID 無しのビルドになるため）
+    // （message の 2 行目以降は Require stack なので、先頭だけを見る。パッケージの
+    // 内側の require が失敗した場合もスタックにはパッケージ名が出る）
+    if (
+      error.code === 'MODULE_NOT_FOUND' &&
+      error.message.startsWith(
+        "Cannot find module '@sentry/react-native/metro'"
+      )
+    ) {
+      return getDefaultConfig
+    }
+
+    throw error
+  }
+}
+
+const config = loadGetConfig()(projectRoot)
 
 // monorepo のルートから node_modules を解決
 config.watchFolders = [monorepoRoot]

@@ -375,9 +375,56 @@ Auth しか要らないページに Firestore SDK が乗らないようにする
 | Mobile    | `apps/mobile/src/lib/sentry.ts`     | `@sentry/react-native` |
 | Functions | `apps/functions/src/lib/sentry.ts`  | `@sentry/node`         |
 
-※ Sentry パッケージのインストール後、各ファイル先頭の抑制コメントを削除すること。
-Functions / Mobile は `// @ts-nocheck` の 1 行、Web は `// @ts-ignore` と
-直上の `// eslint-disable-next-line` の 2 行。
+※ Sentry パッケージのインストール後、各ファイルの抑制コメントを削除すること。
+Functions は先頭の `// @ts-nocheck` の 1 行、Web は `// @ts-ignore` と
+直上の `// eslint-disable-next-line` の 2 行、Mobile は型の import に付いた `// @ts-ignore` の 1 行。
+
+<!-- layer:mobile:start -->
+
+### Mobile（`@sentry/react-native`）
+
+`@sentry/react-native` は任意依存で、入れていなくてもビルドは通る（`sentry.ts` は try の中の
+`require`、`metro.config.js` と `app.config.ts` は解決できるかを見て分岐する）。
+入れて `EXPO_PUBLIC_SENTRY_DSN` を設定すると、次が有効になる。
+
+| 何が | どこで | 条件 |
+| --- | --- | --- |
+| 初期化と `environment` | `src/lib/sentry.ts` の `initSentry()`（`src/app/_layout.tsx` が呼ぶ） | DSN がある |
+| ルートの `Sentry.wrap`（タップのパンくず・画面の計測） | `wrapWithSentry()` | 初期化したときだけ。未初期化で包むと「wrap が init より先」の警告が出る |
+| `console.error` の転送 | `src/lib/sentry-console.ts` | 初期化済みで `__DEV__` でない |
+| Debug ID の埋め込み | `metro.config.js`（`getSentryExpoConfig`） | パッケージがある |
+| ソースマップ・dSYM のアップロード | `app.config.ts`（`@sentry/react-native/expo` プラグイン） | 下の 3 変数が全て揃ったビルド |
+
+- **`environment` は EAS のビルドプロファイル名**（`development` / `preview` / `production`。
+  手元のビルドは `local`）。`app.config.ts` が `EAS_BUILD_PROFILE` を `extra.sentryEnvironment` に
+  入れる。渡さないと配布ビルドが全て `production` になり、preview と本番を区別できない
+- **catch して握るエラーは `console.error` で出す。** Sentry に自動で届くのは未処理の例外だけ
+  なので、`console.error` を包んで転送している（引数に `Error` があれば `captureException`、
+  無ければ `captureMessage`）。`console.warn` は転送しない。開発中（`__DEV__`）も転送しない
+  （React の開発時警告まで送ってしまうため）
+- **`Sentry.wrap` は描画中の例外を拾わない**（ErrorBoundary を含まない）。拾いたい画面には
+  `Sentry.ErrorBoundary` を別に置く
+- `sentry.ts` の `Sentry` は未インストールなら `null`。直接呼ぶときは `Sentry?.captureException(error)`
+
+#### ソースマップのアップロードに要る変数
+
+次の 3 つを **EAS の Environment Variables**（expo.dev > プロジェクト > Environment variables、
+または `eas env:set`。古い eas-cli では `eas env:create`）に登録する。ネイティブビルドの中でだけ
+使う値なので、`.env.<環境名>` ではなくビルドする側（EAS）に置く。
+
+| 変数 | 内容 | 公開範囲 |
+| --- | --- | --- |
+| `SENTRY_AUTH_TOKEN` | Sentry の Organization Auth Token（ソースマップのアップロード権限） | **Secret** |
+| `SENTRY_ORG` | Organization の slug | Plain text でよい |
+| `SENTRY_PROJECT` | Project の slug | Plain text でよい |
+
+**3 つが揃ったビルドにだけプラグインが入る。** 1 つでも欠けたまま入れると、Xcode の
+「Bundle React Native code and images」で sentry-cli のアップロードが失敗し、ビルドごと止まる。
+揃っていない環境（手元のビルド、変数を登録していないプロファイル）ではアップロードしないだけで、
+ビルドは通る。プラグインはネイティブプロジェクトに組み込まれるので、変数を足した後は
+ネイティブのビルドをやり直す（OTA 更新では反映されない）。
+
+<!-- layer:mobile:end -->
 
 ## i18n（多言語対応）
 
