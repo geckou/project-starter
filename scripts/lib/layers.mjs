@@ -1,7 +1,7 @@
 // 層マニフェスト（layers.json）を読むための共通処理。
 // remove-layer.mjs（減算）・add-layer.mjs（加算）・check-layers.mjs（検証）から使う。
 //
-// node_modules に依存しない（Node 22 の標準 API のみ）。yarn install なしで動く。
+// node_modules に依存しない（Node の標準 API のみ）。yarn install なしで動く。
 
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'

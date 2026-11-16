@@ -117,9 +117,10 @@ fi
 echo ""
 
 # Node.js バージョンチェック
-# メジャーだけでなく minor も見る。@commitlint/* が engines.node で >=22.12.0 を
-# 要求するため、22.0〜22.11 はここを通ったあと yarn install が engines で落ちる
-REQUIRED_NODE=22
+# メジャーだけでなく minor も見る。firebase-admin が引く @firebase/database-compat が
+# engines.node で >=24.12.0 を要求するため、24.0〜24.11 はここを通ったあと
+# yarn install が engines で落ちる（#392。@commitlint/* の要求は >=22.12.0）
+REQUIRED_NODE=24
 REQUIRED_NODE_MINOR=12
 CURRENT_NODE=$(node -v 2>/dev/null | tr -d 'v')
 CURRENT_NODE_MAJOR=$(printf '%s' "$CURRENT_NODE" | cut -d'.' -f1)

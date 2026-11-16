@@ -4,7 +4,7 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --external:firebase-admin --external:firebase-functions --external:express --external:cors --external:stripe",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --outfile=dist/index.js --external:firebase-admin --external:firebase-functions --external:express --external:cors --external:stripe",
     "dev": "yarn build && firebase emulators:start --only functions",
     "type-check": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "eslint .",
@@ -15,7 +15,7 @@
     "lint:fix": "eslint . --fix"
   },
   "engines": {
-    "node": "22"
+    "node": "24"
   },
   "dependencies": {
     "@geckou/billing": "^0.8.0",
