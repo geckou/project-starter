@@ -1725,6 +1725,78 @@ done
 run 0 'git --list-cmds=<group> も通す' 'git --list-cmds=main'
 
 echo
+echo '=== commit -m の値のあとに続くコマンド・フラグを検査から落とさない（#390）==='
+
+# 複数行の -m と commit -m の heredoc は、値を閉じる引用符が最終行に来る。
+# 行ごとに引用の状態を初期化していたため、閉じクォートが剥がされ、後続のコマンド
+# 全体がメッセージの値として検査から消えていた（Claude Code の標準のコミット形）
+HEREDOC_COMMIT="git commit -m \"\$(cat <<'EOF'
+feat: x
+EOF
+)\""
+
+run 2 'heredoc のコミットに ; で続けた production への push を止める' \
+  "$HEREDOC_COMMIT; git push origin production" feat/existing
+run 2 'heredoc のコミットに && で続けた production への push を止める' \
+  "$HEREDOC_COMMIT && git push origin production" feat/existing
+run 2 'heredoc のコミットのあとの命名違反のブランチ作成を止める' \
+  "$HEREDOC_COMMIT && git checkout -b bad_name" feat/existing
+run 2 'heredoc を閉じたあとの -n を止める' \
+  "$HEREDOC_COMMIT -n" feat/existing
+run 2 'heredoc を閉じたあとの --no-verify を止める' \
+  "$HEREDOC_COMMIT --no-verify" feat/existing
+run 2 'heredoc を閉じた行のコメントの次の行も検査する' \
+  "$HEREDOC_COMMIT # 説明
+git push origin production" feat/existing
+run 2 '複数行の -m に続けた force push を止める' \
+  'git commit -m "feat: x
+
+body" && git push --no-verify --force origin production' feat/existing
+run 2 '複数行の -m を閉じたあとの束ねた -an を止める' \
+  'git commit -m "feat: x
+
+body" -an' feat/existing
+run 2 '本文に閉じない引用符があっても、後続の push を止める' \
+  "git commit -m \"\$(cat <<'EOF'
+feat: x
+
+- say \"hi here
+EOF
+)\"; git push origin production" feat/existing
+
+# 置換を引用の中から切り出すと、commit のセグメントに開いたままの引用符が残り、
+# 置換の中身（と後続）が値として飲み込まれていた
+run 2 '-m の値の中の $( ) に書いた production への push を止める' \
+  'git commit -m "feat: x $(git push origin production)"' feat/existing
+run 2 '-m の値の中のバッククォートに書いた production への push を止める' \
+  'git commit -m "feat: x `git push origin production`"' feat/existing
+
+# 直したことで、通るべき形を止めていない
+run 0 'heredoc のコミットはそのまま通す' \
+  "$HEREDOC_COMMIT" feat/existing
+run 0 'heredoc のコミットに続けた作業ブランチへの push を通す' \
+  "$HEREDOC_COMMIT && git push origin feat/existing" feat/existing
+run 0 '複数行の -m に続けた作業ブランチへの push を通す' \
+  'git commit -m "feat: x
+
+body" && git push origin feat/existing' feat/existing
+run 0 '本文の行頭に -n と書いただけのコミットを通す' \
+  'git commit -m "feat: x
+
+-n は使わない
+--no-verify も使わない"' feat/existing
+run 0 '本文にアポストロフィがあっても通す' \
+  "git commit -m \"feat: x
+
+- it's fine\"" feat/existing
+run 0 '値の中の git でない置換は通す' \
+  'git commit -m "feat: $(date +%F) の更新"' feat/existing
+run 0 '値の中の git の置換は、規約どおりなら通す' \
+  'git commit -m "feat: x $(git rev-parse --short HEAD)"' feat/existing
+run 2 '値の中に git の置換があっても件名の規約は検証する' \
+  'git commit -m "wip $(git rev-parse HEAD)"' feat/existing
+
+echo
 echo '=== 行末の # コメントはコマンドの引数として読まない（#298）==='
 
 # コメント中の語が refspec・フラグ・分岐元として読まれ、誤った理由で止まっていた。

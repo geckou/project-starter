@@ -553,7 +553,9 @@ segments=$(printf '%s' "$cmd" | awk '
           depth++
           at_cmd[depth] = at_cmd_pos(seg, "")
           restore_dq[depth] = 1
-          emit(seg); seg = ""
+          # 切り出した前後で引用符を閉じ直す。開いたままのセグメントを残すと、
+          # 後段（cmd_flags）が閉じを探して後続のコマンドまで値として飲み込む（#390）
+          emit(seg dq); seg = ""
           emit(sub_open)
           q = ""
           i++
@@ -562,7 +564,7 @@ segments=$(printf '%s' "$cmd" | awk '
         if (c == bt && subst_has_git(i + 1, bt)) {
           bt_dq = 1
           bt_at_cmd = at_cmd_pos(seg, "")
-          emit(seg); seg = ""
+          emit(seg dq); seg = ""
           emit(sub_open)
           bt_open = 1
           q = ""
@@ -616,7 +618,7 @@ segments=$(printf '%s' "$cmd" | awk '
           if (depth > 0) {
             if (at_cmd[depth]) emit(subst_cmd_end)
             # ダブルクォートの中から入った置換なら、閉じたあとは再び引用の中
-            if (restore_dq[depth]) { q = dq; restore_dq[depth] = 0 }
+            if (restore_dq[depth]) { q = dq; seg = dq; restore_dq[depth] = 0 }
             depth--
           }
         }
@@ -630,7 +632,7 @@ segments=$(printf '%s' "$cmd" | awk '
         emit(bt_open ? sub_close : sub_open)
         if (bt_open && bt_at_cmd) emit(subst_cmd_end)
         # ダブルクォートの中から始まったバッククォートなら、閉じたあとは引用の中へ戻る
-        if (bt_open && bt_dq) { q = dq; bt_dq = 0 }
+        if (bt_open && bt_dq) { q = dq; seg = dq; bt_dq = 0 }
         bt_open = 1 - bt_open
         continue
       }
@@ -1002,8 +1004,18 @@ cmd=$(printf '%s\n' "$segments" | {
         return (u == "" || u ~ /[ \t]/) ? t : u
       }
 
+      # 引用の状態（q）は行をまたいで持ち越す。セグメントは複数行になりうる
+      # （複数行の -m、commit -m の heredoc）。行ごとに初期化すると、最終行の
+      # 閉じクォート（`本文"` / `)"`）が「開き」として読まれて剥がされ、後段
+      # （cmd_flags）が閉じを探して後続のコマンドまで値として飲み込む（#390）。
+      # 前の行から続く引用の中で始まったトークンは、値の一部なので元のまま出す
+      function put(t, keep) {
+        out = out (out == "" ? "" : " ") (keep ? t : norm(t))
+      }
+
       {
-        q = ""; tok = ""; out = ""; n = length($0)
+        tok = ""; out = ""; n = length($0)
+        raw = (q != "")
         for (i = 1; i <= n; i++) {
           c = substr($0, i, 1)
           if (q == sq) { tok = tok c; if (c == sq) q = ""; continue }
@@ -1016,12 +1028,13 @@ cmd=$(printf '%s\n' "$segments" | {
           if (c == bs) { tok = tok c substr($0, i + 1, 1); i++; continue }
           if (c == sq || c == dq) { q = c; tok = tok c; continue }
           if (c == " " || c == "\t") {
-            if (tok != "") { out = out (out == "" ? "" : " ") norm(tok); tok = "" }
+            if (tok != "") { put(tok, raw); tok = ""; raw = 0 }
             continue
           }
           tok = tok c
         }
-        if (tok != "") out = out (out == "" ? "" : " ") norm(tok)
+        # 引用が閉じないまま行が終わったトークンも、値の途中なので元のまま出す
+        if (tok != "") put(tok, raw || q != "")
         print out
       }
     ')
@@ -1277,6 +1290,12 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
     return res
   }
 
+  # 値の一部（keep）は触らず、次のトークンの判定に使う prev だけ進める
+  function value_or_flag(t, keep) {
+    if (keep) { prev = t; return t }
+    return normalize(t)
+  }
+
   # -am -> -a -m、-m"wip" -> -m "wip"、-bfoo -> -b foo。
   # 値を取る文字が出たら、そこで分割を止めて残りを値として切り出す
   # （止めないと `-bfoo` が `-b -f -o -o` になり、ブランチ名が消える）。
@@ -1302,19 +1321,33 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
     # 印の付いた行はコミットメッセージの本文。フラグとしては読まない
     # （本文に書いた `git commit -n` のようなコマンド例で止めないため）
     if (substr(line, 1, 1) == sprintf("%c", 2)) { print line; next }
-    # 絞り込みループが出した印の行（実行ディレクトリ等）もコマンドではない
-    if (substr(line, 1, 1) == sprintf("%c", 1)) { print line; next }
-    # checkout / switch / worktree も通す。`-qb feat/x`（束）と `-bfoo`（値の連結）は
-    # 実 git で有効なブランチ作成なので、単独トークンの `-b` しか見ないと
-    # 命名・分岐元・コミット先の判定がまとめて外れる（#354）
-    if (line !~ /git[ \t]+(commit|push|checkout|switch|worktree)([ \t]|$)/) {
-      print line
-      next
+    # 絞り込みループが出した印の行（実行ディレクトリ等）もコマンドではない。
+    # セグメントの境目でもあるので、閉じなかった引用を次のセグメントへ持ち越さない
+    if (substr(line, 1, 1) == sprintf("%c", 1)) { q = ""; print line; next }
+
+    # 引用が開いたまま行が終わっていたら、この行は同じコマンドの続き（複数行の -m、
+    # commit -m の heredoc の閉じ `)"`）。行ごとに読み直すと、値を閉じたあとに書いた
+    # フラグ（`…本文" -n` / `)" -an`）が commit のものとして読まれず、検証スキップの
+    # 検出から外れる（#390）。is_commit などの状態を引き継いで読む
+    continued = (q != "")
+
+    if (!continued) {
+      # checkout / switch / worktree も通す。`-qb feat/x`（束）と `-bfoo`（値の連結）は
+      # 実 git で有効なブランチ作成なので、単独トークンの `-b` しか見ないと
+      # 命名・分岐元・コミット先の判定がまとめて外れる（#354）
+      if (line !~ /git[ \t]+(commit|push|checkout|switch|worktree)([ \t]|$)/) {
+        print line
+        next
+      }
+
+      is_commit = (line ~ /git[ \t]+commit([ \t]|$)/)
+      prev = ""; past_dd = 0
     }
 
-    is_commit = (line ~ /git[ \t]+commit([ \t]|$)/)
     saw_n = 0
-    q = ""; tok = ""; out = ""; prev = ""; past_dd = 0; n = length(line)
+    tok = ""; out = ""; n = length(line)
+    # 前の行から続く引用の中で始まったトークンは値の一部。フラグとして展開しない
+    raw = continued
 
     for (i = 1; i <= n; i++) {
       c = substr(line, i, 1)
@@ -1330,12 +1363,13 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
       if (c == bs) { tok = tok c substr(line, i + 1, 1); i++; continue }
       if (c == sq || c == dq) { q = c; tok = tok c; continue }
       if (c == " " || c == "\t") {
-        if (tok != "") { out = out (out == "" ? "" : " ") normalize(tok); tok = "" }
+        if (tok != "") { out = out (out == "" ? "" : " ") value_or_flag(tok, raw); tok = ""; raw = 0 }
         continue
       }
       tok = tok c
     }
-    if (tok != "") out = out (out == "" ? "" : " ") normalize(tok)
+    # 引用が閉じないまま行が終わったトークンも、値の途中
+    if (tok != "") out = out (out == "" ? "" : " ") value_or_flag(tok, raw || (continued && q != ""))
 
     print out
     if (is_commit && saw_n) print mark
