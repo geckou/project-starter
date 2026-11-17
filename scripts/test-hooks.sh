@@ -1830,6 +1830,26 @@ git commit -an -m 'feat: y'" feat/existing
 run 2 'commit 以外の ANSI-C クォートの値のあとの行も同じ' \
   "git push origin feat/existing -o \$'it\\'s'
 git commit -an -m \"feat: y\"" feat/existing
+run 2 'パラメータ展開の中の引用符で読みがずれても、次の行の commit -n を止める' \
+  "git commit -m \"feat: \${MSG:-\"it's default\"}\"
+git commit -n -m \"feat: y\"" feat/existing
+
+# 前段の引用の読みがずれると、&& や | の後ろが commit と同じ行に残る。
+# 後ろのコマンドの -n を commit の -n として数えない
+run 0 '入れ子の引用符を含む commit に続けた git log -n を通す' \
+  "git commit -m \"feat: \$(echo \"it's\")\" && git log -n 3" feat/existing
+run 0 '入れ子の引用符を含む commit をパイプした head -n を通す' \
+  "git commit -m \"feat: \$(echo \"it's\")\" | head -n 3" feat/existing
+run 0 'ANSI-C クォートの commit に続けた push -n（dry-run）を通す' \
+  "git commit -m \$'feat: it\\'s' ; git push -n origin feat/existing" feat/existing
+run 0 'ANSI-C クォートの commit の行末コメントの -n を通す' \
+  "git commit -m \$'feat: it\\'s' # comment -n" feat/existing
+run 2 '同じ形でも commit 自身の -n は止める' \
+  "git commit -m \"feat: \$(echo \"it's\")\" -n && git log -n 3" feat/existing
+run 2 '同じ形のあとに続けた 2 個目の commit -n も止める' \
+  "git commit -m \"feat: \$(echo \"it's\")\" && git commit -n -m \"feat: y\"" feat/existing
+run 0 '値の中に書いた区切り文字と -n は数えない' \
+  'git commit -m "feat: a; b && c | d -n"' feat/existing
 
 echo
 echo '=== 行末の # コメントはコマンドの引数として読まない（#298）==='

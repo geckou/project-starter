@@ -1022,7 +1022,7 @@ cmd=$(printf '%s\n' "$segments" | {
       }
 
       # 引用の入れ子を追う。ctx は外側から順に並べた文脈（S: シングルクォート、
-      # A: ANSI-C クォート、D: ダブルクォート、P: $( … )、B: バッククォート）。
+      # A: ANSI-C クォート、D: ダブルクォート、P: $( … )、V: ${ … }、B: バッククォート）。
       # 引用の状態は行をまたいで持ち越すので、読みがシェルとずれると、ずれたまま次の
       # 行まで「値の続き」として読んでしまう。" の中の $( … ) に書いた " と、
       # ANSI-C クォートの中のエスケープされた引用符を閉じとして数えない。
@@ -1039,7 +1039,15 @@ cmd=$(printf '%s\n' "$segments" | {
         if (top == "D") {
           if (c == dq) qpop()
           else if (c == "$" && nxt == "(") { ctx = ctx "P"; return 1 }
+          else if (c == "$" && nxt == "{") { ctx = ctx "V"; return 1 }
           else if (c == bt) ctx = ctx "B"
+          return 0
+        }
+        # ${ … } の中では " が入れ子の引用を開く（"${x:-"a b"}"）
+        if (top == "V") {
+          if (c == "}") qpop()
+          else if (c == dq) ctx = ctx "D"
+          else if (c == "$" && nxt == "(") { ctx = ctx "P"; return 1 }
           return 0
         }
         # P / B: 中はコマンドなので、引用符は新しい引用を開く
@@ -1350,7 +1358,7 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
   }
 
   # 引用の入れ子を追う。ctx は外側から順に並べた文脈（S: シングルクォート、
-  # A: ANSI-C クォート、D: ダブルクォート、P: $( … )、B: バッククォート）。
+  # A: ANSI-C クォート、D: ダブルクォート、P: $( … )、V: ${ … }、B: バッククォート）。
   # 引用の状態は行をまたいで持ち越すので、読みがシェルとずれると、ずれたまま次の
   # 行まで「値の続き」として読んでしまう。" の中の $( … ) に書いた " と、
   # ANSI-C クォートの中のエスケープされた引用符を閉じとして数えない。
@@ -1367,7 +1375,15 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
     if (top == "D") {
       if (c == dq) qpop()
       else if (c == "$" && nxt == "(") { ctx = ctx "P"; return 1 }
+      else if (c == "$" && nxt == "{") { ctx = ctx "V"; return 1 }
       else if (c == bt) ctx = ctx "B"
+      return 0
+    }
+    # ${ … } の中では " が入れ子の引用を開く（"${x:-"a b"}"）
+    if (top == "V") {
+      if (c == "}") qpop()
+      else if (c == dq) ctx = ctx "D"
+      else if (c == "$" && nxt == "(") { ctx = ctx "P"; return 1 }
       return 0
     }
     # P / B: 中はコマンドなので、引用符は新しい引用を開く
@@ -1386,6 +1402,30 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
     if (c == dq) { ctx = "D"; return 0 }
     if (c == "$" && nxt == sq) { ctx = "A"; return 1 }
     return -1
+  }
+
+  # 1 行に複数のコマンドが残っている場合の区切り。通常は前段がセグメントへ分けて
+  # いるが、前段の引用の読みがシェルとずれると（入れ子の引用符など）、&& や | の
+  # 後ろが同じ行に残る。区切りを見ずに読み続けると、後ろのコマンドのフラグ
+  # （`… && git log -n 3` / `… | head -n 3`）を commit の -n として数えてしまう
+  function ends_command(t) {
+    return (t == "&&" || t == "||" || t == ";" || t == "|" || t == "&" ||
+      substr(t, length(t), 1) == ";")
+  }
+
+  # 区切りの後ろを新しいコマンドとして読み直す。ここまでの commit に -n があれば
+  # 覚えておき（hit）、次の区切りまでが git commit かどうかを判定し直す
+  function next_command(pos,   rest, cut, k, ops, m) {
+    if (is_commit && saw_n) hit = 1
+    saw_n = 0; prev = ""; past_dd = 0
+    rest = substr(line, pos + 1)
+    cut = length(rest) + 1
+    m = split("&& || ; |", ops, " ")
+    for (k = 1; k <= m; k++) {
+      if (index(rest, ops[k]) > 0 && index(rest, ops[k]) < cut) cut = index(rest, ops[k])
+    }
+    rest = substr(rest, 1, cut - 1)
+    is_commit = (rest ~ /(^|[ \t])git[ \t]+commit([ \t]|$)/)
   }
 
   # 値の一部（keep）は触らず、次のトークンの判定に使う prev だけ進める
@@ -1442,7 +1482,7 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
       prev = ""; past_dd = 0
     }
 
-    saw_n = 0
+    saw_n = 0; hit = 0
     tok = ""; out = ""; n = length(line)
     # 前の行から続く引用の中で始まったトークンは値の一部。フラグとして展開しない
     raw = continued
@@ -1461,7 +1501,13 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
       skip = qopen(c, nxt)
       if (skip >= 0) { tok = tok c; if (skip) { tok = tok nxt; i++ }; continue }
       if (c == " " || c == "\t") {
-        if (tok != "") { out = out (out == "" ? "" : " ") value_or_flag(tok, raw); tok = ""; raw = 0 }
+        if (tok != "") {
+          # 行末までがコメント。以降はフラグではない
+          if (!raw && substr(tok, 1, 1) == "#") { out = out (out == "" ? "" : " ") substr(line, i - length(tok)); tok = ""; break }
+          out = out (out == "" ? "" : " ") value_or_flag(tok, raw)
+          if (!raw && ends_command(tok)) next_command(i)
+          tok = ""; raw = 0
+        }
         continue
       }
       tok = tok c
@@ -1470,7 +1516,7 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
     if (tok != "") out = out (out == "" ? "" : " ") value_or_flag(tok, raw || (continued && ctx != ""))
 
     print out
-    if (is_commit && saw_n) print mark
+    if ((is_commit && saw_n) || hit) print mark
   }
 ')
 
