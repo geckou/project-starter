@@ -1725,6 +1725,147 @@ done
 run 0 'git --list-cmds=<group> も通す' 'git --list-cmds=main'
 
 echo
+echo '=== commit -m の値のあとに続くコマンド・フラグを検査から落とさない（#390）==='
+
+# 複数行の -m と commit -m の heredoc は、値を閉じる引用符が最終行に来る。
+# 行ごとに引用の状態を初期化していたため、閉じクォートが剥がされ、後続のコマンド
+# 全体がメッセージの値として検査から消えていた（Claude Code の標準のコミット形）
+HEREDOC_COMMIT="git commit -m \"\$(cat <<'EOF'
+feat: x
+EOF
+)\""
+
+run 2 'heredoc のコミットに ; で続けた production への push を止める' \
+  "$HEREDOC_COMMIT; git push origin production" feat/existing
+run 2 'heredoc のコミットに && で続けた production への push を止める' \
+  "$HEREDOC_COMMIT && git push origin production" feat/existing
+run 2 'heredoc のコミットのあとの命名違反のブランチ作成を止める' \
+  "$HEREDOC_COMMIT && git checkout -b bad_name" feat/existing
+run 2 'heredoc を閉じたあとの -n を止める' \
+  "$HEREDOC_COMMIT -n" feat/existing
+run 2 'heredoc を閉じたあとの --no-verify を止める' \
+  "$HEREDOC_COMMIT --no-verify" feat/existing
+run 2 'heredoc を閉じた行のコメントの次の行も検査する' \
+  "$HEREDOC_COMMIT # 説明
+git push origin production" feat/existing
+run 2 '複数行の -m に続けた force push を止める' \
+  'git commit -m "feat: x
+
+body" && git push --no-verify --force origin production' feat/existing
+run 2 '複数行の -m を閉じたあとの束ねた -an を止める' \
+  'git commit -m "feat: x
+
+body" -an' feat/existing
+run 2 '本文に閉じない引用符があっても、後続の push を止める' \
+  "git commit -m \"\$(cat <<'EOF'
+feat: x
+
+- say \"hi here
+EOF
+)\"; git push origin production" feat/existing
+
+# 置換を引用の中から切り出すと、commit のセグメントに開いたままの引用符が残り、
+# 置換の中身（と後続）が値として飲み込まれていた
+run 2 '-m の値の中の $( ) に書いた production への push を止める' \
+  'git commit -m "feat: x $(git push origin production)"' feat/existing
+run 2 '-m の値の中のバッククォートに書いた production への push を止める' \
+  'git commit -m "feat: x `git push origin production`"' feat/existing
+
+# 直したことで、通るべき形を止めていない
+run 0 'heredoc のコミットはそのまま通す' \
+  "$HEREDOC_COMMIT" feat/existing
+run 0 'heredoc のコミットに続けた作業ブランチへの push を通す' \
+  "$HEREDOC_COMMIT && git push origin feat/existing" feat/existing
+run 0 '複数行の -m に続けた作業ブランチへの push を通す' \
+  'git commit -m "feat: x
+
+body" && git push origin feat/existing' feat/existing
+run 0 '本文の行頭に -n と書いただけのコミットを通す' \
+  'git commit -m "feat: x
+
+-n は使わない
+--no-verify も使わない"' feat/existing
+run 0 '本文にアポストロフィがあっても通す' \
+  "git commit -m \"feat: x
+
+- it's fine\"" feat/existing
+run 0 '値の中の git でない置換は通す' \
+  'git commit -m "feat: $(date +%F) の更新"' feat/existing
+run 0 '値の中の git の置換は、規約どおりなら通す' \
+  'git commit -m "feat: x $(git rev-parse --short HEAD)"' feat/existing
+run 2 '値の中に git の置換があっても件名の規約は検証する' \
+  'git commit -m "wip $(git rev-parse HEAD)"' feat/existing
+
+# 引用の中の置換を切り出しても、外側のセグメントは切らない。置換より後ろが
+# git を含まない別のセグメントになると、フラグもブランチ名も検査から落ちる
+run 2 '置換を含む値を閉じたあとの --no-verify を止める' \
+  'git commit -m "feat: x $(git rev-parse --short HEAD)" --no-verify' feat/existing
+run 2 '置換を含む値を閉じたあとの -n を止める' \
+  'git commit -m "feat: x $(git rev-parse --short HEAD)" -n' feat/existing
+run 2 '置換を含む値を閉じたあとの束ねた -an を止める' \
+  'git commit -m "feat: x $(git rev-parse --short HEAD)" -an' feat/existing
+run 2 'バッククォートの置換を含む値のあとの -n を止める' \
+  'git commit -m "feat: x `git rev-parse --short HEAD`" -n' feat/existing
+run 2 '置換で書いた push 先のあとの --no-verify を止める' \
+  'git push origin "$(git branch --show-current)" --no-verify' feat/existing
+run 2 '置換で書いたリモートのあとの production を止める' \
+  'git push "$(git remote)" production' feat/existing
+run 2 '置換に続けて書いたブランチ名も命名規則で検証する' \
+  'git checkout -b "$(git rev-parse --short HEAD)_bad"' feat/existing
+run 2 '置換だけのブランチ名は検証できないので止める' \
+  'git switch -c "$(git rev-parse --short HEAD)"' feat/existing
+run 0 '件名の途中に git の置換があっても、規約どおりなら通す' \
+  'git commit -m "feat: $(git rev-parse --short HEAD) を更新"' feat/existing
+run 0 '置換で書いた作業ブランチへの push を通す' \
+  'git commit -m "feat: x" && git push -u origin "$(git branch --show-current)"' feat/existing
+
+# 引用の状態を行をまたいで持ち越すので、読みがシェルとずれると次の行まで
+# 「値の続き」になる。入れ子の引用符と ANSI-C クォートを閉じとして数えない
+run 2 '置換の中の引用符で読みがずれても、次の行の commit -n を止める' \
+  "git commit -m \"feat: \$(echo \"it's\")\"
+git commit -n -m \"feat: y\"" feat/existing
+run 2 'ANSI-C クォートの値のあとの行の束ねた -an を止める' \
+  "git commit -m \$'feat: it\\'s'
+git commit -an -m 'feat: y'" feat/existing
+run 2 'commit 以外の ANSI-C クォートの値のあとの行も同じ' \
+  "git push origin feat/existing -o \$'it\\'s'
+git commit -an -m \"feat: y\"" feat/existing
+run 2 'パラメータ展開の中の引用符で読みがずれても、次の行の commit -n を止める' \
+  "git commit -m \"feat: \${MSG:-\"it's default\"}\"
+git commit -n -m \"feat: y\"" feat/existing
+
+# 前段の引用の読みがずれると、&& や | の後ろが commit と同じ行に残る。
+# 後ろのコマンドの -n を commit の -n として数えない
+run 0 '入れ子の引用符を含む commit に続けた git log -n を通す' \
+  "git commit -m \"feat: \$(echo \"it's\")\" && git log -n 3" feat/existing
+run 0 '入れ子の引用符を含む commit をパイプした head -n を通す' \
+  "git commit -m \"feat: \$(echo \"it's\")\" | head -n 3" feat/existing
+run 0 'ANSI-C クォートの commit に続けた push -n（dry-run）を通す' \
+  "git commit -m \$'feat: it\\'s' ; git push -n origin feat/existing" feat/existing
+run 0 'ANSI-C クォートの commit の行末コメントの -n を通す' \
+  "git commit -m \$'feat: it\\'s' # comment -n" feat/existing
+run 2 '同じ形でも commit 自身の -n は止める' \
+  "git commit -m \"feat: \$(echo \"it's\")\" -n && git log -n 3" feat/existing
+run 2 '同じ形のあとに続けた 2 個目の commit -n も止める' \
+  "git commit -m \"feat: \$(echo \"it's\")\" && git commit -n -m \"feat: y\"" feat/existing
+run 0 '値の中に書いた区切り文字と -n は数えない' \
+  'git commit -m "feat: a; b && c | d -n"' feat/existing
+run 0 '区切りを空白なしで書いた後続の -n も数えない（;）' \
+  "git commit -m \"feat: \$(echo \"it's\")\";git log -n 3" feat/existing
+run 0 '区切りを空白なしで書いた後続の -n も数えない（&&）' \
+  "git commit -m \"feat: \$(echo \"it's\")\"&&git log -n 3" feat/existing
+run 0 '区切りを空白なしで書いた後続の -n も数えない（|）' \
+  "git commit -m \"feat: \$(echo \"it's\")\"|head -n 3" feat/existing
+run 2 '括弧で包んだ後続の commit -n を止める' \
+  "git commit -m \"feat: \$(echo \"it's\")\" && (git commit -n -m \"feat: y\")" feat/existing
+run 2 '置換で包んだ後続の commit -n を止める' \
+  "git commit -m \"feat: \$(echo \"it's\")\" && \$(git commit -n -m \"feat: y\")" feat/existing
+run 2 'リダイレクトの & は区切りとして数えない' \
+  'git commit -m "feat: x" -n &>/dev/null' feat/existing
+run 2 '2>&1 のあとのパイプより前の -n を止める' \
+  'git commit -n -m "feat: x" 2>&1 | cat' feat/existing
+
+echo
 echo '=== 行末の # コメントはコマンドの引数として読まない（#298）==='
 
 # コメント中の語が refspec・フラグ・分岐元として読まれ、誤った理由で止まっていた。
