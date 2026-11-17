@@ -1408,11 +1408,6 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
   # いるが、前段の引用の読みがシェルとずれると（入れ子の引用符など）、&& や | の
   # 後ろが同じ行に残る。区切りを見ずに読み続けると、後ろのコマンドのフラグ
   # （`… && git log -n 3` / `… | head -n 3`）を commit の -n として数えてしまう
-  function ends_command(t) {
-    return (t == "&&" || t == "||" || t == ";" || t == "|" || t == "&" ||
-      substr(t, length(t), 1) == ";")
-  }
-
   # 区切りの後ろを新しいコマンドとして読み直す。ここまでの commit に -n があれば
   # 覚えておき（hit）、次の区切りまでが git commit かどうかを判定し直す
   function next_command(pos,   rest, cut, k, ops, m) {
@@ -1425,7 +1420,8 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
       if (index(rest, ops[k]) > 0 && index(rest, ops[k]) < cut) cut = index(rest, ops[k])
     }
     rest = substr(rest, 1, cut - 1)
-    is_commit = (rest ~ /(^|[ \t])git[ \t]+commit([ \t]|$)/)
+    # ( git commit … ) や $(git commit …) のように、git の直前が空白でない形も拾う
+    is_commit = (rest ~ /(^|[^A-Za-z0-9_.\/-])git[ \t]+commit([ \t]|$)/)
   }
 
   # 値の一部（keep）は触らず、次のトークンの判定に使う prev だけ進める
@@ -1505,9 +1501,17 @@ cmd=$(printf '%s\n' "$cmd" | awk -v mark="$MARK_COMMIT_N" '
           # 行末までがコメント。以降はフラグではない
           if (!raw && substr(tok, 1, 1) == "#") { out = out (out == "" ? "" : " ") substr(line, i - length(tok)); tok = ""; break }
           out = out (out == "" ? "" : " ") value_or_flag(tok, raw)
-          if (!raw && ends_command(tok)) next_command(i)
           tok = ""; raw = 0
         }
+        continue
+      }
+      # 区切り（; | & && ||）。空白なしで書かれていても区切る（`"…";git log -n 3`）。
+      # >& と &> はリダイレクトなので区切りではない
+      if (c == ";" || c == "|" ||
+          (c == "&" && nxt != ">" && substr(line, i - 1, 1) != ">")) {
+        if (tok != "") { out = out (out == "" ? "" : " ") value_or_flag(tok, raw); tok = ""; raw = 0 }
+        out = out (out == "" ? "" : " ") c
+        next_command(i)
         continue
       }
       tok = tok c

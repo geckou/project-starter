@@ -1850,6 +1850,20 @@ run 2 '同じ形のあとに続けた 2 個目の commit -n も止める' \
   "git commit -m \"feat: \$(echo \"it's\")\" && git commit -n -m \"feat: y\"" feat/existing
 run 0 '値の中に書いた区切り文字と -n は数えない' \
   'git commit -m "feat: a; b && c | d -n"' feat/existing
+run 0 '区切りを空白なしで書いた後続の -n も数えない（;）' \
+  "git commit -m \"feat: \$(echo \"it's\")\";git log -n 3" feat/existing
+run 0 '区切りを空白なしで書いた後続の -n も数えない（&&）' \
+  "git commit -m \"feat: \$(echo \"it's\")\"&&git log -n 3" feat/existing
+run 0 '区切りを空白なしで書いた後続の -n も数えない（|）' \
+  "git commit -m \"feat: \$(echo \"it's\")\"|head -n 3" feat/existing
+run 2 '括弧で包んだ後続の commit -n を止める' \
+  "git commit -m \"feat: \$(echo \"it's\")\" && (git commit -n -m \"feat: y\")" feat/existing
+run 2 '置換で包んだ後続の commit -n を止める' \
+  "git commit -m \"feat: \$(echo \"it's\")\" && \$(git commit -n -m \"feat: y\")" feat/existing
+run 2 'リダイレクトの & は区切りとして数えない' \
+  'git commit -m "feat: x" -n &>/dev/null' feat/existing
+run 2 '2>&1 のあとのパイプより前の -n を止める' \
+  'git commit -n -m "feat: x" 2>&1 | cat' feat/existing
 
 echo
 echo '=== 行末の # コメントはコマンドの引数として読まない（#298）==='
