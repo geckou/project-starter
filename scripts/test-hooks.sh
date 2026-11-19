@@ -882,6 +882,10 @@ run 2 '宛先に続けて書いたリダイレクトでも production への pus
 expect 'production への直接 push' 'production への push として止める'
 run 2 '離れて書いたリダイレクトの後ろでも production への push を止める' \
   'git push origin > log production' feat/existing
+run 0 '名前付きの fd（{fd}>）も分岐元と読まない' 'git checkout -b feat/x {fd}>/dev/null'
+run 2 '続けて書いたリダイレクトで --no-verify を隠せない' \
+  'git push origin --no-verify>x' feat/existing
+expect '--no-verify' '検証スキップとして止める'
 run 0 '引用の中の > はリダイレクトではない' \
   'git commit -m "feat: a > b を追加"' feat/existing
 

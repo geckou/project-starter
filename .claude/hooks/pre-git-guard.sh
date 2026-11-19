@@ -1624,7 +1624,7 @@ cmd_flags=$(printf '%s\n' "$cmd" | awk '
       t = T[i]; p = redirect_at(t)
       if (p == 0) { U[++m] = t; ueol[m] = eol[i]; continue }
       head = substr(t, 1, p - 1)
-      whole = (head == "" || head == "&" || head ~ /^[0-9]+$/)
+      whole = (head == "" || head == "&" || head ~ /^[0-9]+$/ || head ~ /^\{[A-Za-z_][A-Za-z0-9_]*\}$/)
       if (!whole) { U[++m] = head; ueol[m] = 0 }
       rest = substr(t, p)
       sub(/^(<<<|<<-|<<|<>|<&|<|>>|>&|>\||>)/, "", rest)
