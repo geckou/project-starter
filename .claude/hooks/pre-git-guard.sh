@@ -1756,7 +1756,7 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
 
   release_target=$(printf '%s\n' "$commit_targets" | grep -m1 '^release/') || release_target=''
   [ -n "$release_target" ] &&
-    deny "release/* への直接コミットは禁止です（push が staging への自動デプロイを発火するため）。fix/* を切って release へ PR でマージしてください。コミット先: $release_target"
+    deny "release/* への直接コミットは禁止です（push がデプロイを発火するため。既定の deploy.yml では staging へ配る）。fix/* を切って release へ PR でマージしてください。コミット先: $release_target"
 
   msg_ng="コミットメッセージ規約違反です。'<type>: <description>' 形式にしてください（type: feat, fix, refactor, style, docs, test, chore）。例: 'feat: ユーザープロフィール画面を追加'"
 
@@ -2167,7 +2167,7 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
     10) deny 'production への直接 push は禁止です（PR 必須）。' ;;
     11) deny 'production / release/* への force push は禁止です。' ;;
     12)
-      ask "release/* / hotfix/* への push は staging への自動デプロイを発火します。ブランチ作成時または PR マージ以外の push は禁止です。実行してよいかユーザーに確認してください。"
+      ask "release/* / hotfix/* への push はデプロイを発火します（既定の deploy.yml では staging へ。アプリ単独のリリース release/<アプリ>/<バージョン> で何を配るかはデプロイの設定次第）。ブランチ作成時または PR マージ以外の push は禁止です。実行してよいかユーザーに確認してください。"
       ;;
     13)
       deny 'refspec にグロブ（*）や変数・コマンド置換を含む push は禁止です。宛先を決められないため、production への push かどうかを検査できません。push するブランチを明示してください。'
@@ -2394,13 +2394,19 @@ if [ -n "$newbranch" ]; then
 
   # プレフィックスの後ろはケバブケース（小文字英数字とハイフン）。
   # release/hotfix はバージョン表記（1.0.0 / 1.0.0-rc1）を使うためドットも許す。
+  # release は アプリ単独のリリース release/<アプリ>/<バージョン> も許す
+  # （<アプリ> はケバブケース。.claude/docs/git-workflow.md「アプリ単独のリリース」）
   branch_name=${newbranch#*/}
   case "$newbranch" in
     # 名前はハーネスが決めるので形式は問わない（到達するのは claude/* セッションの中だけ）
     claude/*) ;;
-    release/* | hotfix/*)
+    release/*)
+      printf '%s' "$branch_name" | grep -Eq '^([a-z0-9]+(-[a-z0-9]+)*/)?[a-z0-9]+([.-][a-z0-9]+)*$' ||
+        deny "ブランチ名が命名規則に合いません: $newbranch。release/ の後ろはバージョン表記（例: release/1.0.0）か、アプリ単独のリリースなら <アプリ>/<バージョン>（例: release/site/0.1.0）にしてください。"
+      ;;
+    hotfix/*)
       printf '%s' "$branch_name" | grep -Eq '^[a-z0-9]+([.-][a-z0-9]+)*$' ||
-        deny "ブランチ名が命名規則に合いません: $newbranch。release/ hotfix/ の後ろはバージョン表記（例: release/1.0.0）にしてください。"
+        deny "ブランチ名が命名規則に合いません: $newbranch。hotfix/ の後ろはバージョン表記（例: hotfix/1.0.1）にしてください。"
       ;;
     *)
       printf '%s' "$branch_name" | grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$' ||

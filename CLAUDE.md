@@ -213,7 +213,8 @@ git merge origin/release/<バージョン>     # そのリリースに載せる�
 
 ブランチ名は `<種類>/<名前>` でケバブケース（チケット番号があれば先頭に付ける）。種類は
 `feat` / `fix` / `refactor` / `test`（→ develop）、`release/<バージョン>` / `hotfix/<バージョン>`
-（→ staging）、`chore` / `docs`（デプロイ先なし）。`claude/*` はハーネスが作るもので**自分では切らない**。
+（→ staging）、`chore` / `docs`（デプロイ先なし）。アプリ単独のリリースは `release/<アプリ>/<バージョン>`
+（`apps/<アプリ>/` の外を含めない。作業ブランチへは取り込まない）。`claude/*` はハーネスが作るもので**自分では切らない**。
 
 **コミットメッセージ**は `<type>: <description>` 形式（type: `feat`, `fix`, `refactor`, `style`,
 `docs`, `test`, `chore`）。**PR タイトルも同じ規約**（squash merge の件名になり、

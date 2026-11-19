@@ -170,6 +170,7 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 | ------------- | ------------ | -------------- | ------------------------ |
 | `feat/*`      | develop（手動）| `production`   | 機能開発                 |
 | `release/*`   | staging      | `production`   | リリース候補の QA        |
+| `release/<アプリ>/*` | デプロイの設定次第 | `production` | アプリ単独のリリース（→ 下記） |
 | `hotfix/*`    | staging      | `production`   | 緊急修正                 |
 | `production`  | production   | -              | 本番（デフォルトブランチ）|
 
@@ -181,6 +182,22 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 > そのため `release/*` への直接コミット・push は禁止。release に直接コミットすると、develop での動作確認を経ずに staging へ直行してしまう。
 > QA で見つかった修正も `fix/*` / `feat/*` を切って develop で確認し、`release/*` へ PR でマージする。
 > `release/*` へ push してよいのは、ブランチ作成時（`production` から切って `feat/*` をマージした結果）と PR マージのみ。
+
+### アプリ単独のリリース（`release/<アプリ>/<バージョン>`）
+
+リリース番号はリポジトリ全体で 1 つなので、通常はどのアプリも `release/<バージョン>` に載せて本番へ出す。
+他のアプリと依存の無いアプリ（静的なサイトなど）を全体のリリースと切り離して出したいときは、
+**`release/<アプリ>/<バージョン>`**（例: `release/site/0.1.0`）を切る。`<アプリ>` は `apps/<アプリ>` の
+ディレクトリ名（ケバブケース）、`<バージョン>` は `release/<バージョン>` と同じ表記。
+
+- **`apps/<アプリ>/` の外のファイルを含めない。** 共有パッケージ・依存（`yarn.lock`）・ルール・
+  Functions に触る変更は全体のリリースに載せる。`branch-guard.yml` が `production` への PR で検査する
+- **staging に配るか、何を配るかはデプロイの設定次第。** 同梱の `deploy.yml` は `release/**` の push で
+  staging へ全体をデプロイする（このブランチにも一致する）。アプリだけを配るなら派生側のデプロイ設定で分ける
+- 作業ブランチへは**取り込まない**。`session-start-git-context.sh` / `post-git-branch-reminder.sh` は
+  全体のリリースとは別に一覧し、マージを勧めるのは全体のリリースだけ
+- 名前の形以外の扱い（直接コミット禁止・PR 必須・`production` への PR を許可）は `release/*` と同じ。
+  `deploy.yml` の `release/**`、ruleset の `refs/heads/release/**`、`branch-guard.yml` の `release/*` にもそのまま一致する
 
 ### 開発〜リリースの流れ
 
@@ -611,6 +628,7 @@ warning を出してスキップする。
 ### 全プラン共通（同梱済み）
 
 `.github/workflows/branch-guard.yml` が production 向け PR の head ブランチを検証し、`release/*`・`hotfix/*` 以外なら CI を赤にする。
+アプリ単独のリリース（`release/<アプリ>/<バージョン>`）からの PR は、変更が `apps/<アプリ>/` の中に収まっているかも検査する。
 
 > **注意**: Free プランのプライベートリポジトリでは Required status checks が使えないため、これは「赤い ✗ による可視化」であり物理的なマージブロックではない。ただし本テンプレートではマージ操作の主体がかなりの割合で AI（Claude）であり、AI は「CI が赤の PR はマージしない」を守るため実効性は高い。
 

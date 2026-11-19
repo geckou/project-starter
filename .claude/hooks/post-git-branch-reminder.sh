@@ -23,7 +23,11 @@ printf '%s' "$cmd" | grep -Eq "(^|[[:space:]])git[[:space:]]+$NEW_BRANCH_RE" || 
 # 同じコマンド内で既に merge しているなら何も言わない
 printf '%s' "$cmd" | grep -Eq '(^|[[:space:]])git[[:space:]]+merge' && exit 0
 
-releases=$(git branch -r --list 'origin/release/*' 2>/dev/null | sed 's|^[[:space:]]*origin/||')
+# アプリ単独のリリース release/<アプリ>/<バージョン> は対象外。そのアプリの外の変更を
+# 含めない約束なので、作業ブランチへ取り込むと約束が崩れる
+# （.claude/docs/git-workflow.md「アプリ単独のリリース」）。`*` は / もまたぐので絞り込む
+releases=$(git branch -r --list 'origin/release/*' 2>/dev/null |
+  sed 's|^[[:space:]]*origin/||' | grep -E '^release/[^/]+$')
 [ -z "$releases" ] && exit 0
 
 {
