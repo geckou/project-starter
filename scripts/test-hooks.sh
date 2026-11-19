@@ -879,9 +879,17 @@ run 2 'hotfix/ はアプリ単独を許さない' 'git checkout -b hotfix/site/0
 run 0 'release/<アプリ>/* への push も ask' \
   'git push origin release/site/0.1.0' feat/existing
 expect '"permissionDecision": "ask"' 'アプリ単独のリリースへの push も確認を求める'
-expect 'デプロイの設定次第' 'staging へ配ると断定しない'
+expect '既定では配らない' 'アプリ単独のリリースは既定で配らないことを伝える'
 run 2 'release/<アプリ>/* への force push は deny' \
   'git push --force origin release/site/0.1.0' feat/existing
+run 0 'アプリ単独のリリースの取り込みは確認を求める' \
+  'git merge origin/release/site/0.1.0' feat/existing
+expect '"permissionDecision": "ask"' 'アプリ単独のリリースを作業ブランチへ取り込むときは確認を求める'
+run 0 'rebase でも確認を求める' 'git rebase origin/release/site/0.1.0' feat/existing
+expect 'アプリ単独のリリース' '取り込まない理由を伝える'
+run 0 '全体のリリースの取り込みは確認を求めない' \
+  'git merge origin/release/1.0.0' feat/existing
+refute 'permissionDecision' '全体のリリースは従来どおり素通し'
 
 echo
 echo '=== 既存の挙動（回帰） ==='

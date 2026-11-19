@@ -49,6 +49,9 @@ git checkout production && git pull && git checkout -b feat/user-profile
 git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 ```
 
+一覧には、アプリ単独のリリース `release/<アプリ>/<バージョン>` も出る。こちらは作業ブランチへ
+**取り込まない**（→「アプリ単独のリリース」）。
+
 ### なぜ production から切るのか
 
 **作業内容を必ずしも進行中のリリースに混ぜるとは限らないため。**
@@ -170,7 +173,7 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 | ------------- | ------------ | -------------- | ------------------------ |
 | `feat/*`      | develop（手動）| `production`   | 機能開発                 |
 | `release/*`   | staging      | `production`   | リリース候補の QA        |
-| `release/<アプリ>/*` | デプロイの設定次第 | `production` | アプリ単独のリリース（→ 下記） |
+| `release/<アプリ>/<バージョン>` | なし（既定） | `production` | アプリ単独のリリース（→ 下記） |
 | `hotfix/*`    | staging      | `production`   | 緊急修正                 |
 | `production`  | production   | -              | 本番（デフォルトブランチ）|
 
@@ -178,7 +181,8 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 切った直後に、進行中の `release/*` があればマージして作業を始める（→「作業ブランチの切り方」）。
 例外は QA で見つかった不具合の修正で、対象の `release/*` から `fix/*` を切る（→「リリースフロー」2.5）。
 
-> ⚠️ **`release/*` / `hotfix/*` への push は staging への自動デプロイを発火する**（`.github/workflows/deploy.yml`）。
+> ⚠️ **`release/*` / `hotfix/*` への push は staging への自動デプロイを発火する**（`.github/workflows/deploy.yml`。
+> アプリ単独のリリース `release/<アプリ>/<バージョン>` は既定では配らない → 下記）。
 > そのため `release/*` への直接コミット・push は禁止。release に直接コミットすると、develop での動作確認を経ずに staging へ直行してしまう。
 > QA で見つかった修正も `fix/*` / `feat/*` を切って develop で確認し、`release/*` へ PR でマージする。
 > `release/*` へ push してよいのは、ブランチ作成時（`production` から切って `feat/*` をマージした結果）と PR マージのみ。
@@ -191,11 +195,16 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 ディレクトリ名（ケバブケース）、`<バージョン>` は `release/<バージョン>` と同じ表記。
 
 - **`apps/<アプリ>/` の外のファイルを含めない。** 共有パッケージ・依存（`yarn.lock`）・ルール・
-  Functions に触る変更は全体のリリースに載せる。`branch-guard.yml` が `production` への PR で検査する
-- **staging に配るか、何を配るかはデプロイの設定次第。** 同梱の `deploy.yml` は `release/**` の push で
-  staging へ全体をデプロイする（このブランチにも一致する）。アプリだけを配るなら派生側のデプロイ設定で分ける
-- 作業ブランチへは**取り込まない**。`session-start-git-context.sh` / `post-git-branch-reminder.sh` は
-  全体のリリースとは別に一覧し、マージを勧めるのは全体のリリースだけ
+  Functions・`firebase.json`（hosting ターゲットの追加など）に触る変更は全体のリリースに載せる。
+  アプリの追加そのものも全体のリリースで行う。`branch-guard.yml` が `production` への PR で検査する
+- **同梱の `deploy.yml` は、このブランチへの push では何も配らない。** production を土台に全ターゲットを
+  staging へ配ると、同時に QA 中の全体のリリースを古い版で上書きし、そちらの次のデプロイでも戻らない
+  （差分の基準がブランチごとのため）。staging でアプリだけを確かめたいなら、派生側のデプロイ設定で
+  そのアプリのターゲットだけを配るようにする。`production` へのマージ後のデプロイは通常どおり
+- 作業ブランチへは**取り込まない**（そのアプリの外の変更を含めない約束が崩れるため）。
+  `session-start-git-context.sh` / `post-git-branch-reminder.sh` は全体のリリースとは別に一覧し、
+  マージを勧めるのは全体のリリースだけ。`pre-git-guard.sh` は取り込み（merge / rebase / pull /
+  cherry-pick）に確認を求める
 - 名前の形以外の扱い（直接コミット禁止・PR 必須・`production` への PR を許可）は `release/*` と同じ。
   `deploy.yml` の `release/**`、ruleset の `refs/heads/release/**`、`branch-guard.yml` の `release/*` にもそのまま一致する
 

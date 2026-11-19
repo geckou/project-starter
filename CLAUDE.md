@@ -242,7 +242,7 @@ PR・マージしてよい。以下は派生プロジェクトに適用する。
 |---|---|---|
 | SessionStart | `session-start-git-context.sh` | fetch して現在ブランチ・進行中の `release/*` を文脈に入れる |
 | SessionStart | `session-start-questions.sh` | 未回答の確認事項を文脈に入れる |
-| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名・分岐元・fetch 鮮度・コミットメッセージ・husky の迂回・`production` への直接 push を**ブロック**。`release/*` への push、PR のマージ、ブランチ削除、force push、`feat/*` 同士の取り込みは**承認を求める** |
+| PreToolUse (Bash) | `pre-git-guard.sh` | ブランチ命名・分岐元・fetch 鮮度・コミットメッセージ・husky の迂回・`production` への直接 push を**ブロック**。`release/*` への push、PR のマージ、ブランチ削除、force push、`feat/*` 同士とアプリ単独のリリースの取り込みは**承認を求める** |
 | PostToolUse (Bash) | `post-git-branch-reminder.sh` | ブランチ作成直後、進行中の `release/*` があればマージ要否を促す |
 | PostToolUse (Edit/Write) | `post-edit-reminder.sh` | `firestore.rules` / `packages/shared` 変更時に検証コマンドをリマインド |
 | Stop | `stop-dod-check.sh` | 未コミットのコード変更があれば DoD を自動実行し、失敗なら終了をブロック |
