@@ -1578,6 +1578,11 @@ cmd_flags=$(printf '%s\n' "$cmd" | awk '
       if (q != "") { if (c == bs && q == dq) k++; else if (c == q) q = ""; continue }
       if (c == bs) { k++; continue }
       if (c == sq || c == dq) { q = c; continue }
+      # &> / &>> も同じリダイレクト。& はシェルのメタ文字なので、語に続けて
+      # 書いた `production&>/dev/null` は production と &> に分かれる
+      if (c == "&" && substr(t, k + 1, 1) == ">") return k
+      # <( … ) / >( … ) はプロセス置換で、リダイレクトではない
+      if ((c == "<" || c == ">") && substr(t, k + 1, 1) == "(") continue
       if (c == "<" || c == ">") return k
     }
     return 0
@@ -1627,11 +1632,16 @@ cmd_flags=$(printf '%s\n' "$cmd" | awk '
       whole = (head == "" || head == "&" || head ~ /^[0-9]+$/ || head ~ /^\{[A-Za-z_][A-Za-z0-9_]*\}$/)
       if (!whole) { U[++m] = head; ueol[m] = 0 }
       rest = substr(t, p)
-      sub(/^(<<<|<<-|<<|<>|<&|<|>>|>&|>\||>)/, "", rest)
-      # 対象が離れて書かれている（`> log`）。行をまたいでは食べない
-      if (rest == "" && !eol[i] && i < n) {
-        i++
+      sub(/^(&>>|&>|<<<|<<-|<<|<>|<&|<|>>|>&|>\||>)/, "", rest)
+      # 行末で対象の無い演算子は、前段が括弧で切ったプロセス置換（`<(echo a)`）の
+      # 名残り。リダイレクトではないので、語として残す
+      if (rest == "" && (eol[i] || i == n)) {
+        if (whole) { U[++m] = t; ueol[m] = eol[i] }
+        else ueol[m] = eol[i]
+        continue
       }
+      # 対象が離れて書かれている（`> log`）
+      if (rest == "") i++
       if (eol[i] && m > 0) ueol[m] = 1
     }
     n = m

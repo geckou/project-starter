@@ -886,6 +886,12 @@ run 0 '名前付きの fd（{fd}>）も分岐元と読まない' 'git checkout -
 run 2 '続けて書いたリダイレクトで --no-verify を隠せない' \
   'git push origin --no-verify>x' feat/existing
 expect '--no-verify' '検証スキップとして止める'
+run 2 '語に続けて書いた &> の手前の production への push を止める' \
+  'git push origin production&>/dev/null' feat/existing
+run 2 '語に続けて書いた &> で --no-verify を隠せない' \
+  'git push origin --no-verify&>x' feat/existing
+run 2 'プロセス置換はリダイレクトとして外さない' \
+  'git checkout -b feat/x <(echo a) release/1.0.0'
 run 0 '引用の中の > はリダイレクトではない' \
   'git commit -m "feat: a > b を追加"' feat/existing
 
