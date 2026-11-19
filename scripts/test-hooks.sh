@@ -915,8 +915,26 @@ run 0 '2 つ目の -m（本文）の中の ; は区切りではない' \
   "git commit -m 'feat: x' -m 'body; text'" feat/existing
 run 0 'メッセージの中の置換に引用符がある規約どおりの件名' \
   'git commit -m "feat: $(echo "it'"'"'s")"' feat/existing
-run 0 '引数の位置の置換を含む規約どおりの push 先' \
-  'git push origin $(git rev-parse --abbrev-ref HEAD)' feat/existing
+
+run 2 '置換で書いた push 先は判定できないので止める（引用なし）' \
+  'git push origin $(echo production)' feat/existing
+run 2 '置換で書いた push 先は判定できないので止める（引用付き）' \
+  'git push origin "$(echo production)"' feat/existing
+run 2 '置換で書いた push 先は判定できないので止める（バッククォート）' \
+  'git push origin `echo production`' feat/existing
+run 2 '置換で書いた refspec の宛先も止める' \
+  'git push origin feat/existing:$(echo production)' feat/existing
+run 2 '"$( … )" の中のバッククォートに書いた git を見る' \
+  'echo "$(echo `git push origin production`)"' feat/existing
+run 2 '"$( … )" の中の "`…`" に書いた git を見る' \
+  'echo "$(echo "`git push origin production`")"' feat/existing
+run 2 '引用の中の文字列の <<EOF を heredoc の開始と読まない' \
+  'echo "$(date) <<EOF"
+git push origin production
+EOF' feat/existing
+
+run 0 '中で git を呼ぶ置換の push 先は、引用の有無によらず通す' \
+  'git push -u origin $(git branch --show-current)' feat/existing
 
 echo
 echo '=== 既存の挙動（回帰） ==='

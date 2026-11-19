@@ -200,8 +200,13 @@ cmd=$(printf '%s' "$cmd" | awk '
       # `gh pr create --body "$(cat <<EOF …)"` のように、引用の中の置換に書いた
       # heredoc も本文はデータ。拾わないと本文の引用符・バッククォート・括弧を
       # コマンドの一部として読み、後続のコマンドを見失う（#393）
-      if (candidate == "" && index(lines[i], "$(") > 0)
-        candidate = heredoc_marker(substr(lines[i], index(lines[i], "$(") + 2))
+      # `$(` から `<<` までに ) や " があれば、その << は置換の外（引用の中の文字列）
+      if (candidate == "" && index(lines[i], "$(") > 0) {
+        after = substr(lines[i], index(lines[i], "$(") + 2)
+        if (index(after, "<<") > 0 &&
+            substr(after, 1, index(after, "<<") - 1) !~ /[)"]/)
+          candidate = heredoc_marker(after)
+      }
       if (candidate != "" && has_terminator(i + 1, candidate, tab_ok)) {
         marker = candidate
         marker_quoted = last_marker_quoted
@@ -524,7 +529,7 @@ segments=$(printf '%s' "$cmd" | awk '
       }
       body = body ch
     }
-    return (body ~ /(^|[ \t;&|(])git[ \t]/) ? 1 : 0
+    return (body ~ /(^|[ \t;&|(`"])git[ \t]/ || body ~ ("(^|" sq ")git[ \t]")) ? 1 : 0
   }
   # start から始まる置換（closer が ")" なら $( … )、バッククォートなら ` … `）の
   # 閉じの位置。閉じが無ければ 0。
@@ -620,9 +625,13 @@ segments=$(printf '%s' "$cmd" | awk '
         }
         # git を含まない置換は切り出さず、閉じまでを値の一部としてそのまま足す。
         # 1 文字ずつ読むと、中の " を外側の引用の閉じとして読んでしまう（#393）
+        # 中にさらに置換（$( / バッククォート）がある形は、1 文字ずつ読む従来の経路に
+        # 任せる。丸ごと足すと、中の置換に書いた git が検査から消える
         if ((c == "$" && substr(all, i + 1, 1) == "(") || c == bt) {
           e = (c == bt) ? subst_end(i + 1, bt) : subst_end(i + 2, ")")
-          if (e > 0) {
+          k = (c == bt) ? i + 1 : i + 2
+          inner = (e > 0) ? substr(all, k, e - k) : ""
+          if (e > 0 && index(inner, bt) == 0 && index(inner, "$(") == 0) {
             seg = seg substr(all, i, e - i + 1)
             i = e
             continue
@@ -673,9 +682,15 @@ segments=$(printf '%s' "$cmd" | awk '
           # コマンドをここで切らずに取っておき、閉じたあとに続きを繋ぐ。
           # 切ると置換より後ろ（production）が git を含まない別のセグメントになり、
           # 検査から落ちる（#393）。ダブルクォートの中の置換と同じ扱い
+          #
+          # 置換の値は、中で git を呼ぶなら __subst__（ダブルクォートの中の
+          # "$(git branch --show-current)" と同じ扱い）、呼ばないなら $ を残した
+          # $__subst__ にする。$ が残っていれば、push 先の検査が「判定できない宛先」
+          # として止める（`git push origin $(echo production)`。#237）
           if (!at_cmd[depth] && seg ~ /\$$/) {
             saved_seg[depth] = substr(seg, 1, length(seg) - 1)
             restore_arg[depth] = 1
+            arg_value[depth] = subst_has_git(i + 1, ")") ? subst_value : "$" subst_value
           } else emit(seg)
           seg = ""
           emit(sub_open)
@@ -689,7 +704,7 @@ segments=$(printf '%s' "$cmd" | awk '
               q = dq; seg = saved_seg[depth] subst_value; restore_dq[depth] = 0
             }
             if (restore_arg[depth]) {
-              seg = saved_seg[depth] subst_value; restore_arg[depth] = 0
+              seg = saved_seg[depth] arg_value[depth]; restore_arg[depth] = 0
             }
             depth--
           }
@@ -702,14 +717,17 @@ segments=$(printf '%s' "$cmd" | awk '
         if (!bt_open) bt_at_cmd = at_cmd_pos(seg, "")
         # 引数の位置の置換（`git push `git remote` production`）は外側を切らずに
         # 取っておく。$( … ) の restore_arg と同じ理由（#393）
-        if (!bt_open && !bt_at_cmd) { bt_saved_seg = seg; bt_arg = 1 }
+        if (!bt_open && !bt_at_cmd) {
+          bt_saved_seg = seg; bt_arg = 1
+          bt_value = subst_has_git(i + 1, bt) ? subst_value : "$" subst_value
+        }
         else emit(seg)
         seg = ""
         emit(bt_open ? sub_close : sub_open)
         if (bt_open && bt_at_cmd) emit(subst_cmd_end)
         # ダブルクォートの中から始まったバッククォートなら、閉じたあとは引用の中へ戻る
         if (bt_open && bt_dq) { q = dq; seg = bt_saved_seg subst_value; bt_dq = 0 }
-        if (bt_open && bt_arg) { seg = bt_saved_seg subst_value; bt_arg = 0 }
+        if (bt_open && bt_arg) { seg = bt_saved_seg bt_value; bt_arg = 0 }
         bt_open = 1 - bt_open
         continue
       }
@@ -1634,7 +1652,7 @@ fi
 # D: ダブルクォート、P: $( … )、V: ${ … }、B: バッククォート）。
 # " の中の $( … ) に書いた引用符を、外側の引用の閉じとして数えない（#393）。
 # 数えると `-m "feat: $(echo "x")" && git push …` の後ろが -m の値として消える。
-# 正規化の awk（normalize）にも同じ関数があるので、直すときは揃えること
+# 正規化の 2 つの awk（normalize を持つもの）にも同じ関数の写しがあるので、直すときは揃えること
 QUOTE_AWK='
   function qstep(c, nxt,   top) {
     top = substr(ctx, length(ctx), 1)
@@ -1963,7 +1981,7 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
       for (i = 1; i <= n; i++) {
         t = T[i]
         if (!seen) {
-          if (t == "commit") seen = 1
+          if (t == "commit" && !brk[i]) seen = 1
           continue
         }
         if (t == "--") { seen = 0; continue }
