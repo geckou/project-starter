@@ -26,12 +26,21 @@ jobs:
 
     steps:
       - name: Check head branch
+        id: head
         # ブランチ名には $ や ` 等のメタ文字を含められるため、${{ }} をスクリプトへ
         # 直接展開せず env 経由のクォート付き変数として参照する（シェル注入対策）
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: |
           case "$HEAD_REF" in
+            release/*/*)
+              # アプリ単独のリリース release/<アプリ>/<バージョン>。apps/<アプリ>/ の外を
+              # 含めないことを次のステップで検査する（.claude/docs/git-workflow.md）
+              APP=${HEAD_REF#release/}
+              APP=${APP%%/*}
+              echo "OK: $HEAD_REF はアプリ単独のリリース（$APP）です。変更範囲を検査します"
+              echo "app=$APP" >> "$GITHUB_OUTPUT"
+              ;;
             release/*|hotfix/*)
               echo "OK: $HEAD_REF から production への PR は許可されています"
               ;;
@@ -53,3 +62,27 @@ jobs:
               exit 1
               ;;
           esac
+
+      # アプリ単独のリリースだけ。pull_request で取得するのは base とのマージコミットなので、
+      # その 1 つ目の親（base）との差分が「マージしたら production に入る変更」になる
+      - uses: actions/checkout@v7
+        if: steps.head.outputs.app != ''
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Check app release scope
+        if: steps.head.outputs.app != ''
+        env:
+          APP: ${{ steps.head.outputs.app }}
+        run: |
+          # 改名は移動元も数える（--no-renames）。apps/<アプリ>/ の外から中へ移すのも外の変更
+          OUTSIDE=$(git diff --no-renames --name-only HEAD^1 HEAD | grep -v "^apps/$APP/" || true)
+
+          if [ -n "$OUTSIDE" ]; then
+            echo "::error::アプリ単独のリリース（release/$APP/*）は apps/$APP/ の外を変更できません。次のファイルは全体のリリース（release/<バージョン>）に載せてください:"
+            printf '%s\n' "$OUTSIDE"
+            exit 1
+          fi
+
+          echo "OK: 変更は apps/$APP/ の中に収まっています"

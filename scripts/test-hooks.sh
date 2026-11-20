@@ -166,7 +166,7 @@ run 0 'release/* への push は ask（deny ではない）' \
   'git push origin release/1.0.0' feat/existing
 # 許可と ask はどちらも exit 0。メッセージを見ないと、黙って allow になる退行が通る（#317）
 expect '"permissionDecision": "ask"' 'release/* への push は確認を求める'
-expect 'staging への自動デプロイ' 'デプロイが発火することを伝える'
+expect 'デプロイを発火します' 'デプロイが発火することを伝える'
 run 2 '--no-verify による検証スキップ' "git commit --no-verify -m 'feat: x'" feat/existing
 run 2 '束ねた短縮フラグ（-am）でも規約を検証する' \
   "git commit -am 'wip'" feat/existing
@@ -896,6 +896,31 @@ run 0 '引用の中の > はリダイレクトではない' \
   'git commit -m "feat: a > b を追加"' feat/existing
 
 echo
+echo '=== アプリ単独のリリース release/<アプリ>/<バージョン> ==='
+run 0 'release/<バージョン> は従来どおり切れる' 'git checkout -b release/1.1.0'
+run 0 'release/<アプリ>/<バージョン> を切れる' 'git checkout -b release/site/0.1.0'
+run 0 '<アプリ> はケバブケースなら可' 'git checkout -b release/landing-page/1.0.0-rc1'
+run 2 '<アプリ> がケバブケースでない' 'git checkout -b release/Site/0.1.0'
+expect 'release/site/0.1.0' '書式の例を示す'
+run 2 '階層は <アプリ>/<バージョン> の 2 段まで' 'git checkout -b release/site/web/0.1.0'
+run 2 '<バージョン> が空' 'git checkout -b release/site/'
+run 2 'hotfix/ はアプリ単独を許さない' 'git checkout -b hotfix/site/0.1.0'
+run 0 'release/<アプリ>/* への push も ask' \
+  'git push origin release/site/0.1.0' feat/existing
+expect '"permissionDecision": "ask"' 'アプリ単独のリリースへの push も確認を求める'
+expect '既定では配らない' 'アプリ単独のリリースは既定で配らないことを伝える'
+run 2 'release/<アプリ>/* への force push は deny' \
+  'git push --force origin release/site/0.1.0' feat/existing
+run 0 'アプリ単独のリリースの取り込みは確認を求める' \
+  'git merge origin/release/site/0.1.0' feat/existing
+expect '"permissionDecision": "ask"' 'アプリ単独のリリースを作業ブランチへ取り込むときは確認を求める'
+run 0 'rebase でも確認を求める' 'git rebase origin/release/site/0.1.0' feat/existing
+expect 'アプリ単独のリリース' '取り込まない理由を伝える'
+run 0 '全体のリリースの取り込みは確認を求めない' \
+  'git merge origin/release/1.0.0' feat/existing
+refute 'permissionDecision' '全体のリリースは従来どおり素通し'
+
+echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
 run 2 '許可リストに無いプレフィックス' 'git checkout -b feature/user-profile'
@@ -1478,9 +1503,46 @@ run_branch 0 'git branch -D はブランチ作成ではない' 'git branch -D fe
 run_branch 0 '同じコマンドで merge 済みなら何も言わない' \
   'git checkout -b feat/new-thing && git merge origin/release/1.0.0'
 
+git -C "$SESSION" update-ref refs/remotes/origin/release/site/0.1.0 \
+  "$(git -C "$SESSION" rev-parse production)"
+run_branch 2 'アプリ単独のリリースと並んでいても全体のリリースは勧める' \
+  'git checkout -b feat/new-thing'
+expect 'release/1.0.0' '全体のリリースを挙げる'
+refute 'release/site/0.1.0' 'アプリ単独のリリースは取り込みを勧めない'
+
 git -C "$SESSION" update-ref -d refs/remotes/origin/release/1.0.0
+run_branch 0 'アプリ単独のリリースしか無ければ何も言わない' \
+  'git checkout -b feat/new-thing'
+git -C "$SESSION" update-ref -d refs/remotes/origin/release/site/0.1.0
 run_branch 0 '進行中の release/* が無ければ何も言わない' \
   'git checkout -b feat/new-thing'
+
+# ---- session-start-git-context.sh ----
+#
+# 全体のリリースとアプリ単独のリリースを分けて出す。origin が無いので fetch は失敗するが、
+# 一覧は手元の refs/remotes から作るので検査できる
+
+START_HOOK=$REPO/.claude/hooks/session-start-git-context.sh
+
+echo
+echo '=== session-start-git-context: リリースブランチの一覧 ==='
+git -C "$SESSION" update-ref refs/remotes/origin/release/1.0.0 \
+  "$(git -C "$SESSION" rev-parse production)"
+git -C "$SESSION" update-ref refs/remotes/origin/release/site/0.1.0 \
+  "$(git -C "$SESSION" rev-parse production)"
+LAST_OUT=$(cd "$SESSION" && sh "$START_HOOK" 2>&1)
+expect '- 進行中のリリースブランチ:
+  - release/1.0.0
+- 進行中のアプリ単独のリリース' '全体のリリースだけを「進行中のリリースブランチ」に挙げる'
+expect '（作業ブランチには取り込まない）:
+  - release/site/0.1.0' 'アプリ単独のリリースは別の見出しで挙げる'
+
+git -C "$SESSION" update-ref -d refs/remotes/origin/release/1.0.0
+LAST_OUT=$(cd "$SESSION" && sh "$START_HOOK" 2>&1)
+expect '進行中のリリースブランチ: なし' 'アプリ単独のリリースだけなら全体は「なし」'
+git -C "$SESSION" update-ref -d refs/remotes/origin/release/site/0.1.0
+LAST_OUT=$(cd "$SESSION" && sh "$START_HOOK" 2>&1)
+refute 'アプリ単独' 'アプリ単独のリリースが無ければ見出しを出さない'
 
 # ---- stop-roadmap-reminder.sh ----
 

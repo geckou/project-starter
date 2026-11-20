@@ -15,7 +15,13 @@ fi
 fetch_status=$?
 
 current=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-releases=$(git branch -r --list 'origin/release/*' 2>/dev/null | sed 's|^[[:space:]]*origin/||')
+# 全体のリリース release/<バージョン> と、アプリ単独のリリース release/<アプリ>/<バージョン>
+# を分ける。`--list 'origin/release/*'` の * は / もまたぐので、両方がここに入る。
+# 作業ブランチへの取り込みを検討するのは全体のリリースだけ
+# （.claude/docs/git-workflow.md「アプリ単独のリリース」）
+all_releases=$(git branch -r --list 'origin/release/*' 2>/dev/null | sed 's|^[[:space:]]*origin/||')
+releases=$(printf '%s\n' "$all_releases" | grep -E '^release/[^/]+$')
+app_releases=$(printf '%s\n' "$all_releases" | grep -E '^release/[^/]+/.+')
 dirty=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
 
 echo "## Git 状況（SessionStart フックが自動取得）"
@@ -42,4 +48,9 @@ if [ -n "$releases" ]; then
   printf '%s\n' "$releases" | sed 's/^/  - /'
 else
   echo "- 進行中のリリースブランチ: なし"
+fi
+
+if [ -n "$app_releases" ]; then
+  echo "- 進行中のアプリ単独のリリース（作業ブランチには取り込まない）:"
+  printf '%s\n' "$app_releases" | sed 's/^/  - /'
 fi
