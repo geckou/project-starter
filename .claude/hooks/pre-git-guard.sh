@@ -1712,6 +1712,24 @@ cmd_flags=$(printf '%s\n' "$cmd_msg_marked" | awk "$QUOTE_AWK"'
       substr("message", 1, length(t) - 2) == substr(t, 3)))
   }
 
+  # 引用の外で最初に現れる < / > の位置（無ければ 0）
+  function redirect_at(t,    k, c, q) {
+    q = ""
+    for (k = 1; k <= length(t); k++) {
+      c = substr(t, k, 1)
+      if (q != "") { if (c == bs && q == dq) k++; else if (c == q) q = ""; continue }
+      if (c == bs) { k++; continue }
+      if (c == sq || c == dq) { q = c; continue }
+      # &> / &>> も同じリダイレクト。& はシェルのメタ文字なので、語に続けて
+      # 書いた `production&>/dev/null` は production と &> に分かれる
+      if (c == "&" && substr(t, k + 1, 1) == ">") return k
+      # <( … ) / >( … ) はプロセス置換で、リダイレクトではない
+      if ((c == "<" || c == ">") && substr(t, k + 1, 1) == "(") continue
+      if (c == "<" || c == ">") return k
+    }
+    return 0
+  }
+
   { all = all $0 "\n" }
 
   END {
@@ -1749,6 +1767,35 @@ cmd_flags=$(printf '%s\n' "$cmd_msg_marked" | awk "$QUOTE_AWK"'
       tok = tok c
     }
     if (tok != "") { T[++n] = tok; eol[n] = 0 }
+
+    # リダイレクトは引数ではないので外す（#397）。残すと
+    #   - `git checkout -b feat/x 2>&1` の `2>&1` が分岐元として読まれる
+    #   - `git push origin production>/dev/null` の宛先が `production>/dev/null` になり、
+    #     production への push として検出されない
+    # 対象は引用の外の < / >。演算子だけのトークン（`>` / `2>`）は次のトークン（対象の
+    # ファイル）も外す。語の途中から始まる形（`production>/dev/null`）は手前を残す
+    m = 0
+    for (i = 1; i <= n; i++) {
+      t = T[i]; p = redirect_at(t)
+      if (p == 0) { U[++m] = t; ueol[m] = eol[i]; continue }
+      head = substr(t, 1, p - 1)
+      whole = (head == "" || head == "&" || head ~ /^[0-9]+$/ || head ~ /^\{[A-Za-z_][A-Za-z0-9_]*\}$/)
+      if (!whole) { U[++m] = head; ueol[m] = 0 }
+      rest = substr(t, p)
+      sub(/^(&>>|&>|<<<|<<-|<<|<>|<&|<|>>|>&|>\||>)/, "", rest)
+      # 行末で対象の無い演算子は、前段が括弧で切ったプロセス置換（`<(echo a)`）の
+      # 名残り。リダイレクトではないので、語として残す
+      if (rest == "" && (eol[i] || i == n)) {
+        if (whole) { U[++m] = t; ueol[m] = eol[i] }
+        else ueol[m] = eol[i]
+        continue
+      }
+      # 対象が離れて書かれている（`> log`）
+      if (rest == "") i++
+      if (eol[i] && m > 0) ueol[m] = 1
+    }
+    n = m
+    for (i = 1; i <= n; i++) { T[i] = U[i]; eol[i] = ueol[i] }
 
     # -m は commit のときだけメッセージを取る。switch / checkout の -m は
     # --merge なので、値として次のトークン（-c <ブランチ名>）を落としてはいけない。
@@ -1906,7 +1953,7 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
 
   release_target=$(printf '%s\n' "$commit_targets" | grep -m1 '^release/') || release_target=''
   [ -n "$release_target" ] &&
-    deny "release/* への直接コミットは禁止です（push が staging への自動デプロイを発火するため）。fix/* を切って release へ PR でマージしてください。コミット先: $release_target"
+    deny "release/* への直接コミットは禁止です（push がデプロイを発火するため。既定の deploy.yml では staging へ配る）。fix/* を切って release へ PR でマージしてください。コミット先: $release_target"
 
   msg_ng="コミットメッセージ規約違反です。'<type>: <description>' 形式にしてください（type: feat, fix, refactor, style, docs, test, chore）。例: 'feat: ユーザープロフィール画面を追加'"
 
@@ -2337,7 +2384,7 @@ if has '(^|[[:space:]])git[[:space:]]+push'; then
     10) deny 'production への直接 push は禁止です（PR 必須）。' ;;
     11) deny 'production / release/* への force push は禁止です。' ;;
     12)
-      ask "release/* / hotfix/* への push は staging への自動デプロイを発火します。ブランチ作成時または PR マージ以外の push は禁止です。実行してよいかユーザーに確認してください。"
+      ask "release/* / hotfix/* への push はデプロイを発火します（既定の deploy.yml では staging へ配る。アプリ単独のリリース release/<アプリ>/<バージョン> は既定では配らない）。ブランチ作成時または PR マージ以外の push は禁止です。実行してよいかユーザーに確認してください。"
       ;;
     13)
       deny 'refspec にグロブ（*）や変数・コマンド置換を含む push は禁止です。宛先を決められないため、production への push かどうかを検査できません。push するブランチを明示してください。'
@@ -2375,34 +2422,34 @@ fi
 # （相手の作業が自分のブランチに載る）になるので、字面が merge かどうかで
 # 分けると `git rebase feat/other` が素通りする。
 # refs/heads/ 接頭辞（`git merge refs/heads/feat/other`）も剥がして比較する
-if [ "${current#feat/}" != "$current" ]; then
-  # 取り込む相手のブランチ名を取り出す。自分のブランチをリモートから取り込むだけの
-  # `git pull origin <自分>` / `git rebase origin/<自分>` は「同士のマージ」ではない。
-  # pull を対象に入れた分、名前を見ないと日常操作が毎回確認待ちになる
-  merge_sources=$(printf '%s\n' "$cmd_flags" | awk '
-    {
-      for (i = 1; i <= NF; i++) {
-        if ($i != "git") continue
-        s = $(i + 1)
-        if (s != "merge" && s != "rebase" && s != "pull" && s != "cherry-pick") continue
+# 取り込む相手のブランチ名を取り出す。自分のブランチをリモートから取り込むだけの
+# `git pull origin <自分>` / `git rebase origin/<自分>` は「同士のマージ」ではない。
+# pull を対象に入れた分、名前を見ないと日常操作が毎回確認待ちになる
+merge_sources=$(printf '%s\n' "$cmd_flags" | awk '
+  {
+    for (i = 1; i <= NF; i++) {
+      if ($i != "git") continue
+      s = $(i + 1)
+      if (s != "merge" && s != "rebase" && s != "pull" && s != "cherry-pick") continue
 
-        for (j = i + 2; j <= NF; j++) {
-          t = $j
-          # -- は引数の区切りであって走査の終わりではない。ここで打ち切ると
-          # `git merge -- feat/other` のように区切りの後ろへ置いた取り込み元を
-          # 見落とす（checkout の -- は「以降はパス」なので、あちらは打ち切ってよい）
-          if (t == "--") continue
-          if (substr(t, 1, 1) == "-") continue
-          # 接頭辞を剥がして比較できる形へ揃える。pull は <リモート> <ブランチ> の
-          # 2 引数を取るので、非フラグを全部出して呼び出し側で見る
-          sub(/^refs\/remotes\//, "", t)
-          sub(/^refs\/heads\//, "", t)
-          sub(/^origin\//, "", t)
-          print t
-        }
+      for (j = i + 2; j <= NF; j++) {
+        t = $j
+        # -- は引数の区切りであって走査の終わりではない。ここで打ち切ると
+        # `git merge -- feat/other` のように区切りの後ろへ置いた取り込み元を
+        # 見落とす（checkout の -- は「以降はパス」なので、あちらは打ち切ってよい）
+        if (t == "--") continue
+        if (substr(t, 1, 1) == "-") continue
+        # 接頭辞を剥がして比較できる形へ揃える。pull は <リモート> <ブランチ> の
+        # 2 引数を取るので、非フラグを全部出して呼び出し側で見る
+        sub(/^refs\/remotes\//, "", t)
+        sub(/^refs\/heads\//, "", t)
+        sub(/^origin\//, "", t)
+        print t
       }
-    }')
+    }
+  }')
 
+if [ "${current#feat/}" != "$current" ]; then
   for source in $merge_sources; do
     case $source in
       feat/*) ;;
@@ -2413,6 +2460,20 @@ if [ "${current#feat/}" != "$current" ]; then
     ask 'feat/* 同士の取り込み（merge / rebase / pull / cherry-pick）は CLAUDE.md「マージルール」で禁止しています（レビュー単位が崩れ、一方だけをリリースへ回せなくなります）。必要なら release/* 経由にするか、実行してよいかユーザーに確認してください。'
   done
 fi
+
+# --- アプリ単独のリリースの取り込み --------------------------------------
+# release/<アプリ>/<バージョン> は apps/<アプリ>/ の外を含めない約束のリリースで、
+# 作業ブランチへは取り込まない（.claude/docs/git-workflow.md「アプリ単独のリリース」）。
+# 取り込むと、作業ブランチ経由で全体のリリースにそのアプリの未リリースの変更が混ざる
+for source in $merge_sources; do
+  case $source in
+    release/*/*) ;;
+    *) continue ;;
+  esac
+  [ "$source" = "$current" ] && continue
+
+  ask "アプリ単独のリリース（$source）は作業ブランチへ取り込みません（.claude/docs/git-workflow.md「アプリ単独のリリース」）。全体のリリースに載せるなら release/<バージョン> を取り込んでください。実行してよいかユーザーに確認してください。"
+done
 
 # --- ブランチ作成 -------------------------------------------------------
 # -B / -C（既存ブランチのリセット付き作成）も、間に挟まる他のフラグも見る。
@@ -2564,13 +2625,19 @@ if [ -n "$newbranch" ]; then
 
   # プレフィックスの後ろはケバブケース（小文字英数字とハイフン）。
   # release/hotfix はバージョン表記（1.0.0 / 1.0.0-rc1）を使うためドットも許す。
+  # release は アプリ単独のリリース release/<アプリ>/<バージョン> も許す
+  # （<アプリ> はケバブケース。.claude/docs/git-workflow.md「アプリ単独のリリース」）
   branch_name=${newbranch#*/}
   case "$newbranch" in
     # 名前はハーネスが決めるので形式は問わない（到達するのは claude/* セッションの中だけ）
     claude/*) ;;
-    release/* | hotfix/*)
+    release/*)
+      printf '%s' "$branch_name" | grep -Eq '^([a-z0-9]+(-[a-z0-9]+)*/)?[a-z0-9]+([.-][a-z0-9]+)*$' ||
+        deny "ブランチ名が命名規則に合いません: $newbranch。release/ の後ろはバージョン表記（例: release/1.0.0）か、アプリ単独のリリースなら <アプリ>/<バージョン>（例: release/site/0.1.0）にしてください。"
+      ;;
+    hotfix/*)
       printf '%s' "$branch_name" | grep -Eq '^[a-z0-9]+([.-][a-z0-9]+)*$' ||
-        deny "ブランチ名が命名規則に合いません: $newbranch。release/ hotfix/ の後ろはバージョン表記（例: release/1.0.0）にしてください。"
+        deny "ブランチ名が命名規則に合いません: $newbranch。hotfix/ の後ろはバージョン表記（例: hotfix/1.0.1）にしてください。"
       ;;
     *)
       printf '%s' "$branch_name" | grep -Eq '^[a-z0-9]+(-[a-z0-9]+)*$' ||

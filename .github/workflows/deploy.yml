@@ -68,6 +68,13 @@ jobs:
           ENV_NAME=""
           if [ "$REF" = "production" ]; then
             ENV_NAME="production"
+          elif [[ "$REF" == release/*/* ]]; then
+            # アプリ単独のリリース（release/<アプリ>/<バージョン>）は既定では配らない。
+            # production を土台に全ターゲットを staging へ配ると、同時に QA 中の
+            # 全体のリリースを古い版で上書きし、そちらの次のデプロイでも戻らない
+            # （差分の基準がブランチごとのため）。配るなら派生側で設定する
+            # （.claude/docs/git-workflow.md「アプリ単独のリリース」）
+            echo "::notice::${REF} はアプリ単独のリリースのため、既定ではデプロイしません"
           elif [[ "$REF" == release/* ]] || [[ "$REF" == hotfix/* ]]; then
             ENV_NAME="staging"
           fi
