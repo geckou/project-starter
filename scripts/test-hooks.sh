@@ -867,6 +867,35 @@ run 0 'branch -M（改名）は分岐元を持たないので従来どおり' \
   'git branch -M feat/existing feat/renamed' feat/existing
 
 echo
+echo '=== リダイレクトは引数として読まない（#397） ==='
+run 0 '2>&1 を分岐元と読まない' 'git checkout -b feat/x 2>&1 | tail -3'
+run 0 '>/dev/null 2>&1 を分岐元と読まない' 'git checkout -b feat/x >/dev/null 2>&1'
+run 0 '離れて書いた対象（2> log）を分岐元と読まない' 'git checkout -b feat/x 2> log'
+run 0 '名前に続けて書いたリダイレクト（feat/x>/dev/null）' 'git checkout -b feat/x>/dev/null'
+run 0 'git branch <名前> 2>&1' 'git branch feat/x 2>&1'
+run 2 'リダイレクトの手前の分岐元は従来どおり見る' \
+  'git checkout -b feat/x release/1.0.0 2>&1'
+expect '現在の分岐元: release/1.0.0' '分岐元として release を挙げる'
+run 2 '名前に続けて書いたリダイレクトでも命名規則を見る' 'git checkout -b Bad>/dev/null'
+run 2 '宛先に続けて書いたリダイレクトでも production への push を止める' \
+  'git push origin production>/dev/null' feat/existing
+expect 'production への直接 push' 'production への push として止める'
+run 2 '離れて書いたリダイレクトの後ろでも production への push を止める' \
+  'git push origin > log production' feat/existing
+run 0 '名前付きの fd（{fd}>）も分岐元と読まない' 'git checkout -b feat/x {fd}>/dev/null'
+run 2 '続けて書いたリダイレクトで --no-verify を隠せない' \
+  'git push origin --no-verify>x' feat/existing
+expect '--no-verify' '検証スキップとして止める'
+run 2 '語に続けて書いた &> の手前の production への push を止める' \
+  'git push origin production&>/dev/null' feat/existing
+run 2 '語に続けて書いた &> で --no-verify を隠せない' \
+  'git push origin --no-verify&>x' feat/existing
+run 2 'プロセス置換はリダイレクトとして外さない' \
+  'git checkout -b feat/x <(echo a) release/1.0.0'
+run 0 '引用の中の > はリダイレクトではない' \
+  'git commit -m "feat: a > b を追加"' feat/existing
+
+echo
 echo '=== アプリ単独のリリース release/<アプリ>/<バージョン> ==='
 run 0 'release/<バージョン> は従来どおり切れる' 'git checkout -b release/1.1.0'
 run 0 'release/<アプリ>/<バージョン> を切れる' 'git checkout -b release/site/0.1.0'

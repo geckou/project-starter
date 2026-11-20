@@ -1570,6 +1570,24 @@ cmd_flags=$(printf '%s\n' "$cmd" | awk '
       substr("message", 1, length(t) - 2) == substr(t, 3)))
   }
 
+  # 引用の外で最初に現れる < / > の位置（無ければ 0）
+  function redirect_at(t,    k, c, q) {
+    q = ""
+    for (k = 1; k <= length(t); k++) {
+      c = substr(t, k, 1)
+      if (q != "") { if (c == bs && q == dq) k++; else if (c == q) q = ""; continue }
+      if (c == bs) { k++; continue }
+      if (c == sq || c == dq) { q = c; continue }
+      # &> / &>> も同じリダイレクト。& はシェルのメタ文字なので、語に続けて
+      # 書いた `production&>/dev/null` は production と &> に分かれる
+      if (c == "&" && substr(t, k + 1, 1) == ">") return k
+      # <( … ) / >( … ) はプロセス置換で、リダイレクトではない
+      if ((c == "<" || c == ">") && substr(t, k + 1, 1) == "(") continue
+      if (c == "<" || c == ">") return k
+    }
+    return 0
+  }
+
   { all = all $0 "\n" }
 
   END {
@@ -1599,6 +1617,35 @@ cmd_flags=$(printf '%s\n' "$cmd" | awk '
       tok = tok c
     }
     if (tok != "") { T[++n] = tok; eol[n] = 0 }
+
+    # リダイレクトは引数ではないので外す（#397）。残すと
+    #   - `git checkout -b feat/x 2>&1` の `2>&1` が分岐元として読まれる
+    #   - `git push origin production>/dev/null` の宛先が `production>/dev/null` になり、
+    #     production への push として検出されない
+    # 対象は引用の外の < / >。演算子だけのトークン（`>` / `2>`）は次のトークン（対象の
+    # ファイル）も外す。語の途中から始まる形（`production>/dev/null`）は手前を残す
+    m = 0
+    for (i = 1; i <= n; i++) {
+      t = T[i]; p = redirect_at(t)
+      if (p == 0) { U[++m] = t; ueol[m] = eol[i]; continue }
+      head = substr(t, 1, p - 1)
+      whole = (head == "" || head == "&" || head ~ /^[0-9]+$/ || head ~ /^\{[A-Za-z_][A-Za-z0-9_]*\}$/)
+      if (!whole) { U[++m] = head; ueol[m] = 0 }
+      rest = substr(t, p)
+      sub(/^(&>>|&>|<<<|<<-|<<|<>|<&|<|>>|>&|>\||>)/, "", rest)
+      # 行末で対象の無い演算子は、前段が括弧で切ったプロセス置換（`<(echo a)`）の
+      # 名残り。リダイレクトではないので、語として残す
+      if (rest == "" && (eol[i] || i == n)) {
+        if (whole) { U[++m] = t; ueol[m] = eol[i] }
+        else ueol[m] = eol[i]
+        continue
+      }
+      # 対象が離れて書かれている（`> log`）
+      if (rest == "") i++
+      if (eol[i] && m > 0) ueol[m] = 1
+    }
+    n = m
+    for (i = 1; i <= n; i++) { T[i] = U[i]; eol[i] = ueol[i] }
 
     # -m は commit のときだけメッセージを取る。switch / checkout の -m は
     # --merge なので、値として次のトークン（-c <ブランチ名>）を落としてはいけない。
