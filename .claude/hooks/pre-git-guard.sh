@@ -171,7 +171,9 @@ cmd=$(printf '%s' "$cmd" | awk '
       if (owner ~ /(^|[[:space:]|;&(])(eval|source|\.)([[:space:]]|$)/) continue
 
       if (owner ~ /git[[:space:]]+commit/ &&
-          owner ~ /(^|[[:space:]])(-[A-Za-z]*[mF]|--m[a-z]*|--fil[a-z]*)([[:space:]]|=|$)/) {
+          owner ~ /(^|[[:space:]])(-[A-Za-z]*[mF]|-[A-Za-z]*F-|--m[a-z]*|--fil[a-z]*)([[:space:]]|=|$)/) {
+        # -F- は -F - を詰めて書いた形（#393）。外すと本文がコマンドとして読まれ、
+        # 本文の引用符で後続の行（git push …）が引用の中に飲み込まれる
         # マーカーを引用した heredoc（<<'"'"'EOF'"'"'）の本文はシェルが展開しない。
         # メッセージとして残しつつ、コマンドとしては読まないよう印を付ける。
         # 無クォートの本文は実際に展開・実行されるので今までどおり素のまま残す
@@ -195,6 +197,16 @@ cmd=$(printf '%s' "$cmd" | awk '
       if (lines[i] ~ /git[[:space:]]+commit/) continue
 
       candidate = heredoc_marker(lines[i])
+      # `gh pr create --body "$(cat <<EOF …)"` のように、引用の中の置換に書いた
+      # heredoc も本文はデータ。拾わないと本文の引用符・バッククォート・括弧を
+      # コマンドの一部として読み、後続のコマンドを見失う（#393）
+      # `$(` から `<<` までに ) や " があれば、その << は置換の外（引用の中の文字列）
+      if (candidate == "" && index(lines[i], "$(") > 0) {
+        after = substr(lines[i], index(lines[i], "$(") + 2)
+        if (index(after, "<<") > 0 &&
+            substr(after, 1, index(after, "<<") - 1) !~ /[)"]/)
+          candidate = heredoc_marker(after)
+      }
       if (candidate != "" && has_terminator(i + 1, candidate, tab_ok)) {
         marker = candidate
         marker_quoted = last_marker_quoted
@@ -500,27 +512,60 @@ segments=$(printf '%s' "$cmd" | awk '
   # start から closer までの置換の中身に git の呼び出しがあるか。
   # ダブルクォートの中の置換を切り出すかどうかの判定に使う（切り出すのは
   # 中身が実際に git を実行する形のときだけ）
-  function subst_has_git(start, closer,   j, d, ch, body) {
-    d = 1
+  function subst_has_git(start, closer,   e, j, ch, body) {
+    e = subst_end(start, closer)
+    if (e == 0) e = length(all) + 1
     body = ""
-    for (j = start; j <= length(all); j++) {
+    for (j = start; j < e; j++) {
       ch = substr(all, j, 1)
       # 印の付いた行はコミットメッセージの本文（データ）。本文に書いた
       # `git commit -n` のような例や括弧を、置換の中身として数えない。
       # 数えると -m "$(cat <<EOF …)" の置換が切り出され、メッセージの値が
       # 空になって規約どおりのコミットが弾かれる（#299）
       if (ch == msg) {
-        while (j <= length(all) && substr(all, j, 1) != "\n") j++
+        while (j < e && substr(all, j, 1) != "\n") j++
         body = body "\n"
         continue
       }
-      if (closer == ")") {
-        if (ch == "(") d++
-        else if (ch == ")") { d--; if (d == 0) break }
-      } else if (ch == closer) break
       body = body ch
     }
-    return (body ~ /(^|[ \t;&|(])git[ \t]/) ? 1 : 0
+    return (body ~ /(^|[ \t;&|(`"])git[ \t]/ || body ~ ("(^|" sq ")git[ \t]")) ? 1 : 0
+  }
+  # start から始まる置換（closer が ")" なら $( … )、バッククォートなら ` … `）の
+  # 閉じの位置。閉じが無ければ 0。
+  # 中の引用・入れ子の置換を追う（#393）。追わないと、中に書いた引用符や ) を
+  # 外側の引用の閉じ・置換の閉じとして読み、`echo "x `date`" && git push …` や
+  # `-m "feat: $(echo ")")" && git push …` の後続のコマンドを引用の中に飲み込む
+  function subst_end(start, closer,   j, k, d, ch, q2, len) {
+    d = 1; q2 = ""; len = length(all)
+    for (j = start; j <= len; j++) {
+      ch = substr(all, j, 1)
+      if (ch == msg) {
+        while (j <= len && substr(all, j, 1) != "\n") j++
+        continue
+      }
+      if (q2 == sq) { if (ch == sq) q2 = ""; continue }
+      if (ch == bs) { j++; continue }
+      # バッククォートの置換は、最初のエスケープされていないバッククォートで閉じる
+      if (closer == bt) { if (ch == bt) return j; continue }
+      if (ch == "$" && substr(all, j + 1, 1) == "(") {
+        k = subst_end(j + 2, ")")
+        if (k == 0) return 0
+        j = k
+        continue
+      }
+      if (ch == bt) {
+        k = subst_end(j + 1, bt)
+        if (k == 0) return 0
+        j = k
+        continue
+      }
+      if (q2 == dq) { if (ch == dq) q2 = ""; continue }
+      if (ch == sq || ch == dq) { q2 = ch; continue }
+      if (ch == "(") d++
+      else if (ch == ")") { d--; if (d == 0) return j }
+    }
+    return 0
   }
   { all = all $0 "\n" }
   END {
@@ -578,6 +623,20 @@ segments=$(printf '%s' "$cmd" | awk '
           q = ""
           continue
         }
+        # git を含まない置換は切り出さず、閉じまでを値の一部としてそのまま足す。
+        # 1 文字ずつ読むと、中の " を外側の引用の閉じとして読んでしまう（#393）
+        # 中にさらに置換（$( / バッククォート）がある形は、1 文字ずつ読む従来の経路に
+        # 任せる。丸ごと足すと、中の置換に書いた git が検査から消える
+        if ((c == "$" && substr(all, i + 1, 1) == "(") || c == bt) {
+          e = (c == bt) ? subst_end(i + 1, bt) : subst_end(i + 2, ")")
+          k = (c == bt) ? i + 1 : i + 2
+          inner = (e > 0) ? substr(all, k, e - k) : ""
+          if (e > 0 && index(inner, bt) == 0 && index(inner, "$(") == 0) {
+            seg = seg substr(all, i, e - i + 1)
+            i = e
+            continue
+          }
+        }
         seg = seg c
         if (c == dq) q = ""
         continue
@@ -618,7 +677,22 @@ segments=$(printf '%s' "$cmd" | awk '
           # 引数の位置なので対象外
           depth++
           at_cmd[depth] = at_cmd_pos(seg, "$")
-          emit(seg); seg = ""
+          restore_dq[depth] = 0; restore_arg[depth] = 0
+          # 引数の位置の置換（`git push $(git remote) production`）は、外側の
+          # コマンドをここで切らずに取っておき、閉じたあとに続きを繋ぐ。
+          # 切ると置換より後ろ（production）が git を含まない別のセグメントになり、
+          # 検査から落ちる（#393）。ダブルクォートの中の置換と同じ扱い
+          #
+          # 置換の値は、中で git を呼ぶなら __subst__（ダブルクォートの中の
+          # "$(git branch --show-current)" と同じ扱い）、呼ばないなら $ を残した
+          # $__subst__ にする。$ が残っていれば、push 先の検査が「判定できない宛先」
+          # として止める（`git push origin $(echo production)`。#237）
+          if (!at_cmd[depth] && seg ~ /\$$/) {
+            saved_seg[depth] = substr(seg, 1, length(seg) - 1)
+            restore_arg[depth] = 1
+            arg_value[depth] = subst_has_git(i + 1, ")") ? subst_value : "$" subst_value
+          } else emit(seg)
+          seg = ""
           emit(sub_open)
         } else {
           emit(seg); seg = ""
@@ -629,6 +703,9 @@ segments=$(printf '%s' "$cmd" | awk '
             if (restore_dq[depth]) {
               q = dq; seg = saved_seg[depth] subst_value; restore_dq[depth] = 0
             }
+            if (restore_arg[depth]) {
+              seg = saved_seg[depth] arg_value[depth]; restore_arg[depth] = 0
+            }
             depth--
           }
         }
@@ -638,11 +715,19 @@ segments=$(printf '%s' "$cmd" | awk '
       # `git push origin production` が前のコマンドの一部として埋もれる
       if (c == bt) {
         if (!bt_open) bt_at_cmd = at_cmd_pos(seg, "")
-        emit(seg); seg = ""
+        # 引数の位置の置換（`git push `git remote` production`）は外側を切らずに
+        # 取っておく。$( … ) の restore_arg と同じ理由（#393）
+        if (!bt_open && !bt_at_cmd) {
+          bt_saved_seg = seg; bt_arg = 1
+          bt_value = subst_has_git(i + 1, bt) ? subst_value : "$" subst_value
+        }
+        else emit(seg)
+        seg = ""
         emit(bt_open ? sub_close : sub_open)
         if (bt_open && bt_at_cmd) emit(subst_cmd_end)
         # ダブルクォートの中から始まったバッククォートなら、閉じたあとは引用の中へ戻る
         if (bt_open && bt_dq) { q = dq; seg = bt_saved_seg subst_value; bt_dq = 0 }
+        if (bt_open && bt_arg) { seg = bt_saved_seg bt_value; bt_arg = 0 }
         bt_open = 1 - bt_open
         continue
       }
@@ -1295,8 +1380,9 @@ cmd=$(printf '%s\n' "$segments" | {
     # ここを素通しすると after_git が `-…` になり、以降の判定が全て
     # `git[[:space:]]+(commit|push|…)` に一致せず**黙って通る**（fail-open）。
     # 判定できない形は通さない、に倒す（#354）
+    # 引数の位置の置換は、外側のセグメントに __subst__ として残る（#393）
     case $after_git in
-      ('' | '$'* | '`'*)
+      ('' | '$'* | '`'* | __subst__* | '"__subst__'*)
         printf '%s\n' "$MARK_UNDECIDABLE"
         continue
         ;;
@@ -1543,7 +1629,12 @@ cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_DIR" |
 commit_n_bundle=$(printf '%s\n' "$cmd" | grep -c "^$MARK_COMMIT_N$")
 # メッセージ本文の印はここまでで役目を終える。以降はメッセージの値そのものを
 # 見る判定（規約の検証・-F のパス）が続くので、印を落として素の本文へ戻す
-cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_COMMIT_N$" | tr -d '\002')
+cmd=$(printf '%s\n' "$cmd" | grep -v "^$MARK_COMMIT_N$")
+# 本文の印を残した版。下のトークン分割（cmd_flags）は本文の行を値として読み飛ばす
+# ために印を使う（#393）。印を落とすと、本文に書いた引用符や括弧で引用の入れ子が
+# ずれ、後続のコマンドが値として飲み込まれる
+cmd_msg_marked=$cmd
+cmd=$(printf '%s\n' "$cmd" | tr -d '\002')
 
 # 印だけが立っている（検査対象のコマンドが残っていない）場合も、下の判定へ進む。
 # ここで抜けると、判定不能・alias・間接実行の検出が黙って捨てられる
@@ -1555,14 +1646,65 @@ if [ -z "$cmd" ] &&
   exit 0
 fi
 
+# 引用の入れ子を追う awk の関数（qstep / qpop / qopen）。トークンへ分ける awk の
+# 先頭に連結して使う。呼び出し側の BEGIN で sq / dq / bs / bt を定義しておくこと。
+# 文脈 ctx は外側から順に並べた記号（S: シングルクォート、A: ANSI-C クォート、
+# D: ダブルクォート、P: $( … )、V: ${ … }、B: バッククォート）。
+# " の中の $( … ) に書いた引用符を、外側の引用の閉じとして数えない（#393）。
+# 数えると `-m "feat: $(echo "x")" && git push …` の後ろが -m の値として消える。
+# 正規化の 2 つの awk（normalize を持つもの）にも同じ関数の写しがあるので、直すときは揃えること
+QUOTE_AWK='
+  function qstep(c, nxt,   top) {
+    top = substr(ctx, length(ctx), 1)
+    if (top == "S") { if (c == sq) qpop(); return 0 }
+    if (top == "A") {
+      if (c == bs) return 1
+      if (c == sq) qpop()
+      return 0
+    }
+    if (c == bs) return 1
+    if (top == "D") {
+      if (c == dq) qpop()
+      else if (c == "$" && nxt == "(") { ctx = ctx "P"; return 1 }
+      else if (c == "$" && nxt == "{") { ctx = ctx "V"; return 1 }
+      else if (c == bt) ctx = ctx "B"
+      return 0
+    }
+    if (top == "V") {
+      if (c == "}") qpop()
+      else if (c == dq) ctx = ctx "D"
+      else if (c == "$" && nxt == "(") { ctx = ctx "P"; return 1 }
+      return 0
+    }
+    if (top == "P" && c == ")") { qpop(); return 0 }
+    if (top == "B" && c == bt) { qpop(); return 0 }
+    if (c == sq) ctx = ctx "S"
+    else if (c == dq) ctx = ctx "D"
+    else if (c == "(" && top == "P") ctx = ctx "P"
+    else if (c == "$" && nxt == sq) { ctx = ctx "A"; return 1 }
+    return 0
+  }
+  function qpop() { ctx = substr(ctx, 1, length(ctx) - 1) }
+  function qopen(c, nxt) {
+    if (c == sq) { ctx = "S"; return 0 }
+    if (c == dq) { ctx = "D"; return 0 }
+    if (c == "$" && nxt == sq) { ctx = "A"; return 1 }
+    return -1
+  }
+'
+
 # --- コミットメッセージの値を除いた「コマンドとして書かれたトークン」 --------
 # 迂回・push 先・ブランチ名の検出は、メッセージの中身を見てはいけない。
 # `-m 'docs: --no-verify を禁じた理由'` のような説明を書いただけで止まってしまう。
 # 複数行のメッセージ（と commit -m の heredoc）は本文がそのまま残るため、
 # 素の $cmd を見ていると本文の 1 行が git コマンドとして読まれる。
 # メッセージの値そのものを見る判定（規約の検証・-F のパス）は $cmd を使う
-cmd_flags=$(printf '%s\n' "$cmd" | awk '
-  BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
+cmd_flags=$(printf '%s\n' "$cmd_msg_marked" | awk "$QUOTE_AWK"'
+  BEGIN {
+    sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92)
+    bt = sprintf("%c", 96); msg = sprintf("%c", 2)
+  }
+
 
   # -m / --message（一意でない前方一致も含む。git が弾くかはここでは問わない）
   function is_message(t) {
@@ -1594,20 +1736,28 @@ cmd_flags=$(printf '%s\n' "$cmd" | awk '
     # クォート・バックスラッシュを保ったままトークンへ分割する。
     # 改行はトークンの区切りであると同時に、行の区切りとして覚えておく
     # （行をまたいで `git push` と `production` が繋がらないようにするため）
-    n = 0; q = ""; tok = ""; len = length(all)
+    n = 0; ctx = ""; tok = ""; len = length(all)
     for (i = 1; i <= len; i++) {
       c = substr(all, i, 1)
-      if (q == sq) { tok = tok c; if (c == sq) q = ""; continue }
-      if (q == dq) {
-        # \" は閉じクォートではない。見落とすと本物の閉じクォートが開きとして
-        # 読まれ、残りのコマンド全体が -m の値として消える
-        if (c == bs) { tok = tok c substr(all, i + 1, 1); i++; continue }
-        tok = tok c
-        if (c == dq) q = ""
+      nxt = substr(all, i + 1, 1)
+      # コミットメッセージの本文の行（前段が印を付けた行）は、行末まで値の一部。
+      # 引用の状態は変えない
+      if (c == msg) {
+        j = i + 1
+        while (j <= len && substr(all, j, 1) != "\n") { tok = tok substr(all, j, 1); j++ }
+        i = j - 1
         continue
       }
-      if (c == bs) { tok = tok c substr(all, i + 1, 1); i++; continue }
-      if (c == sq || c == dq) { q = c; tok = tok c; continue }
+      # 引用の中。\" は閉じクォートではない（qstep が読み飛ばす）。見落とすと
+      # 本物の閉じクォートが開きとして読まれ、残りのコマンド全体が -m の値として消える
+      if (ctx != "") {
+        tok = tok c
+        if (qstep(c, nxt)) { tok = tok nxt; i++ }
+        continue
+      }
+      if (c == bs) { tok = tok c nxt; i++; continue }
+      skip = qopen(c, nxt)
+      if (skip >= 0) { tok = tok c; if (skip) { tok = tok nxt; i++ }; continue }
       if (c == " " || c == "\t" || c == "\n") {
         if (tok != "") { T[++n] = tok; eol[n] = 0 }
         if (c == "\n" && n > 0) eol[n] = 1
@@ -1812,11 +1962,14 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
   # -m / --message の「値」を取り出して先頭行だけを見る。コマンド全体から type を
   # 探す形だと `git commit -m 'wip' -m 'feat: x'` のように、2 つ目に規約どおりの
   # メッセージを置くだけで通ってしまう（git が使うのは 1 つ目）。
-  # git は長いオプションを一意な前方一致で受けるため `--mes` のような略記も拾う
-  msg_raw=$(printf '%s\n' "$cmd" | awk '
+  # git は長いオプションを一意な前方一致で受けるため `--mes` のような略記も拾う。
+  # 1 コマンドに commit が複数あれば、commit ごとに 1 件ずつ出す（区切りは \004）。
+  # 1 個目だけを見ると `git commit -m "feat: x" && git commit -m "wip"` が通る（#393）
+  msg_raws=$(printf '%s\n' "$cmd" | awk "$QUOTE_AWK"'
     BEGIN {
       sq = sprintf("%c", 39); dq = sprintf("%c", 34)
       bs = sprintf("%c", 92); mark = sprintf("%c", 1)
+      bt = sprintf("%c", 96); rs = sprintf("%c", 4)
     }
 
     # tok が full の一意な前方一致か（other にも一致するなら git 自身が曖昧として弾く）
@@ -1846,23 +1999,25 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
     END {
       if (all !~ /git[ \t]+commit([ \t\n]|$)/) exit
 
-      # クォート・バックスラッシュを保ったままトークンへ分割する
-      n = 0; q = ""; tok = ""; len = length(all)
+      # クォート・バックスラッシュを保ったままトークンへ分割する。
+      # 引用の入れ子（" の中の $( … ) に書いた引用符）は QUOTE_AWK の qstep が追う。
+      # 引用の外の区切り（; & | 改行）は、次の commit を探し直す位置として覚える
+      n = 0; ctx = ""; tok = ""; len = length(all)
       for (i = 1; i <= len; i++) {
         c = substr(all, i, 1)
-        if (q == sq) { tok = tok c; if (c == sq) q = ""; continue }
-        if (q == dq) {
-          # \" は閉じクォートではない
-          if (c == bs) { tok = tok c substr(all, i + 1, 1); i++; continue }
+        nxt = substr(all, i + 1, 1)
+        if (ctx != "") {
           tok = tok c
-          if (c == dq) q = ""
+          if (qstep(c, nxt)) { tok = tok nxt; i++ }
           continue
         }
-        if (c == bs) { tok = tok c substr(all, i + 1, 1); i++; continue }
-        if (c == sq || c == dq) { q = c; tok = tok c; continue }
-        if (c == " " || c == "\t" || c == "\n") {
+        if (c == bs) { tok = tok c nxt; i++; continue }
+        skip = qopen(c, nxt)
+        if (skip >= 0) { tok = tok c; if (skip) { tok = tok nxt; i++ }; continue }
+        if (c == " " || c == "\t" || c == "\n" || c == ";" || c == "&" || c == "|") {
           if (tok != "") T[++n] = tok
           tok = ""
+          if (c != " " && c != "\t") brk[n] = 1
           continue
         }
         tok = tok c
@@ -1872,25 +2027,40 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
       seen = 0
       for (i = 1; i <= n; i++) {
         t = T[i]
-        if (!seen) { if (t == "commit") seen = 1; continue }
-        if (t == "--") break
+        if (!seen) {
+          if (t == "commit" && !brk[i]) seen = 1
+          continue
+        }
+        if (t == "--") { seen = 0; continue }
         if (t == "-m" || t == "--message" || isabbrev(t, "message", "")) {
-          printf "%s%s", mark, (i < n ? unq(T[i + 1]) : "")
-          exit
+          printf "%s%s%s", mark, (i < n ? unq(T[i + 1]) : ""), rs
+          seen = 0
+          i++
+          continue
         }
         e = index(t, "=")
         if (e > 1 && substr(t, 1, 1) == "-") {
           name = substr(t, 1, e - 1)
           if (name == "--message" || isabbrev(name, "message", "")) {
-            printf "%s%s", mark, unq(substr(t, e + 1))
-            exit
+            printf "%s%s%s", mark, unq(substr(t, e + 1)), rs
+            seen = 0
+            continue
           }
         }
+        # 区切りを越えたら、この commit のメッセージは無い（-F や --no-edit）
+        if (brk[i]) seen = 0
       }
     }
   ')
 
-  if [ -n "$msg_raw" ]; then
+  msg_rs=$(printf '\004')
+  msg_rest=$msg_raws
+  while [ -n "$msg_rest" ]; do
+    msg_raw=${msg_rest%%"$msg_rs"*}
+    msg_next=${msg_rest#*"$msg_rs"}
+    [ "$msg_next" = "$msg_rest" ] && msg_next=''
+    msg_rest=$msg_next
+    [ -n "$msg_raw" ] || continue
     msg_val=${msg_raw#?}
     case "$msg_val" in
       *'$'* | *'`'*)
@@ -1921,7 +2091,7 @@ if has '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)'; then
           grep -Eq "^($TYPES)(\([^)]+\))?!?: [^[:space:]]" || deny "$msg_ng"
         ;;
     esac
-  fi
+  done
 
   # -F / --file と -t / --template は **git commit のセグメントに書かれたものだけ**を見る。
   # コマンド全体から探すと、`git commit -m … && git grep -F TODO` の -F や

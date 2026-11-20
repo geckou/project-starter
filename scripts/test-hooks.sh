@@ -867,6 +867,76 @@ run 0 'branch -M（改名）は分岐元を持たないので従来どおり' \
   'git branch -M feat/existing feat/renamed' feat/existing
 
 echo
+echo '=== 引用の中の置換・heredoc の本文で後続のコマンドを見失わない（#393） ==='
+run 2 'ダブルクォートの中のバッククォートのあとの push' \
+  'echo "x `date`" && git push origin production' feat/existing
+run 2 'gh pr create の本文（heredoc）にバッククォートがあっても後続の push を見る' \
+  "gh pr create --title \"feat: x\" --body \"\$(cat <<'EOF'
+## Summary
+use \`foo\` here
+EOF
+)\" && git push origin production" feat/existing
+run 2 'commit -F- の heredoc の本文に引用符があっても次の行の push を見る' \
+  "git commit -F- <<'EOF'
+feat: it's \"x\"
+EOF
+git push origin production" feat/existing
+run 2 'メッセージの中の置換に引用符があっても後続の push を見る' \
+  'git commit -m "feat: $(echo "it'"'"'s")" && git push origin production' feat/existing
+run 2 'メッセージの中の置換に ) を含む引用があっても -n を見る' \
+  'git commit -m "feat: $(echo ")")" -n' feat/existing
+run 2 '引用なしの置換の後ろの production への push' \
+  'git push $(git remote) production' feat/existing
+run 2 '2 個目の commit の件名も検証する' \
+  'git commit -m "feat: x" && git commit -m "wip"' feat/existing
+run 0 "'…'\\''…' の形の規約どおりの件名" \
+  "git commit -m 'feat: it'\\''s'" feat/existing
+
+run 2 'gh pr create の本文（heredoc）に引用符や括弧があっても後続の push を見る' \
+  "gh pr create --title \"feat: x\" --body \"\$(cat <<'EOF'
+it's (a \"quoted) text
+EOF
+)\" && git push origin production" feat/existing
+run 0 'gh pr create の本文に書いた git push の例は検査しない' \
+  "gh pr create --title \"feat: x\" --body \"\$(cat <<'EOF'
+git push origin production
+EOF
+)\"" feat/existing
+run 2 '引用なしのバッククォートの後ろの production への push' \
+  'git push `git remote` production' feat/existing
+
+run 0 '2 個の commit がどちらも規約どおりなら通す' \
+  'git commit -m "feat: x" && git commit -m "fix: y"' feat/existing
+run 2 '1 個目が規約違反なら 2 個目が規約どおりでも止める' \
+  'git commit -m "wip"; git commit -m "feat: x"' feat/existing
+run 0 'メッセージを取らない commit のあとの commit は、その -m を見る' \
+  'git commit --amend --no-edit && git commit -m "feat: x"' feat/existing
+run 0 '2 つ目の -m（本文）の中の ; は区切りではない' \
+  "git commit -m 'feat: x' -m 'body; text'" feat/existing
+run 0 'メッセージの中の置換に引用符がある規約どおりの件名' \
+  'git commit -m "feat: $(echo "it'"'"'s")"' feat/existing
+
+run 2 '置換で書いた push 先は判定できないので止める（引用なし）' \
+  'git push origin $(echo production)' feat/existing
+run 2 '置換で書いた push 先は判定できないので止める（引用付き）' \
+  'git push origin "$(echo production)"' feat/existing
+run 2 '置換で書いた push 先は判定できないので止める（バッククォート）' \
+  'git push origin `echo production`' feat/existing
+run 2 '置換で書いた refspec の宛先も止める' \
+  'git push origin feat/existing:$(echo production)' feat/existing
+run 2 '"$( … )" の中のバッククォートに書いた git を見る' \
+  'echo "$(echo `git push origin production`)"' feat/existing
+run 2 '"$( … )" の中の "`…`" に書いた git を見る' \
+  'echo "$(echo "`git push origin production`")"' feat/existing
+run 2 '引用の中の文字列の <<EOF を heredoc の開始と読まない' \
+  'echo "$(date) <<EOF"
+git push origin production
+EOF' feat/existing
+
+run 0 '中で git を呼ぶ置換の push 先は、引用の有無によらず通す' \
+  'git push -u origin $(git branch --show-current)' feat/existing
+
+echo
 echo '=== リダイレクトは引数として読まない（#397） ==='
 run 0 '2>&1 を分岐元と読まない' 'git checkout -b feat/x 2>&1 | tail -3'
 run 0 '>/dev/null 2>&1 を分岐元と読まない' 'git checkout -b feat/x >/dev/null 2>&1'
