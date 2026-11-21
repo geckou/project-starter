@@ -237,11 +237,25 @@ unwrap_pass() {
     }
     {
       line = $0; out = ""; state = ""; n = length(line); i = 1
+      # ダブルクォートの中の $( … ) の中はコマンドなので、引用の外として読む。
+      # 読まないと `echo "$(sh -c "git push …")"` の sh -c が展開されない（#400）。
+      # sd は入れ子の深さ、pd[sd] はその置換の中で開いている括弧の数
+      sd = 0
       while (i <= n) {
         ch = substr(line, i, 1)
         # バックスラッシュは次の 1 文字を打ち消す（シングルクォートの中を除く）
         if (ch == bs && state != sq) {
           out = out ch substr(line, i + 1, 1); i += 2; continue
+        }
+        if (state == dq && ch == "$" && substr(line, i + 1, 1) == "(") {
+          out = out "$("; sd++; pd[sd] = 0; state = ""; i += 2; continue
+        }
+        if (state == "" && sd > 0) {
+          if (ch == "(") pd[sd]++
+          else if (ch == ")") {
+            if (pd[sd] > 0) pd[sd]--
+            else { sd--; state = dq; out = out ch; i++; continue }
+          }
         }
         if (state != "") { out = out ch; if (ch == state) state = ""; i++; continue }
         if (ch == sq || ch == dq) {
@@ -512,7 +526,7 @@ segments=$(printf '%s' "$cmd" | awk '
   # start から closer までの置換の中身に git の呼び出しがあるか。
   # ダブルクォートの中の置換を切り出すかどうかの判定に使う（切り出すのは
   # 中身が実際に git を実行する形のときだけ）
-  function subst_has_git(start, closer,   e, j, ch, body) {
+  function subst_has_git(start, closer,   e, j, ch, body, k, nl, ln, hd, mk) {
     e = subst_end(start, closer)
     if (e == 0) e = length(all) + 1
     body = ""
@@ -529,7 +543,26 @@ segments=$(printf '%s' "$cmd" | awk '
       }
       body = body ch
     }
-    return (body ~ /(^|[ \t;&|(`"])git[ \t]/ || body ~ ("(^|" sq ")git[ \t]")) ? 1 : 0
+    # heredoc の本文（`cat <<EOF` に渡すデータの行）は数えない。数えると
+    # `eval "$(cat <<EOF … EOF)"` の本文が置換の中身として切り出される
+    nl = split(body, ln, "\n"); body = ""; hd = ""
+    for (k = 1; k <= nl; k++) {
+      if (hd != "") { mk = ln[k]; sub(/^\t+/, "", mk); if (mk == hd) hd = ""; continue }
+      body = body ln[k] "\n"
+      if (match(ln[k], /<<-?[ \t]*[^ \t;&|()<>]+/) && substr(ln[k], RSTART + 2, 1) != "<") {
+        hd = substr(ln[k], RSTART, RLENGTH)
+        sub(/^<<-?[ \t]*/, "", hd)
+        # 外すのは引用符とバックスラッシュだけ（1 段目の heredoc_marker と同じ規則）
+        gsub(/[\\"]/, "", hd); gsub(sq, "", hd)
+        # 終端の行が実在するときだけ heredoc として読み飛ばす。1 段目が本文と終端を
+        # 消したあとの名残りや、引用の中・算術式の << で後ろを丸ごと落とさないため
+        for (j = k + 1; j <= nl; j++) { mk = ln[j]; sub(/^\t+/, "", mk); if (mk == hd) break }
+        if (j > nl) hd = ""
+      }
+    }
+    # git の直前に来うるもの: 区切り・空白・改行・引用符・バッククォート、
+    # パス（/usr/bin/git）、alias を外す \git（#400）
+    return (body ~ /(^|[ \t\n;&|(`"\/\\])git[ \t]/ || body ~ ("(^|" sq ")git[ \t]")) ? 1 : 0
   }
   # start から始まる置換（closer が ")" なら $( … )、バッククォートなら ` … `）の
   # 閉じの位置。閉じが無ければ 0。
