@@ -991,6 +991,27 @@ run 0 '全体のリリースの取り込みは確認を求めない' \
 refute 'permissionDecision' '全体のリリースは従来どおり素通し'
 
 echo
+echo '=== 引用の中の置換で、git の呼び方によらず中身を見る（#400） ==='
+run 2 '"$( … )" の中の改行のあとの git' \
+  'echo "$(echo hi
+git push origin production)"' feat/existing
+run 2 '"$( … )" の中の sh -c に書いた git' \
+  'echo "$(sh -c "git push origin production")"' feat/existing
+run 2 '"$( … )" の中のパス付きの git' \
+  'echo "$(/usr/bin/git push origin production)"' feat/existing
+run 2 '"$( … )" の中の \git' \
+  'echo "$(\git push origin production)"' feat/existing
+run 0 '"$( … )" の中の heredoc の本文に書いた git は数えない' \
+  "echo \"\$(cat <<'EOF'
+git push origin production
+EOF
+)\"" feat/existing
+run 0 '"$( … )" の中の git 以外のコマンドは従来どおり' \
+  'echo "$(date) $(echo "x (y)")" && git status' feat/existing
+run 0 '"$( … )" の中の sh -c に書いた git 以外のコマンド' \
+  'echo "$(sh -c "echo hi")"' feat/existing
+
+echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
 run 2 '許可リストに無いプレフィックス' 'git checkout -b feature/user-profile'
