@@ -227,6 +227,8 @@ unwrap_pass() {
       # （`sh -c '"'"'echo a # b'"'"'; git push origin production` の push）まで
       # 落としてしまう。コメントは引用の中で終わるので、その位置を伝える（#298）
       eoc = sprintf("%c", 3)
+      # 前段の awk がコミットメッセージの本文の行頭に付ける印
+      msg = sprintf("%c", 2)
     }
 
     # ANSI-C クォート（ドル記号 + 引用符）の中の空白のエスケープを元に戻す。
@@ -235,14 +237,26 @@ unwrap_pass() {
       gsub(/\\x20|\\040|\\t|\\n/, " ", text)
       return text
     }
-    {
-      line = $0; out = ""; state = ""; n = length(line); i = 1
+    { all = all $0 "\n" }
+
+    END {
+      # 引用と置換の状態は行をまたいで持ち越す（後段のセグメント分割と同じ読み方）。
+      # 行ごとに戻すと、`echo "$(echo a<改行>)" && sh -c '"'"'git push …'"'"'` の 2 行目の
+      # `)"` の " を新しい引用の開始と読み、後ろの sh -c が展開されない（#402）
+      line = substr(all, 1, length(all) - 1); out = ""; state = ""; n = length(line); i = 1
       # ダブルクォートの中の $( … ) の中はコマンドなので、引用の外として読む。
       # 読まないと `echo "$(sh -c "git push …")"` の sh -c が展開されない（#400）。
       # sd は入れ子の深さ、pd[sd] はその置換の中で開いている括弧の数
       sd = 0
       while (i <= n) {
         ch = substr(line, i, 1)
+        # 前段が印を付けたコミットメッセージの本文の行はデータ。行末まで素通しし、
+        # 引用の状態を変えない（本文の it'"'"'s などで状態がずれないように）
+        if (ch == msg && (i == 1 || substr(line, i - 1, 1) == "\n")) {
+          j = index(substr(line, i), "\n")
+          if (j == 0) { out = out substr(line, i); break }
+          out = out substr(line, i, j); i += j; continue
+        }
         # バックスラッシュは次の 1 文字を打ち消す（シングルクォートの中を除く）
         if (ch == bs && state != sq) {
           out = out ch substr(line, i + 1, 1); i += 2; continue
@@ -263,9 +277,12 @@ unwrap_pass() {
           # /bin/sh のようなパス付きの呼び出しも同じ扱いにする
           if (out ~ /(^|[[:space:];&|(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+\$?$/ ||
               out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
+            # 展開するのは同じ行で閉じる中身だけ（行ごとに読んでいた頃と同じ範囲）。
+            # 複数行にまたがる eval "$(cat <<EOF …)" は中身を読めないものとして
+            # 後段の「確認を求める」に任せる
             j = i + 1; inner = ""
-            while (j <= n && substr(line, j, 1) != ch) { inner = inner substr(line, j, 1); j++ }
-            if (j <= n) { out = out "( " decode(inner) " " eoc ")"; i = j + 1; continue }
+            while (j <= n && substr(line, j, 1) != ch && substr(line, j, 1) != "\n") { inner = inner substr(line, j, 1); j++ }
+            if (j <= n && substr(line, j, 1) == ch) { out = out "( " decode(inner) " " eoc ")"; i = j + 1; continue }
           }
           out = out ch; state = ch; i++; continue
         }

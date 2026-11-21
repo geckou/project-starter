@@ -1029,6 +1029,28 @@ run 2 '算術式の << は heredoc の開始ではない' \
   git push origin production)"' feat/existing
 
 echo
+echo '=== sh -c の展開で引用の状態を行をまたいで持ち越す（#402） ==='
+run 2 '前の行から続く "$( … )" の後ろの sh -c を展開する' \
+  'echo "$(echo a
+)" && sh -c '"'"'git push origin production'"'"'' feat/existing
+run 2 'gh pr create の本文の heredoc の後ろの sh -c を展開する' \
+  "gh pr create --title \"feat: x\" --body \"\$(cat <<'EOF'
+it's (a) \"q\"
+EOF
+)\" && sh -c 'git push origin production'" feat/existing
+run 2 '複数行の -m の後ろの sh -c を展開する' \
+  'git commit -m "feat: x
+
+body" && sh -c '"'"'git push origin production'"'"'' feat/existing
+run 0 'コミットメッセージの本文の引用符で状態をずらさない' \
+  "git commit -m \"\$(cat <<'EOF'
+feat: x
+
+it's a \"test\"
+EOF
+)\" && sh -c 'git status'" feat/existing
+
+echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
 run 2 '許可リストに無いプレフィックス' 'git checkout -b feature/user-profile'
