@@ -1050,6 +1050,36 @@ it's a \"test\"
 EOF
 )\" && sh -c 'git status'" feat/existing
 
+run 2 'コメントの中の引用符で、次の行の sh -c の展開をずらさない' \
+  "# don't push
+sh -c 'git push origin production'" feat/existing
+run 2 '行末のコメントの中の引用符で、次の行の eval の展開をずらさない' \
+  "cd sub  # it's the app
+eval 'git push origin production'" feat/existing
+run 2 'エスケープした空白の後ろの # はコメントではない' \
+  "echo a\\ #; sh -c 'git push origin production'" feat/existing
+run 2 '${ } の中の # はコメントではない' \
+  "echo \${x:- #}; sh -c 'git push origin production'" feat/existing
+run 2 'コミットメッセージの本文の引用符のあとの sh -c も展開する' \
+  "git commit -m \"\$(cat <<'EOF'
+feat: x
+
+it's a test
+EOF
+)\" && sh -c 'git push origin production'" feat/existing
+run 2 'commit -F - の本文の引用符のあとの sh -c も展開する' \
+  "git commit -F - <<'EOF'
+feat: x
+it's
+EOF
+sh -c 'git push origin production'" feat/existing
+
+run 2 'バッククォートの中の sh -c も展開する' \
+  "echo \`sh -c 'git push origin production'\`" feat/existing
+run 2 'バッククォートの中の引用符で、次の行の sh -c の展開をずらさない' \
+  "echo \`echo \"a\`
+sh -c 'git push origin production'" feat/existing
+
 echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
