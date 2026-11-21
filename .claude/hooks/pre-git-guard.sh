@@ -552,7 +552,12 @@ segments=$(printf '%s' "$cmd" | awk '
       if (match(ln[k], /<<-?[ \t]*[^ \t;&|()<>]+/) && substr(ln[k], RSTART + 2, 1) != "<") {
         hd = substr(ln[k], RSTART, RLENGTH)
         sub(/^<<-?[ \t]*/, "", hd)
-        gsub(/[^A-Za-z0-9_]/, "", hd)
+        # 外すのは引用符とバックスラッシュだけ（1 段目の heredoc_marker と同じ規則）
+        gsub(/[\\"]/, "", hd); gsub(sq, "", hd)
+        # 終端の行が実在するときだけ heredoc として読み飛ばす。1 段目が本文と終端を
+        # 消したあとの名残りや、引用の中・算術式の << で後ろを丸ごと落とさないため
+        for (j = k + 1; j <= nl; j++) { mk = ln[j]; sub(/^\t+/, "", mk); if (mk == hd) break }
+        if (j > nl) hd = ""
       }
     }
     # git の直前に来うるもの: 区切り・空白・改行・引用符・バッククォート、

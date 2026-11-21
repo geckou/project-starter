@@ -1011,6 +1011,23 @@ run 0 '"$( … )" の中の git 以外のコマンドは従来どおり' \
 run 0 '"$( … )" の中の sh -c に書いた git 以外のコマンド' \
   'echo "$(sh -c "echo hi")"' feat/existing
 
+run 2 '"$( … )" の中の heredoc の後ろの git は見る' \
+  "echo \"\$(cat <<'EOF'
+x
+EOF
+echo; git push origin production)\"" feat/existing
+run 2 '記号を含むマーカー（A-B）の heredoc の後ろの git は見る' \
+  "echo \"\$(cat <<'A-B'
+x
+A-B
+  git push origin production)\"" feat/existing
+run 2 '引用の中の << は heredoc の開始ではない' \
+  "echo \"\$(echo '<<x'
+  git push origin production)\"" feat/existing
+run 2 '算術式の << は heredoc の開始ではない' \
+  'echo "$(echo $((1<<2))
+  git push origin production)"' feat/existing
+
 echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
