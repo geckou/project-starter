@@ -306,8 +306,11 @@ unwrap_pass() {
         if (ch == sq || ch == dq) {
           # -lc / -cx のようにフラグを束ねた形、ANSI-C クォート形式、
           # /bin/sh のようなパス付きの呼び出しも同じ扱いにする
-          if (out ~ /(^|[[:space:];&|(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+\$?$/ ||
-              out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
+          # 照合するのは out の末尾だけ。out はコマンド全体に伸びるので、全体を
+          # 照合すると行の多いコマンドで処理時間が二乗で増える
+          tail_out = (length(out) > 200) ? substr(out, length(out) - 199) : out
+          if (tail_out ~ /(^|[[:space:];&|(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+\$?$/ ||
+              tail_out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
             # 展開するのは同じ行で閉じる中身だけ（行ごとに読んでいた頃と同じ範囲）。
             # 複数行にまたがる eval "$(cat <<EOF …)" は中身を読めないものとして
             # 後段の「確認を求める」に任せる（eval に限る。複数行の sh -c は展開されない）
