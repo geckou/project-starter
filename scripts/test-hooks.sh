@@ -1218,6 +1218,30 @@ run 0 'sh -c "cd $(git rev-parse --show-toplevel) && …" は置換が先頭で�
 run 0 'eval "$(ssh-agent -s)" は git を含まないので通す' \
   'eval "$(ssh-agent -s)"' feat/existing
 
+run 2 'sh -c "…" の中の $'"'"'…\'"'"'…'"'"' を閉じない引用と取り違えない' \
+  "bash -c \"echo \\\$'\\\\'' '#'; git push origin production\"" feat/existing
+run 0 'sh -c "…" の中の $'"'"'…\'"'"'…'"'"' と規約どおりのコミット' \
+  "bash -c \"echo \\\$'a\\\\'b'; git commit -m 'feat: add x'\"" feat/existing
+run 2 'sh -c "…" の中の置換のコメントの引用符で範囲を誤らない' \
+  "bash -c \"x=\$(echo a # it's
+)\"; git push origin production # ')\"" feat/existing
+run 0 '先頭の置換が git を含まなければ、中身の後ろの git は置換の出力の実行ではない' \
+  'sh -c "$(yarn bin)/eslint . && git diff --exit-code"' feat/existing
+run 0 '先頭の置換の直後が / ならパスの組み立て' \
+  'bash -c "$(git rev-parse --show-toplevel)/scripts/test-hooks.sh"' feat/existing
+run 0 'eval "$(ssh-agent -s) && git fetch" は通す' \
+  'eval "$(ssh-agent -s) && git fetch"' feat/existing
+
+run 2 '複数行の bash -c "…" の中で、引用の中の引用符を対の数えに入れない' \
+  "bash -c \"echo \\\"it's\\\"
+git push origin production
+x=\$(echo a # it's
+)\"
+echo ok" feat/existing
+run 2 '複数行の eval "…" の中の危険なコマンドは確認ではなく止める' \
+  'eval "echo a
+git push origin production"' feat/existing
+
 echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
