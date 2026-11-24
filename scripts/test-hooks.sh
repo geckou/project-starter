@@ -1081,6 +1081,118 @@ run 2 'バッククォートの中の引用符で、次の行の sh -c の展開
 sh -c 'git push origin production'" feat/existing
 
 echo
+echo '=== 引用の読みのずれで後続の sh -c を見失わない（#404） ==='
+run 2 '引用符なしの heredoc のメッセージ本文の引用符のあとの sh -c' \
+  "git commit -m \"\$(cat <<EOF
+feat: x
+it's
+EOF
+)\" && sh -c 'git push origin production'" feat/existing
+run 2 '引用符なしの heredoc の -F - 本文の引用符のあとの sh -c' \
+  "git commit -F - <<EOF
+feat: x
+it's
+EOF
+sh -c 'git push origin production'" feat/existing
+run 0 '引用符なしの heredoc の規約どおりのメッセージ' \
+  "git commit -m \"\$(cat <<EOF
+feat: x
+
+it's \"ok\" (really)
+EOF
+)\"" feat/existing
+run 2 '引用符なしの heredoc のメッセージでも件名を検証する' \
+  "git commit -m \"\$(cat <<EOF
+wip
+EOF
+)\"" feat/existing
+run 2 "\$'…' の中の \\' のあとの sh -c" \
+  "echo \$'it\\'s' && sh -c \"git push origin production\"" feat/existing
+run 0 "\$'…' の中の \\' を含む規約どおりの件名" \
+  "git commit -m \$'feat: it\\'s'" feat/existing
+run 2 ';# のコメントの中の引用符のあとの sh -c' \
+  "echo a;# it's
+sh -c \"git push origin production\"" feat/existing
+run 2 '(( )) を閉じたあとのコメントの中の引用符のあとの sh -c' \
+  "(( x = 1 )) # don't
+sh -c \"git push origin production\"" feat/existing
+run 2 'エスケープしたバックスラッシュのあとの空白に続くコメント' \
+  "echo a\\\\ # it's
+sh -c \"git push origin production\"" feat/existing
+run 2 '行継続の直後の行頭のコメント' \
+  "echo a \\
+# it's
+sh -c \"git push origin production\"" feat/existing
+run 0 '置換の閉じに続く # はコメントではない' \
+  'echo $(echo a)#x && git status' feat/existing
+run 2 '複数行の sh -c の中の git も見る（シングルクォート）' \
+  "sh -c 'echo a
+git push origin production'" feat/existing
+run 2 '複数行の sh -c の中の git も見る（ダブルクォート）' \
+  "bash -c \"git status
+git push origin production\"" feat/existing
+run 0 '複数行の sh -c の中の git 以外のコマンドは通す' \
+  "sh -c 'echo a
+echo b'" feat/existing
+
+run 2 '引用符なしの heredoc の本文で次の行へ続く置換の中の git を見る' \
+  'git commit -m "$(cat <<EOF
+feat: x
+$(
+git push origin production
+)
+EOF
+)"' feat/existing
+run 2 '引用符なしの heredoc の本文の行継続のあとの git を見る' \
+  'git commit -F - <<EOF
+feat: x
+$(git push \
+origin production)
+EOF' feat/existing
+run 2 "エスケープした \\\$' は ANSI-C クォートではない" \
+  "echo \\\$'a\\' && git push origin production #'" feat/existing
+run 2 "\$\$' の ' は ANSI-C クォートではない" \
+  "echo \$\$'a\\' && git push origin production #'" feat/existing
+run 2 '複数行の bash -c "…" の中の \" のあとの push を見る' \
+  'bash -c "echo a
+echo \"b\"" && git push origin production' feat/existing
+run 2 '複数行の bash -c "…" の中の対にならない引用符のあとの push を見る' \
+  "bash -c \"echo a
+echo it's\" && git push origin production" feat/existing
+run 0 'bash -c の中の heredoc のコミットメッセージ本文はコマンドとして読まない' \
+  "bash -c 'git commit -F - <<EOF
+feat: x
+
+git push origin production is forbidden
+EOF'" feat/existing
+
+run 2 '1 行の sh -c "…" はコメントの中の引用符があっても展開する' \
+  "sh -c \"git push origin production # it's\"" feat/existing
+run 2 '1 行の eval "…" はコメントの中の引用符があっても展開する' \
+  "eval \"git push origin production # don't\"" feat/existing
+run 2 'ANSI-C クォートの中のバッククォートは置換ではない' \
+  "echo \$'\`' && sh -c \"git push origin production\"" feat/existing
+run 2 "\$'…\\'…' と同じ行の heredoc の本文を見失わない" \
+  "echo \$'it\\'s' && cat <<EOF
+it's
+EOF
+git push origin production" feat/existing
+run 2 '文字列の中に書いた git commit -m $(cat <<EOF は heredoc の開始ではない' \
+  'echo "git commit -m \$(cat <<EOF"
+git push origin production
+EOF' feat/existing
+run 2 'コメントの中に書いた git commit -m "$(cat <<EOF は heredoc の開始ではない' \
+  'echo hi # git commit -m "$(cat <<EOF
+git push origin production
+EOF' feat/existing
+run 0 '<<- の heredoc のメッセージは先頭のタブを除いた件名で検証する' \
+  "git commit -m \"\$(cat <<-EOF
+	feat: x
+	it's
+	EOF
+)\"" feat/existing
+
+echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
 run 2 '許可リストに無いプレフィックス' 'git checkout -b feature/user-profile'

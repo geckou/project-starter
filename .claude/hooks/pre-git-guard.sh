@@ -38,6 +38,36 @@ $DOC" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",
 cmd=$(printf '%s' "$cmd" | awk '
   BEGIN { SQ = sprintf("%c", 39); DQ = sprintf("%c", 34); MSG = sprintf("%c", 2) }
 
+  # line の位置 i のシングルクォートが ANSI-C クォート（$'"'"'…'"'"'）を開くか。
+  # 直前の $ がエスケープされておらず、$$ の 2 文字目でもないこと（後段の ansi_open と同じ規則）
+  function ansi_at(line, i,   k, nb, bs) {
+    bs = sprintf("%c", 92)
+    if (i < 2 || substr(line, i - 1, 1) != "$") return 0
+    nb = 0; k = i - 2
+    while (k >= 1 && substr(line, k, 1) == bs) { nb++; k-- }
+    if (nb % 2 == 1) return 0
+    if (nb == 0 && i > 2 && substr(line, i - 2, 1) == "$") return 0
+    return 1
+  }
+
+  # line の位置 p の直前までを読んだときの引用の状態。""（引用の外）、SQ、DQ、
+  # "A"（ANSI-C クォート）、"#"（コメントの中）のいずれか。
+  # 文字列やコメントとして書いた `git commit -m $(cat <<EOF` を heredoc の開始と
+  # 取らないために使う（#404）
+  function quote_state_at(line, p,   i, ch, state, bs) {
+    bs = sprintf("%c", 92)
+    state = ""
+    for (i = 1; i < p; i++) {
+      ch = substr(line, i, 1)
+      if (ch == bs && state != SQ) { i++; continue }
+      if (state != "") { if (ch == state || (state == "A" && ch == SQ)) state = ""; continue }
+      if (ch == SQ) { state = ansi_at(line, i) ? "A" : SQ; continue }
+      if (ch == DQ) { state = DQ; continue }
+      if (ch == "#" && (i == 1 || substr(line, i - 1, 1) ~ /[ \t;&|(]/)) return "#"
+    }
+    return state
+  }
+
   # 行の中から heredoc の開始を探し、マーカー名を返す（無ければ空）。
   # クォートの中・コメントの中の << は開始ではない。ここを見分けないと、
   # `echo "see <<EOF"` の 1 行で以降のコマンドが丸ごと検査から落ちる
@@ -53,8 +83,8 @@ cmd=$(printf '%s' "$cmd" | awk '
       # 見落とすと `echo "see \" <<EOF"` の \" を閉じクォートと誤読し、
       # 引用の中の <<EOF を heredoc の開始として扱ってしまう
       if (ch == bs && state != SQ) { i++; continue }
-      if (state != "") { if (ch == state) state = ""; continue }
-      if (ch == SQ || ch == DQ) { state = ch; continue }
+      if (state != "") { if (ch == state || (state == "A" && ch == SQ)) state = ""; continue }
+      if (ch == SQ || ch == DQ) { state = (ch == SQ && ansi_at(line, i)) ? "A" : ch; continue }
       if (ch == "#" && (i == 1 || substr(line, i - 1, 1) ~ /[ \t]/)) return ""
       if (ch != "<" || substr(line, i + 1, 1) != "<") continue
       # <<<"x"（here-string）は heredoc ではない
@@ -95,8 +125,8 @@ cmd=$(printf '%s' "$cmd" | awk '
     for (i = 1; i <= n; i++) {
       ch = substr(line, i, 1)
       if (ch == bs && state != SQ) { i++; continue }
-      if (state != "") { if (ch == state) state = ""; continue }
-      if (ch == SQ || ch == DQ) { state = ch; continue }
+      if (state != "") { if (ch == state || (state == "A" && ch == SQ)) state = ""; continue }
+      if (ch == SQ || ch == DQ) { state = (ch == SQ && ansi_at(line, i)) ? "A" : ch; continue }
       if (ch == ";" || ch == "&" || ch == "|") { cut = i; continue }
       if (ch == "<" && substr(line, i + 1, 1) == "<")
         return substr(line, cut + 1, i - cut - 1)
@@ -117,6 +147,20 @@ cmd=$(printf '%s' "$cmd" | awk '
       l = lines[j]
       if (tabok) sub(/^\t+/, "", l)
       if (l == mark) return 1
+    }
+    return 0
+  }
+
+  # from から終端 mark の手前までの本文に、シェルが実行する形（$( / バッククォート /
+  # 行末の \ による行継続）があるか。あれば本文はデータとして扱えない
+  function body_executes(from, mark, tabok,   j, l, bs) {
+    bs = sprintf("%c", 92)
+    for (j = from; j <= total; j++) {
+      l = lines[j]
+      if (tabok) sub(/^\t+/, "", l)
+      if (l == mark) return 0
+      if (index(lines[j], "$(") > 0 || index(lines[j], "`") > 0 ||
+          substr(lines[j], length(lines[j]), 1) == bs) return 1
     }
     return 0
   }
@@ -170,7 +214,11 @@ cmd=$(printf '%s' "$cmd" | awk '
       # eval / source / . も本文をそのまま実行する（`eval "$(cat <<EOF …)"`）
       if (owner ~ /(^|[[:space:]|;&(])(eval|source|\.)([[:space:]]|$)/) continue
 
-      if (owner ~ /git[[:space:]]+commit/ &&
+      # git commit は引用の外・コメントの外に書かれたものだけを見る。
+      # `echo "git commit -m \$(cat <<EOF"` の次の行は実行される（#404）
+      commit_at = match(lines[i], /git[[:space:]]+commit/) ? RSTART : 0
+      if (owner ~ /git[[:space:]]+commit/ && commit_at > 0 &&
+          quote_state_at(lines[i], commit_at) == "" &&
           owner ~ /(^|[[:space:]])(-[A-Za-z]*[mF]|-[A-Za-z]*F-|--m[a-z]*|--fil[a-z]*)([[:space:]]|=|$)/) {
         # -F- は -F - を詰めて書いた形（#393）。外すと本文がコマンドとして読まれ、
         # 本文の引用符で後続の行（git push …）が引用の中に飲み込まれる
@@ -181,12 +229,21 @@ cmd=$(printf '%s' "$cmd" | awk '
         # -m "$(cat <<EOF …)" の << は二重引用符の中にあるが、置換の中なので
         # heredoc として効く。引用の中を飛ばす heredoc_marker では拾えないため、
         # 置換の開始から先を改めて見る
-        if (candidate == "" && index(lines[i], "$(") > 0)
-          candidate = heredoc_marker(substr(lines[i], index(lines[i], "$(") + 2))
-        if (candidate != "" && last_marker_quoted &&
-            has_terminator(i + 1, candidate, tab_ok)) {
+        # $( が引用の外か、ダブルクォートの中にあるときだけ（シングルクォートや
+        # コメントの中の $( は置換ではない）
+        sp = index(lines[i], "$(")
+        st = (sp > 0) ? quote_state_at(lines[i], sp) : "#"
+        if (candidate == "" && sp > 0 && (st == "" || st == DQ))
+          candidate = heredoc_marker(substr(lines[i], sp + 2))
+        # マーカーを引用しない本文も、シェルが実行する形（$( / バッククォート /
+        # 行継続）がどこにも無ければ、展開されるのは変数だけでデータと同じ。印を付けて
+        # メッセージとして扱う。付けないと本文の it'"'"'s を引用の開始と読み、後続の
+        # コマンド（&& sh -c …）を見失う（#404）。実行する形があれば、その行が
+        # 置換の続きかどうかを行単位では決められないので、従来どおり全行を素のまま残す
+        if (candidate != "" && has_terminator(i + 1, candidate, tab_ok) &&
+            (last_marker_quoted || !body_executes(i + 1, candidate, tab_ok))) {
           marker = candidate
-          marker_quoted = 1
+          marker_quoted = last_marker_quoted
           msg_body = 1
           in_body = 1
         }
@@ -201,8 +258,10 @@ cmd=$(printf '%s' "$cmd" | awk '
       # heredoc も本文はデータ。拾わないと本文の引用符・バッククォート・括弧を
       # コマンドの一部として読み、後続のコマンドを見失う（#393）
       # `$(` から `<<` までに ) や " があれば、その << は置換の外（引用の中の文字列）
-      if (candidate == "" && index(lines[i], "$(") > 0) {
-        after = substr(lines[i], index(lines[i], "$(") + 2)
+      sp = index(lines[i], "$(")
+      st = (sp > 0) ? quote_state_at(lines[i], sp) : "#"
+      if (candidate == "" && sp > 0 && (st == "" || st == DQ)) {
+        after = substr(lines[i], sp + 2)
         if (index(after, "<<") > 0 &&
             substr(after, 1, index(after, "<<") - 1) !~ /[)"]/)
           candidate = heredoc_marker(after)
@@ -233,12 +292,44 @@ unwrap_pass() {
       bt = sprintf("%c", 96)
     }
 
-    # 位置 pos と同じ行の、pos より前に (( があるか。算術式の中の # は基数の指定
-    # （`(( 16#ff ))`）で、コメントではない（後段のセグメント分割の in_arith と同じ）
-    function in_arith(text, pos,    k) {
+    # 位置 pos と同じ行で、pos の時点で (( が開いているか。算術式の中の # は基数の
+    # 指定（`(( 16#ff ))`）で、コメントではない。閉じた (( )) の後ろの # はコメント
+    # （後段のセグメント分割の in_arith と同じ）
+    function in_arith(text, pos,    k, l, o, c) {
       k = pos - 1
       while (k >= 1 && substr(text, k, 1) != "\n") k--
-      return index(substr(text, k + 1, pos - k - 1), "((") > 0
+      l = substr(text, k + 1, pos - k - 1)
+      o = gsub(/\(\(/, "", l); c = gsub(/\)\)/, "", l)
+      return o > c
+    }
+
+    # text の位置 i の # が語の先頭に来ているか（= コメントの開始になりうるか）。
+    # 直前が空白・改行・区切り（; & | (）で、それがエスケープされていないこと。
+    # 行継続（\ + 改行）の直後は、継続の手前が語の区切りかどうかで決まる
+    # （`a \<改行># x` はコメント、`a\<改行>#x` は a#x という 1 語）。
+    # バックスラッシュは数えて偶奇で見る（`a\\ #` の空白はエスケープされていない）
+    function hash_at_word_start(text, i,    p, k, nb) {
+      if (i == 1) return 1
+      p = substr(text, i - 1, 1)
+      nb = 0; k = i - 2
+      while (k >= 1 && substr(text, k, 1) == bs) { nb++; k-- }
+      if (p == "\n" && nb % 2 == 1)
+        return (k < 1 || substr(text, k, 1) ~ /[ \t\n;&|(]/)
+      if (p !~ /[ \t\n;&|(]/) return 0
+      return (nb % 2 == 0)
+    }
+
+    # 直前までの文字列 t の末尾の $ が、次のシングルクォートと組んで ANSI-C クォート
+    # （$'"'"'…'"'"'）を開くか。$ がエスケープされている（\$'"'"'）とき、$$（PID）の 2 文字目の
+    # とき、$ が前の $ に続くときは開かない（普通のシングルクォート）
+    function ansi_open(t,    k, nb) {
+      k = length(t)
+      if (substr(t, k, 1) != "$") return 0
+      nb = 0
+      while (k - 1 - nb >= 1 && substr(t, k - 1 - nb, 1) == bs) nb++
+      if (nb % 2 == 1) return 0
+      if (nb == 0 && k > 1 && substr(t, k - 1, 1) == "$") return 0
+      return 1
     }
 
     # ANSI-C クォート（ドル記号 + 引用符）の中の空白のエスケープを元に戻す。
@@ -276,7 +367,7 @@ unwrap_pass() {
         # 閉じで入る前の状態へ戻す。中の引用符（`echo "a`）を持ち越すと、状態を
         # 行をまたいで持ち越す分、次の行の sh -c が展開されなくなる
         if (btd && ch == bt) { state = bt_state; btd = 0; out = out ch; i++; continue }
-        if (!btd && ch == bt && state != sq) { bt_state = state; btd = 1; state = ""; out = out ch; i++; continue }
+        if (!btd && ch == bt && state != sq && state != "A") { bt_state = state; btd = 1; state = ""; out = out ch; i++; continue }
         if (state == dq && ch == "$" && substr(line, i + 1, 1) == "(") {
           out = out "$("; sd++; pd[sd] = 0; state = ""; i += 2; continue
         }
@@ -287,7 +378,14 @@ unwrap_pass() {
             else { sd--; state = dq; out = out ch; i++; continue }
           }
         }
-        if (state != "") { out = out ch; if (ch == state) state = ""; i++; continue }
+        # A は ANSI-C クォート（$'"'"'…'"'"'）。中の \'"'"' は閉じではない（上のバックスラッシュの
+        # 分岐で読み飛ばす）。シングルクォートとして読むと、`$'"'"'it\'"'"'s'"'"'` の閉じを
+        # 開きと読み、後ろの sh -c が展開されない（#404）
+        if (state != "") {
+          out = out ch
+          if (ch == state || (state == "A" && ch == sq)) state = ""
+          i++; continue
+        }
         # ${ … } の中の # はコメントではない（`${x:- #}`）。開いている数を数える
         if (ch == "$" && substr(line, i + 1, 1) == "{") { pb++; out = out "${"; i += 2; continue }
         if (ch == "}" && pb > 0) pb--
@@ -296,9 +394,7 @@ unwrap_pass() {
         # 開始と読み、次の行の sh -c が展開されない（#402）。
         # 判定は後段のセグメント分割（# の分岐）と揃える: 直前が空白か改行で、
         # その空白がエスケープされておらず、${ } と (( )) の中ではない
-        if (ch == "#" && pb == 0 &&
-            (i == 1 || (substr(line, i - 1, 1) ~ /[ \t\n]/ && substr(line, i - 2, 1) != bs)) &&
-            !in_arith(line, i)) {
+        if (ch == "#" && pb == 0 && hash_at_word_start(line, i) && !in_arith(line, i)) {
           j = i
           while (j <= n && substr(line, j, 1) != "\n" && substr(line, j, 1) != eoc) j++
           out = out substr(line, i, j - i); i = j; continue
@@ -309,15 +405,40 @@ unwrap_pass() {
           # 照合するのは out の末尾だけ。out はコマンド全体に伸びるので、全体を
           # 照合すると行の多いコマンドで処理時間が二乗で増える
           tail_out = (length(out) > 200) ? substr(out, length(out) - 199) : out
-          if (tail_out ~ /(^|[[:space:];&|(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+\$?$/ ||
-              tail_out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
-            # 展開するのは同じ行で閉じる中身だけ（行ごとに読んでいた頃と同じ範囲）。
-            # 複数行にまたがる eval "$(cat <<EOF …)" は中身を読めないものとして
-            # 後段の「確認を求める」に任せる（eval に限る。複数行の sh -c は展開されない）
+          is_shell = (tail_out ~ /(^|[[:space:];&|(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+\$?$/)
+          if (is_shell || tail_out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
+            # sh -c の中身は複数行でもそのまま展開する（中の各行がコマンドとして
+            # 実行される。#404）。eval は同じ行で閉じる中身だけを展開し、複数行に
+            # またがる eval "$(cat <<EOF …)" は中身を読めないものとして後段の
+            # 「確認を求める」に任せる
+            # ダブルクォートの中身は \ の次の 1 文字を読み飛ばし、\" \\ \$ \` は
+            # 戻してから展開する（シェルが中身を渡すときと同じ）。\" を閉じと読むと、
+            # 後ろの引用がずれて後続のコマンドを見失う
             j = i + 1; inner = ""
-            while (j <= n && substr(line, j, 1) != ch && substr(line, j, 1) != "\n") { inner = inner substr(line, j, 1); j++ }
-            if (j <= n && substr(line, j, 1) == ch) { out = out "( " decode(inner) " " eoc ")"; i = j + 1; continue }
+            while (j <= n && substr(line, j, 1) != ch && (is_shell || substr(line, j, 1) != "\n")) {
+              c2 = substr(line, j, 1)
+              if (ch == dq && c2 == bs && j < n) {
+                c3 = substr(line, j + 1, 1)
+                inner = inner ((c3 == dq || c3 == bs || c3 == "$" || c3 == bt) ? c3 : c2 c3)
+                j += 2; continue
+              }
+              inner = inner c2; j++
+            }
+            # 展開しない（従来どおり引用として読む）もの:
+            #   - 閉じが無い
+            #   - 複数行のダブルクォートの中身の引用符が対になっていない（展開すると
+            #     後ろの行の引用がずれる。1 行の中身は従来どおり展開する）
+            #   - 複数行の中身に heredoc がある（本文はメッセージ扱いの前段を通って
+            #     いないので、コミットメッセージの本文までコマンドとして読んでしまう）
+            nq = gsub(sq, sq, inner) + 0; nd = gsub(dq, dq, inner) + 0
+            if (j <= n && substr(line, j, 1) == ch &&
+                (ch == sq || index(inner, "\n") == 0 || (nq % 2 == 0 && nd % 2 == 0)) &&
+                !(index(inner, "\n") > 0 && index(inner, "<<") > 0)) {
+              out = out "( " decode(inner) " " eoc ")"; i = j + 1; continue
+            }
           }
+          # $ の直後のシングルクォートは ANSI-C クォート
+          if (ch == sq && ansi_open(out)) { out = out ch; state = "A"; i++; continue }
           out = out ch; state = ch; i++; continue
         }
         out = out ch; i++
@@ -562,14 +683,45 @@ segments=$(printf '%s' "$cmd" | awk '
       }
       return d > 0
     }
-    # 位置 pos と同じ行の、pos より前に (( があるか。算術式の中の # は基数の指定
-    # （`(( 16#ff ))` / `(( 1 #2 ))`）で、コメントではない
-    function in_arith(pos,    k, line) {
+    # 位置 pos と同じ行で、pos の時点で (( が開いているか。算術式の中の # は基数の
+    # 指定（`(( 16#ff ))` / `(( 1 #2 ))`）で、コメントではない。閉じた (( )) の
+    # 後ろの # はコメント（`(( x = 1 )) # …`。#404）
+    function in_arith(pos,    k, line, o, c) {
       k = pos - 1
       while (k >= 1 && substr(all, k, 1) != "\n") k--
       line = substr(all, k + 1, pos - k - 1)
-      return index(line, "((") > 0
+      o = gsub(/\(\(/, "", line); c = gsub(/\)\)/, "", line)
+      return o > c
     }
+    # text の位置 i の # が語の先頭に来ているか（= コメントの開始になりうるか）。
+    # 直前が空白・改行・区切り（; & | (）で、それがエスケープされていないこと。
+    # 行継続（\ + 改行）の直後は、継続の手前が語の区切りかどうかで決まる
+    # （`a \<改行># x` はコメント、`a\<改行>#x` は a#x という 1 語）。
+    # バックスラッシュは数えて偶奇で見る（`a\\ #` の空白はエスケープされていない）
+    function hash_at_word_start(text, i,    p, k, nb) {
+      if (i == 1) return 1
+      p = substr(text, i - 1, 1)
+      nb = 0; k = i - 2
+      while (k >= 1 && substr(text, k, 1) == bs) { nb++; k-- }
+      if (p == "\n" && nb % 2 == 1)
+        return (k < 1 || substr(text, k, 1) ~ /[ \t\n;&|(]/)
+      if (p !~ /[ \t\n;&|(]/) return 0
+      return (nb % 2 == 0)
+    }
+
+    # 直前までの文字列 t の末尾の $ が、次のシングルクォートと組んで ANSI-C クォート
+    # （$'"'"'…'"'"'）を開くか。$ がエスケープされている（\$'"'"'）とき、$$（PID）の 2 文字目の
+    # とき、$ が前の $ に続くときは開かない（普通のシングルクォート）
+    function ansi_open(t,    k, nb) {
+      k = length(t)
+      if (substr(t, k, 1) != "$") return 0
+      nb = 0
+      while (k - 1 - nb >= 1 && substr(t, k - 1 - nb, 1) == bs) nb++
+      if (nb % 2 == 1) return 0
+      if (nb == 0 && k > 1 && substr(t, k - 1, 1) == "$") return 0
+      return 1
+    }
+
   # 引用の中から切り出した置換の位置に置く語。値は実行するまで分からないので、
   # フラグにも有効なブランチ名にも見えない形にする
   BEGIN { subst_value = "__subst__" }
@@ -670,6 +822,13 @@ segments=$(printf '%s' "$cmd" | awk '
       # 展開した中身の終わりの印は、コメントの終端としてだけ使う（下の # の分岐）
       if (c == eoc) continue
       if (q == sq) { seg = seg c; if (c == sq) q = ""; continue }
+      # ANSI-C クォート（$'"'"'…'"'"'）。中の \'"'"' は閉じではない（#404）
+      if (q == "A") {
+        seg = seg c
+        if (c == bs) { seg = seg substr(all, i + 1, 1); i++ }
+        else if (c == sq) q = ""
+        continue
+      }
       if (q == dq) {
         if (c == bs) { if (cont(i)) { i++; continue }
                        seg = seg c substr(all, i + 1, 1); i++; continue }
@@ -727,7 +886,11 @@ segments=$(printf '%s' "$cmd" | awk '
       }
       if (c == bs) { if (cont(i)) { i++; continue }
                      seg = seg c substr(all, i + 1, 1); i++; continue }
-      if (c == sq || c == dq) { q = c; seg = seg c; continue }
+      if (c == sq || c == dq) {
+        q = (c == sq && ansi_open(seg)) ? "A" : c
+        seg = seg c
+        continue
+      }
       # 引用の外で語の先頭に来た # から行末まではコメント。落とさないと、コメント中の
       # 語が refspec やフラグとして読まれる（`git push origin feat/x # not to production`
       # が production への push に見える。#298）。語の途中の #（`fix#12`）と引用の中の #
@@ -742,9 +905,9 @@ segments=$(printf '%s' "$cmd" | awk '
       #   - ${ … } の中（`${x:= #}; …`）
       #   - (( … )) の中（`(( 1 #2 )); …`）
       # 判定に迷う形はコメント扱いしない（検査する側へ倒す）
-      if (c == "#" && (i == 1 || (substr(all, i - 1, 1) ~ /[ \t\n]/ &&
-                                  substr(all, i - 2, 1) != bs && !in_param(seg) &&
-                                  !in_arith(i)))) {
+      # 語の先頭の判定は hash_at_word_start（unwrap_pass と同じ）。区切り（;#）の直後、
+      # 行継続の直後の行頭、閉じた (( )) の後ろもコメントの開始になる（#404）
+      if (c == "#" && hash_at_word_start(all, i) && !in_param(seg) && !in_arith(i)) {
         j = i
         while (j <= n) {
           ch = substr(all, j, 1)
