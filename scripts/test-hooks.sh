@@ -1205,6 +1205,19 @@ run 2 '1 行の sh -c "…" の中の $( … ) の引用符と同じ中身の gi
 run 0 'sh -c "…" の中の $( … ) に引用符がある git 以外のコマンド' \
   "sh -c \"echo \$(echo \"it's\")\"" feat/existing
 
+run 2 'bash -c "…" の中のバッククォートの \" は戻してから読む' \
+  "bash -c \"echo \`echo \\\"'\\\"\`\";git push origin production" feat/existing
+run 2 'sh -c "…" の中のバッククォートの \"it'"'"'s\" のあとの sh -c' \
+  "sh -c \"x=\`echo \\\"it's\\\"\`\" ; sh -c 'git push origin production'" feat/existing
+run 2 'eval "$( … "git …")" は置換の出力を実行するので止める' \
+  'eval "$(echo "git push origin production")"' feat/existing
+run 2 'sh -c "$( … "git …")" は置換の出力を実行するので止める' \
+  'sh -c "$(printf '"'"'%s'"'"' "git push origin production")"' feat/existing
+run 0 'sh -c "cd $(git rev-parse --show-toplevel) && …" は置換が先頭ではないので通す' \
+  'sh -c "cd $(git rev-parse --show-toplevel) && yarn test"' feat/existing
+run 0 'eval "$(ssh-agent -s)" は git を含まないので通す' \
+  'eval "$(ssh-agent -s)"' feat/existing
+
 echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'

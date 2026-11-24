@@ -290,6 +290,9 @@ unwrap_pass() {
       # 付ける印。後段のセグメント分割と cmd_flags も同じ印を使う
       msg = sprintf("%c", 2)
       bt = sprintf("%c", 96)
+      # 置換の出力をコマンドとして実行する形の置き換え先（後段の after_git が
+      # __subst__ を判定不能として扱う）
+      subst_value_u = "__subst__"
     }
 
     # 位置 pos と同じ行で、pos の時点で (( が開いているか。算術式の中の # は基数の
@@ -351,6 +354,24 @@ unwrap_pass() {
       }
       return 0
     }
+    # text の引用（シングル・ダブル）が閉じているか。バックスラッシュのエスケープと、
+    # 語の先頭の # から行末までのコメントを読み飛ばす。sh -c の中身がシェルとして
+    # 構文上閉じているかの判定に使う
+    function quotes_closed(text,    j, c, q2, len) {
+      q2 = ""; len = length(text)
+      for (j = 1; j <= len; j++) {
+        c = substr(text, j, 1)
+        if (q2 == sq) { if (c == sq) q2 = ""; continue }
+        if (c == bs) { j++; continue }
+        if (q2 == dq) { if (c == dq) q2 = ""; continue }
+        if (c == sq || c == dq) { q2 = c; continue }
+        if (c == "#" && (j == 1 || substr(text, j - 1, 1) ~ /[ \t\n;&|(]/)) {
+          while (j <= len && substr(text, j, 1) != "\n") j++
+        }
+      }
+      return q2 == ""
+    }
+
     # text の位置 start から始まるバッククォートの置換の閉じの位置（無ければ 0）
     function bt_end(text, start,    j, c) {
       for (j = start; j <= length(text); j++) {
@@ -452,7 +473,14 @@ unwrap_pass() {
               # 「対になっているか」の数えから外す（bare に入れない）
               if (ch == dq && ((c2 == "$" && substr(line, j + 1, 1) == "(") || c2 == bt)) {
                 e = (c2 == bt) ? bt_end(line, j + 1) : paren_end(line, j + 2)
-                if (e > 0) { inner = inner substr(line, j, e - j + 1); j = e + 1; continue }
+                # ダブルクォートの中のバッククォートでは、シェルは \" を " に戻してから
+                # 実行する（$( … ) の中は戻さない）
+                # eval は同じ行で閉じる中身だけを展開する（複数行の置換は丸ごと足さない）
+                if (e > 0 && (is_shell || index(substr(line, j, e - j + 1), "\n") == 0)) {
+                  span = substr(line, j, e - j + 1)
+                  if (c2 == bt) gsub(/\\"/, dq, span)
+                  inner = inner span; j = e + 1; continue
+                }
               }
               if (ch == dq && c2 == bs && j < n) {
                 c3 = substr(line, j + 1, 1)
@@ -470,6 +498,23 @@ unwrap_pass() {
             #     いないので、コミットメッセージの本文までコマンドとして読んでしまう）
             if (ch == sq) bare = inner
             nq = gsub(sq, sq, bare) + 0; nd = gsub(dq, dq, bare) + 0
+            # 中身の先頭（コマンドの位置）が置換で、その中に git の語がある形
+            # （eval "$(echo "git push …")"）は、置換の出力をコマンドとして実行する。
+            # 何を実行するのか検査できないので、git のサブコマンドが置換で書かれた形として
+            # 扱う（後段が判定不能として止める）
+            lead = inner; sub(/^[ \t\n]+/, "", lead)
+            if (j <= n && substr(line, j, 1) == ch &&
+                (substr(lead, 1, 2) == "$(" || substr(lead, 1, 1) == bt) &&
+                inner ~ /(^|[^A-Za-z0-9_.\/-])git([^A-Za-z0-9_-]|$)/) {
+              out = out "( git " subst_value_u " " eoc ")"; i = j + 1; continue
+            }
+            # 1 行の中身の引用が閉じていない（`bash -c "echo it'"'"'s"`）なら、中の sh は構文
+            # エラーで何も実行しない。それでも中身はコマンドとして検査に残しつつ、引用符を
+            # 外して展開する。そのまま展開すると、閉じない引用が後ろのコマンド
+            # （; sh -c …）まで飲み込む（#406）
+            if (ch == dq && index(inner, "\n") == 0 && !quotes_closed(bare)) {
+              gsub(sq, " ", inner); gsub(dq, " ", inner)
+            }
             if (j <= n && substr(line, j, 1) == ch &&
                 (ch == sq || index(inner, "\n") == 0 || (nq % 2 == 0 && nd % 2 == 0)) &&
                 !(index(inner, "\n") > 0 && index(inner, "<<") > 0)) {
