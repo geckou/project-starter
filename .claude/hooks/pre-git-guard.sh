@@ -227,6 +227,18 @@ unwrap_pass() {
       # （`sh -c '"'"'echo a # b'"'"'; git push origin production` の push）まで
       # 落としてしまう。コメントは引用の中で終わるので、その位置を伝える（#298）
       eoc = sprintf("%c", 3)
+      # 前段の awk（heredoc の本文を扱うもの）がコミットメッセージの本文の行頭に
+      # 付ける印。後段のセグメント分割と cmd_flags も同じ印を使う
+      msg = sprintf("%c", 2)
+      bt = sprintf("%c", 96)
+    }
+
+    # 位置 pos と同じ行の、pos より前に (( があるか。算術式の中の # は基数の指定
+    # （`(( 16#ff ))`）で、コメントではない（後段のセグメント分割の in_arith と同じ）
+    function in_arith(text, pos,    k) {
+      k = pos - 1
+      while (k >= 1 && substr(text, k, 1) != "\n") k--
+      return index(substr(text, k + 1, pos - k - 1), "((") > 0
     }
 
     # ANSI-C クォート（ドル記号 + 引用符）の中の空白のエスケープを元に戻す。
@@ -235,18 +247,36 @@ unwrap_pass() {
       gsub(/\\x20|\\040|\\t|\\n/, " ", text)
       return text
     }
-    {
-      line = $0; out = ""; state = ""; n = length(line); i = 1
+    { all = all $0 "\n" }
+
+    END {
+      # 引用と置換の状態は行をまたいで持ち越す（後段のセグメント分割と同じ読み方）。
+      # 行ごとに戻すと、`echo "$(echo a<改行>)" && sh -c '"'"'git push …'"'"'` の 2 行目の
+      # `)"` の " を新しい引用の開始と読み、後ろの sh -c が展開されない（#402）
+      line = substr(all, 1, length(all) - 1); out = ""; state = ""; n = length(line); i = 1
       # ダブルクォートの中の $( … ) の中はコマンドなので、引用の外として読む。
       # 読まないと `echo "$(sh -c "git push …")"` の sh -c が展開されない（#400）。
       # sd は入れ子の深さ、pd[sd] はその置換の中で開いている括弧の数
-      sd = 0
+      sd = 0; pb = 0; btd = 0
       while (i <= n) {
         ch = substr(line, i, 1)
+        # 前段が印を付けたコミットメッセージの本文の行はデータ。行末まで素通しし、
+        # 引用の状態を変えない（本文の it'"'"'s などで状態がずれないように）
+        if (ch == msg && (i == 1 || substr(line, i - 1, 1) == "\n")) {
+          j = index(substr(line, i), "\n")
+          if (j == 0) { out = out substr(line, i); break }
+          out = out substr(line, i, j); i += j; continue
+        }
         # バックスラッシュは次の 1 文字を打ち消す（シングルクォートの中を除く）
         if (ch == bs && state != sq) {
           out = out ch substr(line, i + 1, 1); i += 2; continue
         }
+        # バッククォートの置換。中はコマンドとして読み（中の sh -c も展開する）、
+        # 閉じは中の引用の状態によらず次のバッククォート（シェルと同じ）。
+        # 閉じで入る前の状態へ戻す。中の引用符（`echo "a`）を持ち越すと、状態を
+        # 行をまたいで持ち越す分、次の行の sh -c が展開されなくなる
+        if (btd && ch == bt) { state = bt_state; btd = 0; out = out ch; i++; continue }
+        if (!btd && ch == bt && state != sq) { bt_state = state; btd = 1; state = ""; out = out ch; i++; continue }
         if (state == dq && ch == "$" && substr(line, i + 1, 1) == "(") {
           out = out "$("; sd++; pd[sd] = 0; state = ""; i += 2; continue
         }
@@ -258,14 +288,35 @@ unwrap_pass() {
           }
         }
         if (state != "") { out = out ch; if (ch == state) state = ""; i++; continue }
+        # ${ … } の中の # はコメントではない（`${x:- #}`）。開いている数を数える
+        if (ch == "$" && substr(line, i + 1, 1) == "{") { pb++; out = out "${"; i += 2; continue }
+        if (ch == "}" && pb > 0) pb--
+        # 引用の外で語の先頭に来た # から行末まではコメント。状態を変えずに素通しする。
+        # 状態を行をまたいで持ち越すので、読まないと `# don'"'"'t push` の '"'"' を引用の
+        # 開始と読み、次の行の sh -c が展開されない（#402）。
+        # 判定は後段のセグメント分割（# の分岐）と揃える: 直前が空白か改行で、
+        # その空白がエスケープされておらず、${ } と (( )) の中ではない
+        if (ch == "#" && pb == 0 &&
+            (i == 1 || (substr(line, i - 1, 1) ~ /[ \t\n]/ && substr(line, i - 2, 1) != bs)) &&
+            !in_arith(line, i)) {
+          j = i
+          while (j <= n && substr(line, j, 1) != "\n" && substr(line, j, 1) != eoc) j++
+          out = out substr(line, i, j - i); i = j; continue
+        }
         if (ch == sq || ch == dq) {
           # -lc / -cx のようにフラグを束ねた形、ANSI-C クォート形式、
           # /bin/sh のようなパス付きの呼び出しも同じ扱いにする
-          if (out ~ /(^|[[:space:];&|(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+\$?$/ ||
-              out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
+          # 照合するのは out の末尾だけ。out はコマンド全体に伸びるので、全体を
+          # 照合すると行の多いコマンドで処理時間が二乗で増える
+          tail_out = (length(out) > 200) ? substr(out, length(out) - 199) : out
+          if (tail_out ~ /(^|[[:space:];&|(])[^[:space:];&|(]*(sh|bash|zsh|dash|ksh)[[:space:]]+-[A-Za-z]*c[A-Za-z]*[[:space:]]+\$?$/ ||
+              tail_out ~ /(^|[[:space:];&|(])eval[[:space:]]+\$?$/) {
+            # 展開するのは同じ行で閉じる中身だけ（行ごとに読んでいた頃と同じ範囲）。
+            # 複数行にまたがる eval "$(cat <<EOF …)" は中身を読めないものとして
+            # 後段の「確認を求める」に任せる（eval に限る。複数行の sh -c は展開されない）
             j = i + 1; inner = ""
-            while (j <= n && substr(line, j, 1) != ch) { inner = inner substr(line, j, 1); j++ }
-            if (j <= n) { out = out "( " decode(inner) " " eoc ")"; i = j + 1; continue }
+            while (j <= n && substr(line, j, 1) != ch && substr(line, j, 1) != "\n") { inner = inner substr(line, j, 1); j++ }
+            if (j <= n && substr(line, j, 1) == ch) { out = out "( " decode(inner) " " eoc ")"; i = j + 1; continue }
           }
           out = out ch; state = ch; i++; continue
         }
