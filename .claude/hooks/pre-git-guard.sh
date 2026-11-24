@@ -38,6 +38,36 @@ $DOC" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",
 cmd=$(printf '%s' "$cmd" | awk '
   BEGIN { SQ = sprintf("%c", 39); DQ = sprintf("%c", 34); MSG = sprintf("%c", 2) }
 
+  # line の位置 i のシングルクォートが ANSI-C クォート（$'"'"'…'"'"'）を開くか。
+  # 直前の $ がエスケープされておらず、$$ の 2 文字目でもないこと（後段の ansi_open と同じ規則）
+  function ansi_at(line, i,   k, nb, bs) {
+    bs = sprintf("%c", 92)
+    if (i < 2 || substr(line, i - 1, 1) != "$") return 0
+    nb = 0; k = i - 2
+    while (k >= 1 && substr(line, k, 1) == bs) { nb++; k-- }
+    if (nb % 2 == 1) return 0
+    if (nb == 0 && i > 2 && substr(line, i - 2, 1) == "$") return 0
+    return 1
+  }
+
+  # line の位置 p の直前までを読んだときの引用の状態。""（引用の外）、SQ、DQ、
+  # "A"（ANSI-C クォート）、"#"（コメントの中）のいずれか。
+  # 文字列やコメントとして書いた `git commit -m $(cat <<EOF` を heredoc の開始と
+  # 取らないために使う（#404）
+  function quote_state_at(line, p,   i, ch, state, bs) {
+    bs = sprintf("%c", 92)
+    state = ""
+    for (i = 1; i < p; i++) {
+      ch = substr(line, i, 1)
+      if (ch == bs && state != SQ) { i++; continue }
+      if (state != "") { if (ch == state || (state == "A" && ch == SQ)) state = ""; continue }
+      if (ch == SQ) { state = ansi_at(line, i) ? "A" : SQ; continue }
+      if (ch == DQ) { state = DQ; continue }
+      if (ch == "#" && (i == 1 || substr(line, i - 1, 1) ~ /[ \t;&|(]/)) return "#"
+    }
+    return state
+  }
+
   # 行の中から heredoc の開始を探し、マーカー名を返す（無ければ空）。
   # クォートの中・コメントの中の << は開始ではない。ここを見分けないと、
   # `echo "see <<EOF"` の 1 行で以降のコマンドが丸ごと検査から落ちる
@@ -53,8 +83,8 @@ cmd=$(printf '%s' "$cmd" | awk '
       # 見落とすと `echo "see \" <<EOF"` の \" を閉じクォートと誤読し、
       # 引用の中の <<EOF を heredoc の開始として扱ってしまう
       if (ch == bs && state != SQ) { i++; continue }
-      if (state != "") { if (ch == state) state = ""; continue }
-      if (ch == SQ || ch == DQ) { state = ch; continue }
+      if (state != "") { if (ch == state || (state == "A" && ch == SQ)) state = ""; continue }
+      if (ch == SQ || ch == DQ) { state = (ch == SQ && ansi_at(line, i)) ? "A" : ch; continue }
       if (ch == "#" && (i == 1 || substr(line, i - 1, 1) ~ /[ \t]/)) return ""
       if (ch != "<" || substr(line, i + 1, 1) != "<") continue
       # <<<"x"（here-string）は heredoc ではない
@@ -95,8 +125,8 @@ cmd=$(printf '%s' "$cmd" | awk '
     for (i = 1; i <= n; i++) {
       ch = substr(line, i, 1)
       if (ch == bs && state != SQ) { i++; continue }
-      if (state != "") { if (ch == state) state = ""; continue }
-      if (ch == SQ || ch == DQ) { state = ch; continue }
+      if (state != "") { if (ch == state || (state == "A" && ch == SQ)) state = ""; continue }
+      if (ch == SQ || ch == DQ) { state = (ch == SQ && ansi_at(line, i)) ? "A" : ch; continue }
       if (ch == ";" || ch == "&" || ch == "|") { cut = i; continue }
       if (ch == "<" && substr(line, i + 1, 1) == "<")
         return substr(line, cut + 1, i - cut - 1)
@@ -184,7 +214,11 @@ cmd=$(printf '%s' "$cmd" | awk '
       # eval / source / . も本文をそのまま実行する（`eval "$(cat <<EOF …)"`）
       if (owner ~ /(^|[[:space:]|;&(])(eval|source|\.)([[:space:]]|$)/) continue
 
-      if (owner ~ /git[[:space:]]+commit/ &&
+      # git commit は引用の外・コメントの外に書かれたものだけを見る。
+      # `echo "git commit -m \$(cat <<EOF"` の次の行は実行される（#404）
+      commit_at = match(lines[i], /git[[:space:]]+commit/) ? RSTART : 0
+      if (owner ~ /git[[:space:]]+commit/ && commit_at > 0 &&
+          quote_state_at(lines[i], commit_at) == "" &&
           owner ~ /(^|[[:space:]])(-[A-Za-z]*[mF]|-[A-Za-z]*F-|--m[a-z]*|--fil[a-z]*)([[:space:]]|=|$)/) {
         # -F- は -F - を詰めて書いた形（#393）。外すと本文がコマンドとして読まれ、
         # 本文の引用符で後続の行（git push …）が引用の中に飲み込まれる
@@ -195,8 +229,12 @@ cmd=$(printf '%s' "$cmd" | awk '
         # -m "$(cat <<EOF …)" の << は二重引用符の中にあるが、置換の中なので
         # heredoc として効く。引用の中を飛ばす heredoc_marker では拾えないため、
         # 置換の開始から先を改めて見る
-        if (candidate == "" && index(lines[i], "$(") > 0)
-          candidate = heredoc_marker(substr(lines[i], index(lines[i], "$(") + 2))
+        # $( が引用の外か、ダブルクォートの中にあるときだけ（シングルクォートや
+        # コメントの中の $( は置換ではない）
+        sp = index(lines[i], "$(")
+        st = (sp > 0) ? quote_state_at(lines[i], sp) : "#"
+        if (candidate == "" && sp > 0 && (st == "" || st == DQ))
+          candidate = heredoc_marker(substr(lines[i], sp + 2))
         # マーカーを引用しない本文も、シェルが実行する形（$( / バッククォート /
         # 行継続）がどこにも無ければ、展開されるのは変数だけでデータと同じ。印を付けて
         # メッセージとして扱う。付けないと本文の it'"'"'s を引用の開始と読み、後続の
@@ -220,8 +258,10 @@ cmd=$(printf '%s' "$cmd" | awk '
       # heredoc も本文はデータ。拾わないと本文の引用符・バッククォート・括弧を
       # コマンドの一部として読み、後続のコマンドを見失う（#393）
       # `$(` から `<<` までに ) や " があれば、その << は置換の外（引用の中の文字列）
-      if (candidate == "" && index(lines[i], "$(") > 0) {
-        after = substr(lines[i], index(lines[i], "$(") + 2)
+      sp = index(lines[i], "$(")
+      st = (sp > 0) ? quote_state_at(lines[i], sp) : "#"
+      if (candidate == "" && sp > 0 && (st == "" || st == DQ)) {
+        after = substr(lines[i], sp + 2)
         if (index(after, "<<") > 0 &&
             substr(after, 1, index(after, "<<") - 1) !~ /[)"]/)
           candidate = heredoc_marker(after)
@@ -327,7 +367,7 @@ unwrap_pass() {
         # 閉じで入る前の状態へ戻す。中の引用符（`echo "a`）を持ち越すと、状態を
         # 行をまたいで持ち越す分、次の行の sh -c が展開されなくなる
         if (btd && ch == bt) { state = bt_state; btd = 0; out = out ch; i++; continue }
-        if (!btd && ch == bt && state != sq) { bt_state = state; btd = 1; state = ""; out = out ch; i++; continue }
+        if (!btd && ch == bt && state != sq && state != "A") { bt_state = state; btd = 1; state = ""; out = out ch; i++; continue }
         if (state == dq && ch == "$" && substr(line, i + 1, 1) == "(") {
           out = out "$("; sd++; pd[sd] = 0; state = ""; i += 2; continue
         }
@@ -386,11 +426,13 @@ unwrap_pass() {
             }
             # 展開しない（従来どおり引用として読む）もの:
             #   - 閉じが無い
-            #   - ダブルクォートの中身の引用符が対になっていない（展開すると後ろの引用がずれる）
+            #   - 複数行のダブルクォートの中身の引用符が対になっていない（展開すると
+            #     後ろの行の引用がずれる。1 行の中身は従来どおり展開する）
             #   - 複数行の中身に heredoc がある（本文はメッセージ扱いの前段を通って
             #     いないので、コミットメッセージの本文までコマンドとして読んでしまう）
             nq = gsub(sq, sq, inner) + 0; nd = gsub(dq, dq, inner) + 0
-            if (j <= n && substr(line, j, 1) == ch && (ch == sq || (nq % 2 == 0 && nd % 2 == 0)) &&
+            if (j <= n && substr(line, j, 1) == ch &&
+                (ch == sq || index(inner, "\n") == 0 || (nq % 2 == 0 && nd % 2 == 0)) &&
                 !(index(inner, "\n") > 0 && index(inner, "<<") > 0)) {
               out = out "( " decode(inner) " " eoc ")"; i = j + 1; continue
             }

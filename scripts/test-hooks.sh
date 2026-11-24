@@ -1166,6 +1166,32 @@ feat: x
 git push origin production is forbidden
 EOF'" feat/existing
 
+run 2 '1 行の sh -c "…" はコメントの中の引用符があっても展開する' \
+  "sh -c \"git push origin production # it's\"" feat/existing
+run 2 '1 行の eval "…" はコメントの中の引用符があっても展開する' \
+  "eval \"git push origin production # don't\"" feat/existing
+run 2 'ANSI-C クォートの中のバッククォートは置換ではない' \
+  "echo \$'\`' && sh -c \"git push origin production\"" feat/existing
+run 2 "\$'…\\'…' と同じ行の heredoc の本文を見失わない" \
+  "echo \$'it\\'s' && cat <<EOF
+it's
+EOF
+git push origin production" feat/existing
+run 2 '文字列の中に書いた git commit -m $(cat <<EOF は heredoc の開始ではない' \
+  'echo "git commit -m \$(cat <<EOF"
+git push origin production
+EOF' feat/existing
+run 2 'コメントの中に書いた git commit -m "$(cat <<EOF は heredoc の開始ではない' \
+  'echo hi # git commit -m "$(cat <<EOF
+git push origin production
+EOF' feat/existing
+run 0 '<<- の heredoc のメッセージは先頭のタブを除いた件名で検証する' \
+  "git commit -m \"\$(cat <<-EOF
+	feat: x
+	it's
+	EOF
+)\"" feat/existing
+
 echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
