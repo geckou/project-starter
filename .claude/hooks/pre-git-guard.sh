@@ -121,6 +121,20 @@ cmd=$(printf '%s' "$cmd" | awk '
     return 0
   }
 
+  # from から終端 mark の手前までの本文に、シェルが実行する形（$( / バッククォート /
+  # 行末の \ による行継続）があるか。あれば本文はデータとして扱えない
+  function body_executes(from, mark, tabok,   j, l, bs) {
+    bs = sprintf("%c", 92)
+    for (j = from; j <= total; j++) {
+      l = lines[j]
+      if (tabok) sub(/^\t+/, "", l)
+      if (l == mark) return 0
+      if (index(lines[j], "$(") > 0 || index(lines[j], "`") > 0 ||
+          substr(lines[j], length(lines[j]), 1) == bs) return 1
+    }
+    return 0
+  }
+
   { lines[NR] = $0; total = NR }
 
   END {
@@ -142,16 +156,7 @@ cmd=$(printf '%s' "$cmd" | awk '
         # データであってコマンドではないので、印を付けてセグメント分割から外す。
         # 付けないと本文に書いた `git commit -n` のようなコマンド例が実行として
         # 読まれ、フックの修正を説明するコミットが自分自身に弾かれる
-        if (msg_body == 1) { print MSG line; continue }
-        # マーカーを引用しないメッセージ本文（msg_body == 2）は、$ やバッククォートを
-        # 含む行だけシェルが展開する。展開される行は素のまま残して検査し、それ以外の
-        # 行は引用したマーカーと同じく印を付ける。付けないと本文の it'"'"'s を引用の
-        # 開始と読み、後続のコマンド（&& sh -c …）を見失う（#404）
-        if (msg_body == 2) {
-          if (index(line, "$") > 0 || index(line, "`") > 0) print line
-          else print MSG line
-          continue
-        }
+        if (msg_body) { print MSG line; continue }
         # マーカーが無クォートなら本文の $( ) / ` ` はシェルが実行する。
         # 実行される行は検査対象に残す（データとして渡る他の行は落とす）
         if (!marker_quoted && (index(line, "$(") > 0 || index(line, "`") > 0))
@@ -192,10 +197,16 @@ cmd=$(printf '%s' "$cmd" | awk '
         # 置換の開始から先を改めて見る
         if (candidate == "" && index(lines[i], "$(") > 0)
           candidate = heredoc_marker(substr(lines[i], index(lines[i], "$(") + 2))
-        if (candidate != "" && has_terminator(i + 1, candidate, tab_ok)) {
+        # マーカーを引用しない本文も、シェルが実行する形（$( / バッククォート /
+        # 行継続）がどこにも無ければ、展開されるのは変数だけでデータと同じ。印を付けて
+        # メッセージとして扱う。付けないと本文の it'"'"'s を引用の開始と読み、後続の
+        # コマンド（&& sh -c …）を見失う（#404）。実行する形があれば、その行が
+        # 置換の続きかどうかを行単位では決められないので、従来どおり全行を素のまま残す
+        if (candidate != "" && has_terminator(i + 1, candidate, tab_ok) &&
+            (last_marker_quoted || !body_executes(i + 1, candidate, tab_ok))) {
           marker = candidate
           marker_quoted = last_marker_quoted
-          msg_body = last_marker_quoted ? 1 : 2
+          msg_body = 1
           in_body = 1
         }
         continue
@@ -266,6 +277,19 @@ unwrap_pass() {
         return (k < 1 || substr(text, k, 1) ~ /[ \t\n;&|(]/)
       if (p !~ /[ \t\n;&|(]/) return 0
       return (nb % 2 == 0)
+    }
+
+    # 直前までの文字列 t の末尾の $ が、次のシングルクォートと組んで ANSI-C クォート
+    # （$'"'"'…'"'"'）を開くか。$ がエスケープされている（\$'"'"'）とき、$$（PID）の 2 文字目の
+    # とき、$ が前の $ に続くときは開かない（普通のシングルクォート）
+    function ansi_open(t,    k, nb) {
+      k = length(t)
+      if (substr(t, k, 1) != "$") return 0
+      nb = 0
+      while (k - 1 - nb >= 1 && substr(t, k - 1 - nb, 1) == bs) nb++
+      if (nb % 2 == 1) return 0
+      if (nb == 0 && k > 1 && substr(t, k - 1, 1) == "$") return 0
+      return 1
     }
 
     # ANSI-C クォート（ドル記号 + 引用符）の中の空白のエスケープを元に戻す。
@@ -347,12 +371,32 @@ unwrap_pass() {
             # 実行される。#404）。eval は同じ行で閉じる中身だけを展開し、複数行に
             # またがる eval "$(cat <<EOF …)" は中身を読めないものとして後段の
             # 「確認を求める」に任せる
+            # ダブルクォートの中身は \ の次の 1 文字を読み飛ばし、\" \\ \$ \` は
+            # 戻してから展開する（シェルが中身を渡すときと同じ）。\" を閉じと読むと、
+            # 後ろの引用がずれて後続のコマンドを見失う
             j = i + 1; inner = ""
-            while (j <= n && substr(line, j, 1) != ch && (is_shell || substr(line, j, 1) != "\n")) { inner = inner substr(line, j, 1); j++ }
-            if (j <= n && substr(line, j, 1) == ch) { out = out "( " decode(inner) " " eoc ")"; i = j + 1; continue }
+            while (j <= n && substr(line, j, 1) != ch && (is_shell || substr(line, j, 1) != "\n")) {
+              c2 = substr(line, j, 1)
+              if (ch == dq && c2 == bs && j < n) {
+                c3 = substr(line, j + 1, 1)
+                inner = inner ((c3 == dq || c3 == bs || c3 == "$" || c3 == bt) ? c3 : c2 c3)
+                j += 2; continue
+              }
+              inner = inner c2; j++
+            }
+            # 展開しない（従来どおり引用として読む）もの:
+            #   - 閉じが無い
+            #   - ダブルクォートの中身の引用符が対になっていない（展開すると後ろの引用がずれる）
+            #   - 複数行の中身に heredoc がある（本文はメッセージ扱いの前段を通って
+            #     いないので、コミットメッセージの本文までコマンドとして読んでしまう）
+            nq = gsub(sq, sq, inner) + 0; nd = gsub(dq, dq, inner) + 0
+            if (j <= n && substr(line, j, 1) == ch && (ch == sq || (nq % 2 == 0 && nd % 2 == 0)) &&
+                !(index(inner, "\n") > 0 && index(inner, "<<") > 0)) {
+              out = out "( " decode(inner) " " eoc ")"; i = j + 1; continue
+            }
           }
           # $ の直後のシングルクォートは ANSI-C クォート
-          if (ch == sq && substr(out, length(out), 1) == "$") { out = out ch; state = "A"; i++; continue }
+          if (ch == sq && ansi_open(out)) { out = out ch; state = "A"; i++; continue }
           out = out ch; state = ch; i++; continue
         }
         out = out ch; i++
@@ -623,6 +667,19 @@ segments=$(printf '%s' "$cmd" | awk '
       return (nb % 2 == 0)
     }
 
+    # 直前までの文字列 t の末尾の $ が、次のシングルクォートと組んで ANSI-C クォート
+    # （$'"'"'…'"'"'）を開くか。$ がエスケープされている（\$'"'"'）とき、$$（PID）の 2 文字目の
+    # とき、$ が前の $ に続くときは開かない（普通のシングルクォート）
+    function ansi_open(t,    k, nb) {
+      k = length(t)
+      if (substr(t, k, 1) != "$") return 0
+      nb = 0
+      while (k - 1 - nb >= 1 && substr(t, k - 1 - nb, 1) == bs) nb++
+      if (nb % 2 == 1) return 0
+      if (nb == 0 && k > 1 && substr(t, k - 1, 1) == "$") return 0
+      return 1
+    }
+
   # 引用の中から切り出した置換の位置に置く語。値は実行するまで分からないので、
   # フラグにも有効なブランチ名にも見えない形にする
   BEGIN { subst_value = "__subst__" }
@@ -788,7 +845,7 @@ segments=$(printf '%s' "$cmd" | awk '
       if (c == bs) { if (cont(i)) { i++; continue }
                      seg = seg c substr(all, i + 1, 1); i++; continue }
       if (c == sq || c == dq) {
-        q = (c == sq && substr(seg, length(seg), 1) == "$") ? "A" : c
+        q = (c == sq && ansi_open(seg)) ? "A" : c
         seg = seg c
         continue
       }

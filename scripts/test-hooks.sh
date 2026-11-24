@@ -1135,6 +1135,37 @@ run 0 '複数行の sh -c の中の git 以外のコマンドは通す' \
   "sh -c 'echo a
 echo b'" feat/existing
 
+run 2 '引用符なしの heredoc の本文で次の行へ続く置換の中の git を見る' \
+  'git commit -m "$(cat <<EOF
+feat: x
+$(
+git push origin production
+)
+EOF
+)"' feat/existing
+run 2 '引用符なしの heredoc の本文の行継続のあとの git を見る' \
+  'git commit -F - <<EOF
+feat: x
+$(git push \
+origin production)
+EOF' feat/existing
+run 2 "エスケープした \\\$' は ANSI-C クォートではない" \
+  "echo \\\$'a\\' && git push origin production #'" feat/existing
+run 2 "\$\$' の ' は ANSI-C クォートではない" \
+  "echo \$\$'a\\' && git push origin production #'" feat/existing
+run 2 '複数行の bash -c "…" の中の \" のあとの push を見る' \
+  'bash -c "echo a
+echo \"b\"" && git push origin production' feat/existing
+run 2 '複数行の bash -c "…" の中の対にならない引用符のあとの push を見る' \
+  "bash -c \"echo a
+echo it's\" && git push origin production" feat/existing
+run 0 'bash -c の中の heredoc のコミットメッセージ本文はコマンドとして読まない' \
+  "bash -c 'git commit -F - <<EOF
+feat: x
+
+git push origin production is forbidden
+EOF'" feat/existing
+
 echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
