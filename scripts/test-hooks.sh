@@ -1193,6 +1193,19 @@ run 0 '<<- の heredoc のメッセージは先頭のタブを除いた件名で
 )\"" feat/existing
 
 echo
+echo '=== sh -c "…" の中の置換に書いた引用符で展開の範囲をずらさない（#406） ==='
+run 2 'bash -c "…" の中の $( … ) の引用符のあとの sh -c' \
+  "bash -c \"x=\$(echo \"it's\")
+echo b\" ; sh -c 'git push origin production'" feat/existing
+run 2 'bash -c "…" の中の $( … ) の引用符と同じ中身の git' \
+  "bash -c \"x=\$(echo \"it's\")
+git push origin production\"" feat/existing
+run 2 '1 行の sh -c "…" の中の $( … ) の引用符と同じ中身の git' \
+  "sh -c \"echo \$(echo \"a\") && git push origin production\"" feat/existing
+run 0 'sh -c "…" の中の $( … ) に引用符がある git 以外のコマンド' \
+  "sh -c \"echo \$(echo \"it's\")\"" feat/existing
+
+echo
 echo '=== 既存の挙動（回帰） ==='
 run 2 'ブランチ命名規則違反' 'git checkout -b wip'
 run 2 '許可リストに無いプレフィックス' 'git checkout -b feature/user-profile'

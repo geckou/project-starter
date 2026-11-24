@@ -332,6 +332,35 @@ unwrap_pass() {
       return 1
     }
 
+    # text の位置 start から始まる $( … ) の中身の閉じ ) の位置（無ければ 0）。
+    # 中の引用・入れ子の置換・バッククォートを追う（セグメント分割の subst_end と同じ読み方）
+    function paren_end(text, start,    j, k, d, c, q2, len) {
+      d = 1; q2 = ""; len = length(text)
+      for (j = start; j <= len; j++) {
+        c = substr(text, j, 1)
+        if (q2 == sq) { if (c == sq) q2 = ""; continue }
+        if (c == bs) { j++; continue }
+        if (c == "$" && substr(text, j + 1, 1) == "(") {
+          k = paren_end(text, j + 2); if (k == 0) return 0; j = k; continue
+        }
+        if (c == bt) { k = bt_end(text, j + 1); if (k == 0) return 0; j = k; continue }
+        if (q2 == dq) { if (c == dq) q2 = ""; continue }
+        if (c == sq || c == dq) { q2 = c; continue }
+        if (c == "(") d++
+        else if (c == ")") { d--; if (d == 0) return j }
+      }
+      return 0
+    }
+    # text の位置 start から始まるバッククォートの置換の閉じの位置（無ければ 0）
+    function bt_end(text, start,    j, c) {
+      for (j = start; j <= length(text); j++) {
+        c = substr(text, j, 1)
+        if (c == bs) { j++; continue }
+        if (c == bt) return j
+      }
+      return 0
+    }
+
     # ANSI-C クォート（ドル記号 + 引用符）の中の空白のエスケープを元に戻す。
     # 戻さないと git\x20push のような書き方が 1 トークンのままで検査に当たらない
     function decode(text) {
@@ -414,15 +443,24 @@ unwrap_pass() {
             # ダブルクォートの中身は \ の次の 1 文字を読み飛ばし、\" \\ \$ \` は
             # 戻してから展開する（シェルが中身を渡すときと同じ）。\" を閉じと読むと、
             # 後ろの引用がずれて後続のコマンドを見失う
-            j = i + 1; inner = ""
+            j = i + 1; inner = ""; bare = ""
             while (j <= n && substr(line, j, 1) != ch && (is_shell || substr(line, j, 1) != "\n")) {
               c2 = substr(line, j, 1)
+              # ダブルクォートの中の $( … ) とバッククォートは、閉じまでを丸ごと中身に
+              # 足す。中に書いた " を中身の閉じと読むと、展開する範囲と後ろの引用が
+              # ずれて、後続の sh -c を見失う（#406）。置換の中の引用符は、下の
+              # 「対になっているか」の数えから外す（bare に入れない）
+              if (ch == dq && ((c2 == "$" && substr(line, j + 1, 1) == "(") || c2 == bt)) {
+                e = (c2 == bt) ? bt_end(line, j + 1) : paren_end(line, j + 2)
+                if (e > 0) { inner = inner substr(line, j, e - j + 1); j = e + 1; continue }
+              }
               if (ch == dq && c2 == bs && j < n) {
                 c3 = substr(line, j + 1, 1)
                 inner = inner ((c3 == dq || c3 == bs || c3 == "$" || c3 == bt) ? c3 : c2 c3)
+                bare = bare ((c3 == dq || c3 == bs || c3 == "$" || c3 == bt) ? c3 : c2 c3)
                 j += 2; continue
               }
-              inner = inner c2; j++
+              inner = inner c2; bare = bare c2; j++
             }
             # 展開しない（従来どおり引用として読む）もの:
             #   - 閉じが無い
@@ -430,7 +468,8 @@ unwrap_pass() {
             #     後ろの行の引用がずれる。1 行の中身は従来どおり展開する）
             #   - 複数行の中身に heredoc がある（本文はメッセージ扱いの前段を通って
             #     いないので、コミットメッセージの本文までコマンドとして読んでしまう）
-            nq = gsub(sq, sq, inner) + 0; nd = gsub(dq, dq, inner) + 0
+            if (ch == sq) bare = inner
+            nq = gsub(sq, sq, bare) + 0; nd = gsub(dq, dq, bare) + 0
             if (j <= n && substr(line, j, 1) == ch &&
                 (ch == sq || index(inner, "\n") == 0 || (nq % 2 == 0 && nd % 2 == 0)) &&
                 !(index(inner, "\n") > 0 && index(inner, "<<") > 0)) {
