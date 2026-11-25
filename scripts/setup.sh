@@ -9,7 +9,13 @@ echo ""
 # Firebase プロジェクトは 1 つで、develop / staging / production を相乗りさせる
 # （→ .claude/docs/git-workflow.md「Firebase プロジェクトは 1 つに相乗りさせる」）。
 # .firebaserc の環境エイリアスは全て同じプロジェクト ID を指す
-if grep -q "your-project-id" .firebaserc 2>/dev/null; then
+# 旧プレースホルダ（your-project-develop 等。環境ごとにプロジェクトを分けていた頃のもの）が
+# 残っている .firebaserc は、未設定のまま「設定済み」と表示しないよう案内だけ出す
+if grep -qE "your-project-(develop|staging|production)" .firebaserc 2>/dev/null; then
+  echo "[todo] .firebaserc に旧プレースホルダ（your-project-develop 等）が残っています"
+  echo "  全環境を同じ Firebase プロジェクト ID に書き換えてください"
+  echo "  → .claude/docs/git-workflow.md「Firebase プロジェクトは 1 つに相乗りさせる」"
+elif grep -q "your-project-id" .firebaserc 2>/dev/null; then
   echo "[todo] Firebase プロジェクト ID を設定してください"
   echo ""
   echo "  Firebase プロジェクトを 1 つ作成してください（develop / staging / production で共有します）。"

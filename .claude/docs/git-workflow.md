@@ -419,6 +419,27 @@ export const staging = perEnvironment  // staging-api
 - 宣言ファイルが無い派生（この仕組みを取り込む前の `apps/functions`）では、develop / staging は
   関数を配らず、production は従来どおり `functions` を全部配る
 
+### 既存の派生プロジェクトの移行
+
+`scripts/` と `.github/workflows/` は Template Sync で届くが、`.firebaserc`・`firebase.json`・`apps/` は
+届かない（`.templatesyncignore`）。同期を取り込んだ派生は、構成に応じて次を手で行う。
+
+**旧構成（環境ごとにプロジェクトを分ける）からの移行。** `.firebaserc` で develop / staging と
+production が別のプロジェクトを指していると、`deploy.sh` と `deploy.yml` は**エラーで止まる**
+（環境名だけで配るものを決めるため、そのまま流すと staging 専用のプロジェクトに何も配られない
+状態が緑のまま続く）。1 つのプロジェクトへ寄せる（データと Auth の移行を伴う）か、
+移行するまで `.templatesyncignore` に `scripts/deploy.sh` / `scripts/lib/deploy-targets.mjs` /
+`.github/workflows/deploy.yml` を足して旧版を持ち続ける。
+
+**関数の宣言を持ち込む。** 宣言ファイルが無いうちは、develop / staging は関数を配らず、production は
+従来どおり `functions` を全部配る。宣言を足すときは**次の 3 つを同じ PR で**行う。宣言（JSON）だけを
+足すと production の配り方が `functions` から `functions:<名前>` に変わり、**宣言から漏れた既存の
+関数が production で配られなくなる**。
+
+1. `apps/functions/function-environments.json` に**既存の関数を全て**分類して書く
+2. `apps/functions/src/index.ts` に `develop` / `staging` のグループを足す（テンプレートの `index.ts` 参照）
+3. `apps/functions/tests/function-environments.test.ts` をテンプレートから持ち込み、宣言漏れが無いことを確かめる
+
 ### CI 用 GitHub Secrets の登録
 
 `deploy.yml` はデプロイ時に環境別の env をシークレットから `.env.<環境名>` に書き出す（`secrets[format('ENV_FILE_{0}', name)]`）。

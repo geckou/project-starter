@@ -321,6 +321,34 @@ export function explicitTargetWarnings(
   return lines
 }
 
+// 環境ごとにプロジェクトを分けた構成（旧 A。#408 で削除）の検出。
+//
+// この判定は環境名だけで配るものを決めるため、staging が専用のプロジェクトを指していても
+// 「production 以外」として functions / ルール / hosting を外す。CI では「配るものが無い」で
+// デプロイ step ごと飛び、緑のまま staging に何も配られなくなる。黙って配らないより止める。
+// .firebaserc が読めない・production のエイリアスが無いときは判断材料が無いので止めない
+export function separateProjectError(projects, env) {
+  const production = projects?.[PRODUCTION_ENVIRONMENT]
+  const current = projects?.[env]
+
+  if (!production || !current || current === production) return undefined
+
+  return [
+    `.firebaserc で ${env}（${current}）と ${PRODUCTION_ENVIRONMENT}（${production}）が別の Firebase プロジェクトを指しています。`,
+    '  環境ごとにプロジェクトを分ける構成は #408 で削除しました。このスクリプトは全環境が',
+    '  1 つのプロジェクトに同居する前提で配るものを決めるため、このままでは配れません。',
+    '  → .claude/docs/git-workflow.md「旧構成（環境ごとにプロジェクトを分ける）からの移行」',
+  ]
+}
+
+function readProjects(path) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')).projects ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
 // 関数の環境宣言。ファイルが無い（functions 層を持たない、宣言を足す前の派生）なら undefined
 export function readManifest(path) {
   let raw
@@ -358,6 +386,16 @@ if (invokedDirectly) {
   )
   const targets = parseTargets(rawTargets)
   const hosting = readHosting(join(root, 'firebase.json'))
+  const separated = separateProjectError(
+    readProjects(join(root, '.firebaserc')),
+    env
+  )
+
+  if (separated !== undefined) {
+    for (const line of separated) console.error(`[error] ${line}`)
+    process.exit(1)
+  }
+
   const explicitHostingTargets = process.env.DEPLOY_HOSTING_TARGETS
 
   let manifest

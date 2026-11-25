@@ -23,6 +23,8 @@ description: Firebase Cloud Function を追加する
      export し、宣言の `shared` に名前を足す。production のデプロイでだけ配られる。
      **トリガーを環境別にしない**（データは全環境で 1 つなので、3 環境ぶんが同じ書き込みで発火する）
    - 片方にだけ書くと `apps/functions/tests/function-environments.test.ts` が落ちる
+   - **`function-environments.json` が無い派生では、関数 1 つぶんだけ宣言を足さない。** 既存の関数が
+     production で配られなくなる。先に移行を済ませる（→ `.claude/docs/git-workflow.md`「既存の派生プロジェクトの移行」）
 
 ## テンプレート
 

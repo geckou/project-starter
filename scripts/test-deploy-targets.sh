@@ -306,6 +306,45 @@ else
   fail "読めない宣言で素通しした" "out='$RUN_OUT'"
 fi
 
+# 環境ごとにプロジェクトを分けた構成（旧 A）は、黙って何も配らないのではなく止める。
+# ここを素通しすると CI は「配るものが無い」でデプロイ step を飛ばし、緑のまま終わる
+write_firebaserc() {
+  printf '{ "projects": %s }\n' "$1" >"$WORK/tree/.firebaserc"
+}
+
+run_deploy_targets staging "$ALL_TARGETS"
+write_firebaserc '{ "default": "app-dev", "develop": "app-dev", "staging": "app-stg", "production": "app" }'
+RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" staging "$ALL_TARGETS" "$WORK/tree" 2>"$WORK/err.txt")
+RUN_STATUS=$?
+if [ "$RUN_STATUS" -ne 0 ] && [ -z "$RUN_OUT" ] && grep -q '別の Firebase プロジェクト' "$WORK/err.txt"; then
+  pass "環境ごとにプロジェクトを分けた構成では止める（黙って何も配らない状態にしない）"
+else
+  fail "環境ごとにプロジェクトを分けた構成で止まらない" "status=$RUN_STATUS / out='$RUN_OUT' / $(cat "$WORK/err.txt")"
+fi
+
+RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" staging "functions" "$WORK/tree" --explicit 2>/dev/null)
+if [ $? -ne 0 ]; then
+  pass "明示指定でも、分けた構成では止める"
+else
+  fail "明示指定だと分けた構成を素通しする" "out='$RUN_OUT'"
+fi
+
+write_firebaserc '{ "default": "app", "develop": "app", "staging": "app", "production": "app" }'
+RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" staging functions "$WORK/tree" 2>/dev/null)
+if [ "$RUN_OUT" = "functions:staging" ]; then
+  pass "全環境が同じプロジェクトなら止めない"
+else
+  fail "相乗り構成で止まった" "out='$RUN_OUT'"
+fi
+
+write_firebaserc '{ "default": "app" }'
+RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" staging functions "$WORK/tree" 2>/dev/null)
+if [ "$RUN_OUT" = "functions:staging" ]; then
+  pass "production のエイリアスが無ければ判断せず止めない"
+else
+  fail "エイリアスが足りない .firebaserc で止まった" "out='$RUN_OUT'"
+fi
+
 echo ""
 echo "[7] firestore / storage は production だけが既定で配る（#358）"
 expect_deploy_targets "develop の既定からルールを外す" "functions:develop,hosting" develop "$ALL_TARGETS"

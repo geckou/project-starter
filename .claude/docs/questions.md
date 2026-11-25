@@ -57,7 +57,9 @@
 - 状況: `staging-api` は `api` と同じコード・同じ `defineSecret`（`STRIPE_SECRET_KEY` など）を使うため、
   Secret Manager の**本番の値**がマウントされる。staging の QA で Checkout を通すと本番キーで課金が走りうる。
   #408 以前も staging のクライアントは本番の `api` を叩いていたので悪化ではないが、staging で関数を
-  検証できるようになった以上、キーも分けないと検証にならない
+  検証できるようになった以上、キーも分けないと検証にならない。
+  あわせて Stripe / RevenueCat の Webhook も本番の `api` にしか登録されておらず、staging-api で
+  始めた決済のイベントは本番の `api` に届く（`billing.md` に注記済み）。A を選ぶなら Webhook の登録先も環境ごとに持つ
 - 選択肢:
   - A) 環境ごとに別名のシークレットを持つ（`STRIPE_SECRET_KEY_STAGING` など）（推奨）— `api.ts` を
     環境ごとに関数を作るファクトリにし、環境に応じたシークレットを宣言する。`index.ts` のグループは
