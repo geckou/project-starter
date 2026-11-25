@@ -35,7 +35,8 @@ service cloud.firestore {
     // match /billing_events/{eventId} — 明示的な許可なし
     // layer:billing:end
 
-    // 1プロジェクト相乗り時は環境ごとに明示的に match を書く
+    // 全環境が 1 つの Firebase プロジェクト（1 つの DB）に同居する。
+    // 環境ごとにコレクションを分けるなら、環境ごとに明示的に match を書く
     // ワイルドカード /{prefix}users はセグメント内マッチ不可
     // match /stg_users/{userId} { ... }
     // match /dev_users/{userId} { ... }

@@ -5,44 +5,17 @@ echo "=== Geckou Project Starter - Setup ==="
 echo ""
 
 # .firebaserc の確認
-if grep -q "your-project-develop" .firebaserc 2>/dev/null; then
+#
+# Firebase プロジェクトは 1 つで、develop / staging / production を相乗りさせる
+# （→ .claude/docs/git-workflow.md「Firebase プロジェクトは 1 つに相乗りさせる」）。
+# .firebaserc の環境エイリアスは全て同じプロジェクト ID を指す
+if grep -q "your-project-id" .firebaserc 2>/dev/null; then
   echo "[todo] Firebase プロジェクト ID を設定してください"
   echo ""
-  echo "  環境（develop / staging / production）の持ち方を選びます:"
-  echo ""
-  echo "  1) 環境ごとに Firebase プロジェクトを分ける（既定）"
-  echo "     develop / staging から本番データに触れない。"
-  echo "     Auth のユーザープール・モバイルの設定ファイル・IAM 付与・課金先が 3 セットになる。"
-  echo "  2) 1 つの Firebase プロジェクトに相乗りさせる（Hosting サイトだけ環境ごとに分ける）"
-  echo "     初期構築と維持が 1 セットで済む。"
-  echo "     Functions / Firestore ルールは環境で分けられない（全環境で同じものになる）。"
-  echo ""
-  echo "  → 判断材料: .claude/docs/git-workflow.md「Firebase プロジェクトの持ち方は2通りある」"
+  echo "  Firebase プロジェクトを 1 つ作成してください（develop / staging / production で共有します）。"
   echo ""
 
-  read -p "構成 [1/2] (既定: 1): " PROJECT_LAYOUT
-
-  if [ "$PROJECT_LAYOUT" = "2" ]; then
-    echo ""
-    echo "  1つの Firebase プロジェクトを作成してください。"
-    echo ""
-
-    read -p "Project ID (後で設定する場合は Enter): " SHARED_ID
-    DEV_ID="$SHARED_ID"
-    STG_ID="$SHARED_ID"
-    PROD_ID="$SHARED_ID"
-  else
-    echo ""
-    echo "  3つの Firebase プロジェクトを作成してください:"
-    echo "  - develop:    開発環境（日常の開発）"
-    echo "  - staging:    ステージング環境（リリース前テスト）"
-    echo "  - production: 本番環境"
-    echo ""
-
-    read -p "develop の Project ID (後で設定する場合は Enter): " DEV_ID
-    read -p "staging の Project ID (後で設定する場合は Enter): " STG_ID
-    read -p "production の Project ID (後で設定する場合は Enter): " PROD_ID
-  fi
+  read -p "Project ID (後で設定する場合は Enter): " PROJECT_ID
 
   # 置換後の文字列は入力そのもの。sed の特殊文字（/ & \ 改行）を素通しすると
   # .firebaserc が壊れる（貼り付けミスで / が入るだけで起きる）
@@ -50,39 +23,27 @@ if grep -q "your-project-develop" .firebaserc 2>/dev/null; then
     printf '%s' "$1" | sed -e 's/[\\&/]/\\&/g' -e 's/$/\\/' | sed -e '$s/\\$//'
   }
 
-  replace_project_id() {
-    placeholder=$1
-    value=$2
-    [ -n "$value" ] || return 0
-
-    escaped=$(escape_replacement "$value")
+  if [ -n "$PROJECT_ID" ]; then
+    escaped=$(escape_replacement "$PROJECT_ID")
 
     if [[ "$OSTYPE" == "darwin"* ]]; then
-      sed -i '' "s/$placeholder/$escaped/g" .firebaserc
+      sed -i '' "s/your-project-id/$escaped/g" .firebaserc
     else
-      sed -i "s/$placeholder/$escaped/g" .firebaserc
+      sed -i "s/your-project-id/$escaped/g" .firebaserc
     fi
-  }
 
-  replace_project_id your-project-develop "$DEV_ID"
-  replace_project_id your-project-staging "$STG_ID"
-  replace_project_id your-project-production "$PROD_ID"
-
-  echo "[done] .firebaserc を更新しました"
-
-  # 相乗り構成を選んでも Project ID が空なら .firebaserc はプレースホルダのまま
-  # （= 分離構成）。実態と違う案内を出さない
-  if [ "$PROJECT_LAYOUT" = "2" ] && [ -n "$SHARED_ID" ]; then
+    echo "[done] .firebaserc を更新しました"
     echo ""
-    echo "[next] 相乗り構成では、環境ごとに Hosting サイトを分けます:"
+    echo "[next] 環境ごとに Hosting サイトを分けます:"
     echo "  1. Firebase コンソールで環境ぶんの Hosting サイトを作る"
     echo "  2. firebase target:apply hosting develop <サイト ID> （staging / production も同様）"
     echo "  3. firebase.json の hosting を配列にし、各要素に target を書く"
     echo "  → 手順: .claude/docs/git-workflow.md「Hosting のターゲットは環境名に合わせる」"
     echo ""
-    echo "[note] functions / firestore / storage は環境で分かれません。"
-    echo "  deploy.sh は production 以外の環境では、これらを既定のデプロイ対象から外します"
-    echo "  （--only で明示すれば配れます）。"
+    echo "[note] Functions は環境ごとに配り分けます（develop-api / staging-api / api）。"
+    echo "  firestore / storage のルールは全環境で 1 つで、production のデプロイでだけ配ります。"
+  else
+    echo "[skip] Project ID は後で .firebaserc の your-project-id を置き換えてください"
   fi
 else
   echo "[skip] .firebaserc は設定済みです"

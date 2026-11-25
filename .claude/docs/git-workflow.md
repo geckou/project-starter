@@ -111,61 +111,39 @@ git merge origin/release/1.0.0      # そのリリースに載せる場合のみ
 環境は `develop` / `staging` / `production` の3つ。**環境とブランチは 1対1 ではない。**
 ブランチの種類に応じてデプロイ先が決まる。
 
-### Firebase プロジェクトの持ち方は2通りある
+### Firebase プロジェクトは 1 つに相乗りさせる
 
-環境をどう Firebase プロジェクトへ割り当てるかは、**プロジェクトの規模で選ぶ**。
-どちらも `.firebaserc` の `projects` で表す（`yarn setup` が対話で聞く）。
-
-| | **A: 環境ごとにプロジェクトを分ける** | **B: 1 プロジェクトに相乗りさせる** |
-| --- | --- | --- |
-| Firebase プロジェクト | 3つ | 1つ |
-| Hosting | プロジェクトごとに 1 サイト | **環境ごとにサイトを分ける必要がある**（手動設定。分けないと環境を配り分けられない）|
-| 本番データ・本番ユーザー | 触れない | develop / staging から**触れる** |
-| Auth のユーザープール | 環境ごとに分断（本番と同じアカウントで開発時の確認ができない）| 共通 |
-| Functions / Firestore ルール | 環境ごとに検証できる | **環境で分けられない**（全環境で同じもの）|
-| モバイルの `GoogleService-Info.plist` / `google-services.json` | 環境ごとに必要（Expo の設定と配信構成も分岐する）| 1セット |
-| サービスアカウント発行と IAM 付与（→「先にサービスアカウントへ IAM ロールを付与する」）| プロジェクトごとに繰り返す | 1回 |
-| Blaze の課金先・予算アラート・GCP API 有効化 | 3つ | 1つ |
-| Firestore のデータ投入・インデックス作成 | 環境ごと | 1回 |
-
-**A が既定**（`.firebaserc` のプレースホルダも A）。本番データを壊しうる操作を仕組みで
-遮断できるため、本番に実ユーザーのデータが乗るなら A を選ぶ。**B は、その遮断を
-「Functions / Firestore を環境で検証できない」というトレードオフと引き換えに手放す代わりに、
-上表の右列ぶんの初期構築・維持コストを 1/3 にする。** LP・社内ツール・PoC のように
-関数とルールがほとんど動かないものでは、A のコストが機能開発より重くなることがある。
+develop / staging / production は **1 つの Firebase プロジェクトに同居させる**。`.firebaserc` の
+`projects` では、3 つの環境エイリアスが同じプロジェクト ID を指す（`yarn setup` が対話で書き込む）。
 
 ```jsonc
-// A: 環境ごとにプロジェクトを分ける（既定）
-"projects": { "default": "myapp-develop", "develop": "myapp-develop", "staging": "myapp-staging", "production": "myapp-production" }
-
-// B: 1 プロジェクトに相乗りさせる（Hosting サイトで分ける。→「Hosting のターゲットは環境名に合わせる」）
 "projects": { "default": "myapp", "develop": "myapp", "staging": "myapp", "production": "myapp" }
 ```
 
-> ⚠️ **B では `functions` / `firestore` / `storage` が環境で分かれない。** `deploy.sh` は
-> `.firebaserc` を読んでこれを検出し、**同じプロジェクトを共有する環境のうち最も本番側の
-> 1つ（通常は `production`）以外では、この3つを既定のデプロイ対象から外す**
-> （→「デプロイ対象は `.firebaserc` の構成から決まる」）。`yarn deploy:develop` が
-> 本番の関数とルールを上書きしないのは、この絞り込みのおかげ。**外した対象は
-> `--only` で明示すれば配れる**ので、遮断ではなく「既定を安全側に倒す」だけ。
+環境ごとにプロジェクトを分ける構成は持たない（#408）。Auth のユーザープール・モバイルの
+`GoogleService-Info.plist` / `google-services.json`・サービスアカウントの IAM 付与・Blaze の課金先が
+3 セットになるコストに見合わず、派生プロジェクトでは選ばれなかったため。
 
-> ⚠️ **B では Hosting サイトを分けるまで、配る側以外の環境は hosting も配れない。** サイトが
-> 1 つのままだと `develop` も `production` も同じサイトを指すため、`yarn deploy:develop` が
-> 本番サイトを develop のビルドで上書きする。`deploy.sh` は **`firebase.json` の `hosting` に
-> その環境名のターゲット（`target` / `site`）があるか**を見て、無ければ `hosting` も既定から
-> 外し、配る前に止まる（配る側 = `production` は止まらない）。サイトの分け方は
-> 「Hosting のターゲットは環境名に合わせる」。
+プロジェクト単位でしか存在しないものは、環境ごとに次のように扱う。
 
-後から A へ移行することはできる（プロジェクトを作り、`.firebaserc` を書き換え、
-データと Auth を移す）。移行のコストは、そのとき本番に溜まっているデータの量で決まる。
+| もの | 環境ごとの扱い | 詳細 |
+| --- | --- | --- |
+| Hosting | **環境ごとにサイトを分ける**（手動設定。分けるまで develop / staging は hosting を配れない）| 「Hosting のターゲットは環境名に合わせる」 |
+| Functions | **環境別の関数は環境ごとに配る**（`develop-api` / `staging-api` / `api`）。全環境共通の関数は production でだけ配る | 「Functions は環境別と全環境共通に分けて配る」 |
+| Firestore / Storage のルール・インデックス | **環境で分けられない**（全環境で 1 つ）。production のデプロイでだけ配る | 「デプロイ対象は環境ごとに決まる」 |
+| Firestore のデータ・Auth のユーザー | 全環境で共通。develop / staging から本番のデータとユーザーに**触れる** | — |
+
+> ⚠️ **develop / staging から本番のデータに触れる。** 環境ごとに分けたいデータはコレクションを
+> 分ける（`firestore.rules` のコメント参照）。ルールを本番より先に staging で確かめる仕組みは
+> まだ無い（名前付きデータベースを環境ごとに持つ案を検討中。→ `.claude/docs/questions.md`）。
 
 ### 環境
 
-| 環境         | Firebase プロジェクト（A の場合） | 用途                   |
-| ------------ | ------------------------- | ---------------------- |
-| `develop`    | `your-project-develop`    | 開発中の動作確認       |
-| `staging`    | `your-project-staging`    | リリース前 QA          |
-| `production` | `your-project-production` | 本番                   |
+| 環境         | デプロイ元                     | 用途                   |
+| ------------ | ------------------------------ | ---------------------- |
+| `develop`    | 手元（`yarn deploy:develop`）  | 開発中の動作確認       |
+| `staging`    | `release/*` / `hotfix/*` の push | リリース前 QA          |
+| `production` | `production` へのマージ         | 本番                   |
 
 ### ブランチ運用
 
@@ -286,7 +264,7 @@ Cloud Functions と SSR 関数が別々の理由で解決に失敗し、デプ�
 どちらも同期で配られるので、除外して自分の版を持つ場合も約束のほうは保つ。
 
 **逆に、書き換えないなら除外しないほうがよい。** デプロイ対象の絞り込み（→「デプロイ対象は
-`.firebaserc` の構成から決まる」）や env の退避のような、テンプレート側の修正が届かなくなる。
+環境ごとに決まる」）や env の退避のような、テンプレート側の修正が届かなくなる。
 
 #### 関数の削除に確認が入る
 
@@ -311,11 +289,12 @@ hosting やルールでは確認を飛ばすだけだが、functions では取�
 
 ### Hosting のターゲットは環境名に合わせる
 
-既定は 1 環境 = 1 Firebase プロジェクトで、`firebase.json` の `hosting` も 1 つ。この構成では
-`deploy.sh` は `firebase deploy --only hosting` を 1 回実行するだけで、以下は関係ない。
+全環境が 1 つの Firebase プロジェクトに同居するため、**Hosting は環境ごとにサイトを分ける。**
+テンプレート既定の `firebase.json` は `hosting` が 1 つ（ターゲット指定なし）で、このままでは
+production しか hosting を配れない（develop / staging は既定の対象から外れる。→「デプロイ対象は環境ごとに決まる」）。
 
-1 つの Firebase プロジェクトに複数のサイトを相乗りさせる場合（`.firebaserc` の `targets` に
-サイトを並べ、`firebase.json` の `hosting` を配列にする構成）は、**ターゲット名を環境名
+サイトを分けるには、Firebase コンソールで環境ぶんのサイトを作り、`firebase target:apply hosting <環境名> <サイト ID>`
+で `.firebaserc` の `targets` に並べ、`firebase.json` の `hosting` を配列にする。**ターゲット名は環境名
 （`develop` / `staging` / `production`）に揃えること。** `deploy.sh` は環境名と一致する
 ターゲットだけに配る。
 
@@ -346,27 +325,27 @@ DEPLOY_HOSTING_TARGETS='production lp-production' yarn deploy:production
 
 判定は `scripts/lib/hosting-targets.mjs` にあり、`scripts/test-deploy-targets.sh` が回帰テストする。
 
-### デプロイ対象は `.firebaserc` の構成から決まる
+### デプロイ対象は環境ごとに決まる
 
 `--only` を付けずに `deploy.sh` を実行したときのデプロイ対象（既定のターゲット）は、
-層構成（`firestore` / `storage` / `functions` を持つか）と **`.firebaserc` の `projects`** から決まる。
+層構成（`firestore` / `storage` / `functions` を持つか）と**環境**から決まる。
 
-`projects` で複数の環境が**同じ Firebase プロジェクト ID** を指している場合（→「Firebase
-プロジェクトの持ち方は2通りある」の B）、`functions` / `firestore` / `storage` は環境で
-分けられない。そこで **同じプロジェクトを共有する環境のうち、最も本番側の 1つだけ**
-（`develop` < `staging` < `production` の順。全部が同じプロジェクトなら `production`）が
-既定でそれらを配り、**他の環境では既定から外す**。
+| ターゲット | develop / staging | production |
+| --- | --- | --- |
+| `functions` | `functions:<環境名>`（環境別の関数のグループ） | `functions:<名前>`（環境別 + 全環境共通の関数を 1 つずつ） |
+| `firestore` / `storage` | **外す**（全環境で 1 つのため） | 配る |
+| `hosting` | この環境名の Hosting ターゲットがあれば配る。無ければ**外す** | 配る |
 
 ```
-$ bash scripts/deploy.sh develop      # B の構成（3環境が同じプロジェクト・サイトは分けてある）
-[warn] develop は staging / production と同じ Firebase プロジェクト（myapp）を指しています。
-[warn]   環境で分けられない functions / firestore / storage は既定のデプロイ対象から外しました。
-[warn]   この環境から配るなら明示してください: bash scripts/deploy.sh develop --only functions,firestore,storage
+$ bash scripts/deploy.sh develop      # サイトは分けてある
+[warn] firestore / storage は環境で分けられない（全環境で 1 つ）ため、develop の既定のデプロイ対象から外しました。
+[warn]   production へのデプロイで配られます。この環境から配るなら明示してください:
+[warn]   bash scripts/deploy.sh develop --only firestore,storage
 ```
 
-外した対象は **`--only` で明示すれば配れる**（止めはしない。ただし他の環境にも同じものが
-配られることを警告する）。CI（`.github/workflows/deploy.yml`）も同じ判定を通すため、
-B の構成では `release/*` への push で関数やルールが自動デプロイされることはない。
+外した `firestore` / `storage` は **`--only` で明示すれば配れる**（止めはしない。ただし全環境に
+同じものが配られることを警告する）。CI（`.github/workflows/deploy.yml`）も同じ判定を通すため、
+`release/*` への push でルールが自動デプロイされることはない。
 
 **`hosting` だけは扱いが違う。** 判定の基準は「**`firebase.json` の `hosting` にその環境名の
 ターゲット（`target` / `site`）があるか**」で、`hosting-targets.mjs` が環境名で絞り込める形と
@@ -375,13 +354,70 @@ B の構成では `release/*` への push で関数やルールが自動デプ�
 回避も案内しない**（`--only hosting` を明示すれば配れてしまうので、そのときは警告を出す）。
 配る先を `DEPLOY_HOSTING_TARGETS` で明示しているときは、選んだのが人なので外さない。
 
-配る側でない環境で、既定の対象が全て外れた場合、`deploy.sh` は配るものが無いことを告げて
-終了する（配る側 = 通常 `production` はこの絞り込みを受けないので、そこからは配れる）。
-
-A の構成（環境ごとにプロジェクトを分ける）では何も変わらない — 共有している環境が無いため、
-既定のターゲットはそのまま使われる。
+develop / staging で既定の対象が全て外れた場合、`deploy.sh` は配るものが無いことを告げて終了する。
 
 判定は `scripts/lib/deploy-targets.mjs` にあり、`scripts/test-deploy-targets.sh` が回帰テストする。
+
+### Functions は環境別と全環境共通に分けて配る
+
+関数は 1 つのプロジェクトに全環境ぶんが並ぶ。**関数ごとに、どちらに属するかを宣言する。**
+
+| 分類 | 例 | develop / staging | production |
+| --- | --- | --- | --- |
+| **環境別**（`perEnvironment`） | HTTP API（クライアントが環境ごとの URL を叩くもの） | `<環境名>-<名前>`（`staging-api`）で配る | `<名前>`（`api`）で配る |
+| **全環境共通**（`shared`） | Firestore / Storage / Auth のトリガー、スケジュール実行 | 配らない | `<名前>` で配る |
+
+> ⚠️ **イベントで起動する関数（Firestore / Storage / Auth のトリガー）は `shared` に置く。** データは
+> 全環境で 1 つなので、環境別にすると `develop-onUserCreate` / `staging-onUserCreate` / `onUserCreate` の
+> 3 つが**同じ本番の書き込みで全部発火する**（副作用が 3 回走り、develop / staging のコードが本番データを
+> 処理する）。環境ごとにデータを分ける仕組み（→ `.claude/docs/questions.md` Q-007）ができるまでは、
+> 環境別にしてよいのは HTTP のように呼び出し側が環境を選ぶ関数だけ。
+
+宣言は 2 か所にあり、一致していることを `apps/functions/tests/function-environments.test.ts` が検査する。
+
+- `apps/functions/src/index.ts` — 環境別の関数を `perEnvironment` に入れ、production の名前で export し、
+  同じものを `develop` / `staging` のグループとしても export する。全環境共通の関数は production の名前でだけ export する
+- `apps/functions/function-environments.json` — 名前の一覧。`deploy.sh` / `deploy.yml` はこれだけを読んで
+  `firebase deploy --only functions:<…>` を組み立てる（ビルドせずに決められるようにするため）
+
+```jsonc
+// apps/functions/function-environments.json
+{ "perEnvironment": ["api"], "shared": ["dailyCleanup"] }
+```
+
+```ts
+// apps/functions/src/index.ts
+const perEnvironment = { api }
+export { api }                         // production
+export { dailyCleanup } from './scheduled' // 全環境共通
+export const develop = perEnvironment  // develop-api
+export const staging = perEnvironment  // staging-api
+```
+
+関数を足したら両方に書く。index.ts にだけ足した関数はどの環境のデプロイにも載らず、
+宣言にだけある名前は `firebase deploy` が「一致する関数が無い」で落ちる。どちらもテストで止まる。
+
+**本番の関数は production へのデプロイまで変わらない。** `release/*` の push で配られるのは
+`functions:staging` だけで、`--only` で指定しなかった関数は前の版のまま残る。staging で関数を
+確かめてから、production へのマージで本番に出せる。
+
+- **env は環境ごとに入る。** `deploy.sh` は配る前に `use-env.sh <環境名>` で `apps/functions/.env` を
+  その環境の値で作り直すので、`staging-api` は `.env.staging` の値（`ALLOWED_ORIGINS` など）で動く
+- **クライアントは環境ごとの URL を env で選ぶ。** `.env.staging` の `NEXT_PUBLIC_API_BASE_URL` /
+  `EXPO_PUBLIC_API_BASE_URL` は `…/staging-api` を指す（`.env.example` 参照）
+- **production の名前は変えない。** 既存の関数を環境別にするときも、production では今の名前のまま
+  配られるので、配信済みのクライアントが持つ URL は壊れない
+- **Secret Manager のシークレットは環境で分かれない。** `defineSecret` で宣言したものは
+  `staging-api` にも本番と同じ値がマウントされる（課金キーの扱いは検討中。→ `.claude/docs/questions.md`）
+- **`--force` の削除は `--only` の範囲に閉じる。** `functions:staging` で配れば、消えるのは staging の
+  グループから外した関数だけ（firebase-tools の `deploy/functions/delete.js` がフィルタで絞る）。
+  裏返すと、**production から外した関数は自動では消えない**。`index.ts` と宣言から消したうえで
+  `firebase functions:delete <名前>` で消す
+- **`--only functions` の明示指定も展開する。** staging から `firebase deploy --only functions` を
+  そのまま流すと、本番の関数まで staging の env で上書きされるため。`functions:<名前>` の
+  個別指定は素通しする（自分のグループの外なら警告する）
+- 宣言ファイルが無い派生（この仕組みを取り込む前の `apps/functions`）では、develop / staging は
+  関数を配らず、production は従来どおり `functions` を全部配る
 
 ### CI 用 GitHub Secrets の登録
 
@@ -421,7 +457,7 @@ lacks IAM permission "cloudscheduler.jobs.update"
 
 どちらもワークフローが数分走ってから落ちるため、ロールを 1 つずつ足して再実行する往復になる。
 **CI からデプロイする Firebase プロジェクトごとに同じ作業を繰り返す**ので、
-初回デプロイの前に以下をまとめて付与しておく（1 プロジェクトに環境を相乗りさせる構成なら 1 回で済む）。
+初回デプロイの前に以下をまとめて付与しておく。
 
 ```bash
 SA=firebase-adminsdk-xxxxx@<project-id>.iam.gserviceaccount.com
@@ -446,13 +482,10 @@ done
 | `roles/artifactregistry.admin` | Functions のコンテナイメージ push |
 | `roles/serviceusage.serviceUsageConsumer` | `ensuring required API ... is enabled` のチェック |
 
-**対象はプロジェクトごと。** CI からデプロイするのは staging と production の 2 つ
-（develop は CI からデプロイしないため不要）で、**`FIREBASE_SERVICE_ACCOUNT` は 1 つの鍵を
-両環境で共用する**。相乗り構成（B）では staging と production が同じプロジェクトなので、
-このループは 1 回だけ実行する。つまり既定では、**1 つの SA に対して staging / production の各プロジェクトで
-上のループを実行する**（`add-iam-policy-binding` のメンバーには別プロジェクトの SA も指定できる）。
-環境ごとに鍵を分ける構成にした場合（この節の後半の GitHub Environment）は、それぞれの SA に
-それぞれのプロジェクトで付与する。
+CI からデプロイするのは staging と production の 2 つ（develop は CI からデプロイしないため不要）で、
+**`FIREBASE_SERVICE_ACCOUNT` は 1 つの鍵を両環境で共用する**。どちらも同じプロジェクトなので、
+このループは 1 回だけ実行する。環境ごとに鍵を分ける構成にした場合（この節の後半の GitHub Environment）は、
+それぞれの SA に同じプロジェクトで付与する。
 
 #### 残り 2 つのロールは対象を絞って付ける
 

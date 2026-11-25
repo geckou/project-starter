@@ -56,7 +56,7 @@ match /posts/{postId} {
 - **誰でも読める（公開）**: `allow read: if true`
 - **管理者のみ**: `request.auth.token.admin == true`
 
-注意: 1つの Firebase プロジェクトに複数環境を相乗りさせる運用では、
+注意: 全環境が 1 つの Firebase プロジェクトに同居するため、環境ごとにコレクションを分けるなら
 環境ごとに明示的な match を追加する（`match /dev_posts/{postId}`, `match /stg_posts/{postId}`）。
 ワイルドカード `/{prefix}posts` はセグメント内マッチ不可のため使えない
 （`firestore.rules` 内のコメント参照）。

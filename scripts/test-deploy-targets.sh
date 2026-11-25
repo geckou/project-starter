@@ -4,11 +4,11 @@ set -u
 # scripts/lib/hosting-targets.mjs と scripts/lib/deploy-targets.mjs の回帰テスト。
 #
 # 前半は「どのターゲットに配るか」の判断を切り出した .mjs を直接検証する。
-# 後半（[9] [10]）は deploy.sh 本体を一時ツリーで回す（firebase はスタブ）。
+# 後半（[10]〜[12]）は deploy.sh 本体を一時ツリーで回す（firebase はスタブ）。
 # --only の扱いと --force の付け方は .mjs に出てこないため、本体を通さないと見えない。
 #
-# 前半（[1]〜[4]）は hosting のターゲット選び、後半（[5]〜[8]）は
-# .firebaserc の構成から既定のデプロイ対象を導く部分。
+# 前半のうち [1]〜[4] は hosting のターゲット選び、[5]〜[9] は環境ごとに
+# デプロイ対象を導く部分（関数の展開・ルールの扱い・明示指定）。
 #
 # hosting-targets.mjs で検証するもの:
 #   1. hosting 宣言が無ければ何も出さない（--only hosting のまま）
@@ -185,16 +185,14 @@ fi
 
 unset DEPLOY_HOSTING_TARGETS
 
-# ここから deploy-targets.mjs（.firebaserc の構成から既定のデプロイ対象を導く）。
+# ここから deploy-targets.mjs（環境ごとに既定のデプロイ対象を導く。#358 / #408）。
 #
 # 検証するもの:
-#  11. 環境ごとにプロジェクトを分ける構成では既定を変えない
-#  12. 相乗り構成では、本番側でない環境の既定から functions / firestore / storage が外れる
-#  13. 相乗り構成でも、共有する環境のうち最も本番側の 1 つは配る
-#  14. default エイリアスは環境として数えない
-#  15. 相乗り構成で、この環境名の Hosting ターゲットが無ければ hosting も外れる
-#  16. --explicit（明示指定）は素通しし、他の環境にも配ることを警告する
-#  17. .firebaserc が読めなくてもデプロイを止めない
+#  11. functions を環境の関数へ展開する（develop / staging はグループ、production は名前ごと）
+#  12. 宣言が無い・空・壊れているときの扱い
+#  13. firestore / storage は production だけが既定で配る
+#  14. この環境名の Hosting ターゲットが無ければ、production 以外は hosting も外れる
+#  15. --explicit（明示指定）でも functions は展開し、それ以外は素通しして警告する
 
 # 環境ごとにサイトを分けてある firebase.json（相乗り構成の前提）。
 # 既定でこれを置き、hosting の扱いを見るときだけ差し替える
@@ -203,23 +201,32 @@ HOSTING_SINGLE='{ "source": "apps/web" }'
 HOSTING_NAMED_SINGLE='[{ "target": "web", "source": "apps/web" }]'
 HOSTING_PARTIAL='[{ "target": "staging", "source": "apps/web" }, { "target": "production", "source": "apps/web" }]'
 
-# $1: .firebaserc の projects（JSON）、$2: 環境名、$3: 候補ターゲット、
-# $4: 追加フラグ（--explicit）、$5: firebase.json の hosting（既定は環境ごとに分けたもの）
+MANIFEST_DEFAULT='{ "perEnvironment": ["api"], "shared": ["dailyCleanup"] }'
+MANIFEST_NONE='-'
+
+# $1: 環境名、$2: 候補ターゲット、$3: 追加フラグ（--explicit）、
+# $4: firebase.json の hosting（既定は環境ごとに分けたもの）、
+# $5: function-environments.json の中身（既定は MANIFEST_DEFAULT。'-' なら置かない）
 run_deploy_targets() {
-  printf '{ "projects": %s }\n' "$1" >"$WORK/.firebaserc"
-  printf '{ "hosting": %s }\n' "${5:-$HOSTING_SPLIT}" >"$WORK/firebase.json"
+  rm -rf "$WORK/tree"
+  mkdir -p "$WORK/tree/apps/functions"
+  printf '{ "hosting": %s }\n' "${4:-$HOSTING_SPLIT}" >"$WORK/tree/firebase.json"
+
+  if [ "${5:-$MANIFEST_DEFAULT}" != "$MANIFEST_NONE" ]; then
+    printf '%s\n' "${5:-$MANIFEST_DEFAULT}" >"$WORK/tree/apps/functions/function-environments.json"
+  fi
 
   RUN_STDERR=$(mktemp)
-  RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" "$2" "$3" "$WORK/.firebaserc" ${4:-} 2>"$RUN_STDERR")
+  RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" "$1" "$2" "$WORK/tree" ${3:-} 2>"$RUN_STDERR")
   RUN_STATUS=$?
   RUN_ERR=$(cat "$RUN_STDERR")
   rm -f "$RUN_STDERR"
 }
 
-# $1: 説明、$2: 期待する標準出力、$3: projects、$4: 環境名、$5: 候補ターゲット、
-# $6: firebase.json の hosting
+# $1: 説明、$2: 期待する標準出力、$3: 環境名、$4: 候補ターゲット、
+# $5: firebase.json の hosting、$6: function-environments.json
 expect_deploy_targets() {
-  run_deploy_targets "$3" "$4" "$5" "" "${6:-}"
+  run_deploy_targets "$3" "$4" "" "${5:-}" "${6:-}"
 
   if [ "$RUN_STATUS" -ne 0 ]; then
     fail "$1（異常終了した）" "$RUN_ERR"
@@ -230,75 +237,113 @@ expect_deploy_targets() {
   fi
 }
 
-SEPARATE='{ "default": "app-develop", "develop": "app-develop", "staging": "app-staging", "production": "app-production" }'
-SHARED='{ "default": "app", "develop": "app", "staging": "app", "production": "app" }'
-PARTIAL='{ "default": "app-dev", "develop": "app-dev", "staging": "app-dev", "production": "app-production" }'
 ALL_TARGETS='functions,firestore,storage,hosting'
 
 echo ""
-echo "[5] 環境ごとに Firebase プロジェクトを分ける構成"
-expect_deploy_targets "既定のターゲットをそのまま使う" "$ALL_TARGETS" "$SEPARATE" develop "$ALL_TARGETS"
-expect_deploy_targets "production でも変わらない" "$ALL_TARGETS" "$SEPARATE" production "$ALL_TARGETS"
-expect_deploy_targets "サイトが 1 つでも絞り込まない" "$ALL_TARGETS" "$SEPARATE" develop "$ALL_TARGETS" "$HOSTING_SINGLE"
+echo "[5] functions を環境の関数へ展開する（#408）"
+expect_deploy_targets "develop は develop のグループだけ" "functions:develop" develop functions
+expect_deploy_targets "staging は staging のグループだけ" "functions:staging" staging functions
+expect_deploy_targets "production は環境別と全環境共通の関数を名前で" \
+  "functions:api,functions:dailyCleanup" production functions
 
-run_deploy_targets "$SEPARATE" develop "$ALL_TARGETS"
-if [ -z "$RUN_ERR" ]; then
-  pass "分離構成では警告しない"
+run_deploy_targets staging functions
+if printf '%s' "$RUN_OUT" | grep -qE 'functions:(api|dailyCleanup)'; then
+  fail "staging のデプロイに本番の関数が混ざる" "$RUN_OUT"
 else
-  fail "分離構成で警告が出た" "$RUN_ERR"
+  pass "staging のデプロイに本番の関数が混ざらない"
+fi
+
+if [ -z "$RUN_ERR" ]; then
+  pass "展開しただけでは警告しない"
+else
+  fail "展開しただけで警告が出た" "$RUN_ERR"
+fi
+
+expect_deploy_targets "全環境共通の関数だけなら develop は配らない" "" develop functions \
+  "" '{ "perEnvironment": [], "shared": ["dailyCleanup"] }'
+expect_deploy_targets "全環境共通の関数だけでも production は配る" "functions:dailyCleanup" \
+  production functions "" '{ "perEnvironment": [], "shared": ["dailyCleanup"] }'
+expect_deploy_targets "グループを持たない環境名では関数を配らない" "" preview functions
+
+echo ""
+echo "[6] 関数の宣言が無い・壊れている"
+expect_deploy_targets "宣言が無ければ develop は関数を配らない" "" develop functions "" "$MANIFEST_NONE"
+expect_deploy_targets "宣言が無くても production は従来どおり全部配る" "functions" \
+  production functions "" "$MANIFEST_NONE"
+
+run_deploy_targets staging functions "" "" "$MANIFEST_NONE"
+if printf '%s' "$RUN_ERR" | grep -q 'function-environments.json'; then
+  pass "宣言が無いことを警告する"
+else
+  fail "宣言が無いまま黙って関数を外している" "$RUN_ERR"
+fi
+
+run_deploy_targets staging functions "" "" '{ "perEnvironment": "api" }'
+if [ "$RUN_STATUS" -ne 0 ] && [ -z "$RUN_OUT" ]; then
+  pass "形の崩れた宣言では止める"
+else
+  fail "形の崩れた宣言で素通しした" "status=$RUN_STATUS / out='$RUN_OUT'"
+fi
+
+run_deploy_targets production functions "" "" '{ "perEnvironment": ["api", "develop"], "shared": [] }'
+if [ "$RUN_STATUS" -ne 0 ] && [ -z "$RUN_OUT" ]; then
+  pass "環境名と同じ関数名の宣言では止める（functions:develop が曖昧になる）"
+else
+  fail "環境名と同じ関数名の宣言で素通しした" "status=$RUN_STATUS / out='$RUN_OUT'"
+fi
+
+run_deploy_targets production functions "" "" '{ "perEnvironment": ["api"], "shared": ["api"] }'
+if [ "$RUN_STATUS" -ne 0 ]; then
+  pass "重複した関数名の宣言では止める"
+else
+  fail "重複した関数名の宣言で素通しした" "out='$RUN_OUT'"
+fi
+
+run_deploy_targets staging functions "" "" '{ broken'
+if [ "$RUN_STATUS" -ne 0 ]; then
+  pass "JSON として読めない宣言では止める"
+else
+  fail "読めない宣言で素通しした" "out='$RUN_OUT'"
 fi
 
 echo ""
-echo "[6] 1 プロジェクトに環境を相乗りさせる構成（#358）"
-expect_deploy_targets "develop の既定からプロジェクト単位のターゲットを外す" "hosting" "$SHARED" develop "$ALL_TARGETS"
-expect_deploy_targets "staging の既定からも外す" "hosting" "$SHARED" staging "$ALL_TARGETS"
-expect_deploy_targets "共有する環境のうち production だけが配る" "$ALL_TARGETS" "$SHARED" production "$ALL_TARGETS"
+echo "[7] firestore / storage は production だけが既定で配る（#358）"
+expect_deploy_targets "develop の既定からルールを外す" "functions:develop,hosting" develop "$ALL_TARGETS"
+expect_deploy_targets "staging の既定からも外す" "functions:staging,hosting" staging "$ALL_TARGETS"
+expect_deploy_targets "production は全部配る" \
+  "functions:api,functions:dailyCleanup,firestore,storage,hosting" production "$ALL_TARGETS"
 
-expect_deploy_targets "一部だけ共有: develop は外れる" "hosting" "$PARTIAL" develop "$ALL_TARGETS"
-expect_deploy_targets "一部だけ共有: staging は配る側" "$ALL_TARGETS" "$PARTIAL" staging "$ALL_TARGETS"
-expect_deploy_targets "一部だけ共有: 独立した production は影響を受けない" "$ALL_TARGETS" "$PARTIAL" production "$ALL_TARGETS"
-
-# default を環境として数えると qa と共有していることになり、どちらも rank -1 で
-# 「誰も配らない」に落ちる。除外できていれば qa は単独の環境として全部配る
-expect_deploy_targets "default エイリアスは環境として数えない" "$ALL_TARGETS" \
-  '{ "default": "app", "qa": "app" }' qa "$ALL_TARGETS"
-
-run_deploy_targets "$SHARED" develop "$ALL_TARGETS"
-if printf '%s' "$RUN_ERR" | grep -q -- '--only functions,firestore,storage'; then
+run_deploy_targets develop "$ALL_TARGETS"
+if printf '%s' "$RUN_ERR" | grep -q -- '--only firestore,storage'; then
   pass "外した理由と明示指定の方法を出す"
 else
   fail "外したことを黙って行っている" "$RUN_ERR"
 fi
 
-expect_deploy_targets "未知の環境名だけで共有しているときは配らない" "" \
-  '{ "qa": "app", "qa2": "app" }' qa "$ALL_TARGETS"
-expect_deploy_targets ".firebaserc に無い環境名は絞り込まない" "$ALL_TARGETS" "$SHARED" preview "$ALL_TARGETS"
-
 echo ""
-echo "[7] 相乗り構成で、この環境の Hosting ターゲットが無い場合"
-expect_deploy_targets "サイトが 1 つなら hosting も外す（本番のサイトを上書きするため）" "" \
-  "$SHARED" develop "$ALL_TARGETS" "$HOSTING_SINGLE"
-expect_deploy_targets "名前付きでもサイトが 1 つなら外す" "" \
-  "$SHARED" develop "$ALL_TARGETS" "$HOSTING_NAMED_SINGLE"
-expect_deploy_targets "環境名のターゲットが無ければ外す（全ターゲットに配られるため）" "" \
-  "$SHARED" develop "$ALL_TARGETS" "$HOSTING_PARTIAL"
-expect_deploy_targets "同じ宣言でも、自分のターゲットがある環境は配る" "$ALL_TARGETS" \
-  "$SHARED" production "$ALL_TARGETS" "$HOSTING_PARTIAL"
-expect_deploy_targets "配る側（production）は hosting も配る" "$ALL_TARGETS" \
-  "$SHARED" production "$ALL_TARGETS" "$HOSTING_SINGLE"
-expect_deploy_targets "サイトを分けてあれば hosting は残る" "hosting" \
-  "$SHARED" develop "$ALL_TARGETS" "$HOSTING_SPLIT"
-expect_deploy_targets "hosting を持たない構成では hosting を外さない" "$ALL_TARGETS" \
-  "$SEPARATE" develop "$ALL_TARGETS" "null"
+echo "[8] この環境の Hosting ターゲットが無い場合"
+expect_deploy_targets "サイトが 1 つなら hosting も外す（本番のサイトを上書きするため）" "functions:develop" \
+  develop "$ALL_TARGETS" "$HOSTING_SINGLE"
+expect_deploy_targets "名前付きでもサイトが 1 つなら外す" "functions:develop" \
+  develop "$ALL_TARGETS" "$HOSTING_NAMED_SINGLE"
+expect_deploy_targets "環境名のターゲットが無ければ外す（全ターゲットに配られるため）" "functions:develop" \
+  develop "$ALL_TARGETS" "$HOSTING_PARTIAL"
+expect_deploy_targets "同じ宣言でも、自分のターゲットがある環境は配る" "functions:staging,hosting" \
+  staging "$ALL_TARGETS" "$HOSTING_PARTIAL"
+expect_deploy_targets "production は hosting を配る" "hosting" \
+  production hosting "$HOSTING_SINGLE"
+expect_deploy_targets "hosting を持たない構成では hosting を外さない" "hosting" \
+  develop hosting "null"
+expect_deploy_targets "全部外れたら空になる" "" develop "firestore,storage,hosting" "$HOSTING_SINGLE"
 
 # 配る先を人が明示しているなら、その判断を尊重する
 DEPLOY_HOSTING_TARGETS='web'
 export DEPLOY_HOSTING_TARGETS
 expect_deploy_targets "DEPLOY_HOSTING_TARGETS があれば hosting を外さない" "hosting" \
-  "$SHARED" develop "$ALL_TARGETS" "$HOSTING_NAMED_SINGLE"
+  develop hosting "$HOSTING_NAMED_SINGLE"
 unset DEPLOY_HOSTING_TARGETS
 
-run_deploy_targets "$SHARED" develop "$ALL_TARGETS" "" "$HOSTING_SINGLE"
+run_deploy_targets develop hosting "" "$HOSTING_SINGLE"
 if printf '%s' "$RUN_ERR" | grep -q 'Hosting ターゲットを用意'; then
   pass "hosting を外した理由と直し方を出す"
 else
@@ -311,77 +356,80 @@ else
   pass "hosting は --only での回避を案内しない"
 fi
 
+# firebase.json だけ読めない場合は hosting を外さない（判断材料が無いため）
+rm -rf "$WORK/tree"
+mkdir -p "$WORK/tree"
+RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" develop hosting "$WORK/tree" 2>/dev/null)
+
+if [ "$RUN_OUT" = "hosting" ]; then
+  pass "firebase.json が読めないときは hosting を外さない"
+else
+  fail "firebase.json が無いと hosting の扱いが変わる" "実際: '$RUN_OUT'"
+fi
+
 echo ""
-echo "[8] 明示指定（--only）と異常系"
-run_deploy_targets "$SHARED" develop "functions,hosting" --explicit
-if [ "$RUN_OUT" = "functions,hosting" ]; then
-  pass "明示指定は素通しする"
+echo "[9] 明示指定（--only）"
+run_deploy_targets staging "functions,hosting" --explicit
+if [ "$RUN_OUT" = "functions:staging,hosting" ]; then
+  pass "--only functions も環境の関数へ展開する（本番の関数を上書きしない）"
 else
-  fail "明示指定が書き換えられた" "$RUN_OUT"
+  fail "--only functions が展開されない" "$RUN_OUT"
 fi
 
-if printf '%s' "$RUN_ERR" | grep -q 'staging / production'; then
-  pass "他の環境にも配ることを警告する"
+run_deploy_targets production "functions" --explicit
+if [ "$RUN_OUT" = "functions:api,functions:dailyCleanup" ] && [ -z "$RUN_ERR" ]; then
+  pass "production の --only functions は名前ごとに展開し、警告しない"
 else
-  fail "相乗り構成で明示指定を黙って受けている" "$RUN_ERR"
+  fail "production の --only functions の扱いが違う" "out='$RUN_OUT' / $RUN_ERR"
 fi
 
-run_deploy_targets "$SHARED" develop "functions:api" --explicit
-if printf '%s' "$RUN_ERR" | grep -q 'functions:api'; then
-  pass "functions:api のような個別指定も警告の対象にする"
+run_deploy_targets staging "functions:staging-api" --explicit
+if [ "$RUN_OUT" = "functions:staging-api" ] && [ -z "$RUN_ERR" ]; then
+  pass "自分のグループの個別指定は素通しし、警告しない"
 else
-  fail "個別指定が警告から漏れた" "$RUN_ERR"
+  fail "自分のグループの個別指定の扱いが違う" "out='$RUN_OUT' / $RUN_ERR"
 fi
 
-run_deploy_targets "$SHARED" develop "hosting" --explicit "$HOSTING_SINGLE"
+run_deploy_targets staging "functions:api" --explicit
+if [ "$RUN_OUT" = "functions:api" ] && printf '%s' "$RUN_ERR" | grep -q 'グループの外'; then
+  pass "グループの外の個別指定は素通しし、警告する"
+else
+  fail "グループの外の個別指定を黙って受けている" "out='$RUN_OUT' / $RUN_ERR"
+fi
+
+run_deploy_targets develop "firestore,storage" --explicit
+if [ "$RUN_OUT" = "firestore,storage" ] && printf '%s' "$RUN_ERR" | grep -q '全環境'; then
+  pass "ルールの明示指定は素通しし、全環境に配ることを警告する"
+else
+  fail "ルールの明示指定の扱いが違う" "out='$RUN_OUT' / $RUN_ERR"
+fi
+
+run_deploy_targets develop "hosting" --explicit "$HOSTING_SINGLE"
 if printf '%s' "$RUN_ERR" | grep -q '同じサイトへ配ります'; then
   pass "サイトを分けていない構成の --only hosting を警告する"
 else
   fail "--only hosting が他の環境のサイトを黙って上書きする" "$RUN_ERR"
 fi
 
-run_deploy_targets "$SHARED" develop "hosting" --explicit "$HOSTING_SPLIT"
+run_deploy_targets develop "hosting" --explicit "$HOSTING_SPLIT"
 if [ -z "$RUN_ERR" ]; then
   pass "サイトを分けてあれば --only hosting は警告しない"
 else
   fail "サイトを分けてあるのに警告が出た" "$RUN_ERR"
 fi
 
-run_deploy_targets "$SHARED" production "functions,hosting" --explicit
+run_deploy_targets production "firestore,storage,hosting" --explicit "$HOSTING_SINGLE"
 if [ -z "$RUN_ERR" ]; then
-  pass "配る側（production）の明示指定では警告しない"
+  pass "production の明示指定では警告しない"
 else
-  fail "配る側の明示指定で毎回警告が出る" "$RUN_ERR"
+  fail "production の明示指定で毎回警告が出る" "$RUN_ERR"
 fi
 
-run_deploy_targets "$SEPARATE" develop "functions,hosting" --explicit
-if [ -z "$RUN_ERR" ]; then
-  pass "分離構成の明示指定では警告しない"
+run_deploy_targets staging "functions" --explicit "" "$MANIFEST_NONE"
+if [ -z "$RUN_OUT" ] && printf '%s' "$RUN_ERR" | grep -q 'function-environments.json'; then
+  pass "宣言が無ければ --only functions も配らず、理由を出す"
 else
-  fail "分離構成の明示指定で警告が出た" "$RUN_ERR"
-fi
-
-RUN_STDERR=$(mktemp)
-RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" develop "$ALL_TARGETS" "$WORK/missing.firebaserc" 2>"$RUN_STDERR")
-RUN_STATUS=$?
-RUN_ERR=$(cat "$RUN_STDERR")
-rm -f "$RUN_STDERR"
-
-if [ "$RUN_STATUS" -eq 0 ] && [ "$RUN_OUT" = "$ALL_TARGETS" ] && [ -n "$RUN_ERR" ]; then
-  pass ".firebaserc が読めないときは警告して素通しする"
-else
-  fail ".firebaserc が読めないとデプロイが止まる" "status=$RUN_STATUS / out='$RUN_OUT' / $RUN_ERR"
-fi
-
-# firebase.json だけ読めない場合は hosting を外さない（判断材料が無いため）
-rm -f "$WORK/firebase.json"
-printf '{ "projects": %s }\n' "$SHARED" >"$WORK/.firebaserc"
-RUN_OUT=$(node "$DEPLOY_TARGETS_SCRIPT" develop "$ALL_TARGETS" "$WORK/.firebaserc" 2>/dev/null)
-
-if [ "$RUN_OUT" = "hosting" ]; then
-  pass "firebase.json が読めないときは hosting を外さない"
-else
-  fail "firebase.json が無いと hosting の扱いが変わる" "実際: '$RUN_OUT'"
+  fail "宣言が無いのに --only functions を素通しした" "out='$RUN_OUT' / $RUN_ERR"
 fi
 
 
@@ -403,6 +451,7 @@ printf '{ "name": "fixture", "private": true, "workspaces": ["apps/*"] }\n' \
   >"$DEPLOY_TREE/package.json"
 printf '{ "name": "@fixture/web", "version": "0.0.0" }\n' >"$DEPLOY_TREE/apps/web/package.json"
 printf '{ "name": "@fixture/functions", "version": "0.0.0" }\n' >"$DEPLOY_TREE/apps/functions/package.json"
+printf '{ "perEnvironment": ["api"], "shared": [] }\n' >"$DEPLOY_TREE/apps/functions/function-environments.json"
 printf 'NEXT_PUBLIC_X=1\n' >"$DEPLOY_TREE/.env.staging"
 git -C "$DEPLOY_TREE" init -q .
 
@@ -430,7 +479,7 @@ run_deploy() {
     bash scripts/deploy.sh "$@" >"$DEPLOY_TREE/deploy.log" 2>&1 < /dev/null)
 }
 
-echo "[9] --only の値"
+echo "[10] --only の値"
 
 if run_deploy staging --only ""; then
   fail "--only \"\" が通ってしまう（既定の全ターゲットへ反転する）" \
@@ -452,11 +501,11 @@ else
 fi
 
 echo ""
-echo "[10] functions の --force"
+echo "[11] functions の --force"
 
 # 既定（auto）で非対話なら付ける。CI はプロンプトに答えられないため
 if run_deploy staging --only functions &&
-  grep -q 'deploy --only functions --force' "$FIREBASE_CALLS"; then
+  grep -q 'deploy --only functions:staging --force' "$FIREBASE_CALLS"; then
   pass "非対話（CI）では functions にも --force を付ける"
 else
   fail "非対話で --force が付かない（CI がプロンプト待ちで止まる）" "$(cat "$FIREBASE_CALLS")"
@@ -464,7 +513,7 @@ fi
 
 # FUNCTIONS_FORCE=never で外れること（対話端末の既定と同じ経路）
 if FUNCTIONS_FORCE_OVERRIDE=never run_deploy staging --only functions &&
-  grep -q 'deploy --only functions$' "$FIREBASE_CALLS"; then
+  grep -q 'deploy --only functions:staging$' "$FIREBASE_CALLS"; then
   pass "FUNCTIONS_FORCE=never なら --force を付けない（関数の削除に確認が入る）"
 else
   fail "FUNCTIONS_FORCE=never でも --force が付く" "$(cat "$FIREBASE_CALLS")"
@@ -496,7 +545,7 @@ else
 fi
 
 echo ""
-echo "[11] 中断したらそこで止まる"
+echo "[12] 中断したらそこで止まる"
 
 # firebase の実行中に INT を受けたら、復元して**そこで終わる**こと。
 # 復元だけして継続すると、以降の EXIT トラップが無処理になったまま

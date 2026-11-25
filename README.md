@@ -187,8 +187,8 @@ yarn setup
 
 これで以下が自動的に行われる:
 
-- `.firebaserc` の Firebase Project ID 設定（対話で入力。**環境ごとにプロジェクトを分けるか、
-  1 つのプロジェクトに相乗りさせるかもここで選ぶ** → `.claude/docs/git-workflow.md`）
+- `.firebaserc` の Firebase Project ID 設定（対話で入力。**Firebase プロジェクトは 1 つで、
+  develop / staging / production を相乗りさせる** → `.claude/docs/git-workflow.md`）
 - 環境別 env ファイル（`.env.develop` / `.env.staging` / `.env.production`）を
   `.env.example` から作成
 - `.env.local` の作成（`.env.develop` からコピー = 既定は develop 環境）
@@ -265,10 +265,9 @@ cp .env.example .env.production
 | 変数 | 環境差分 |
 | --- | --- |
 | `BASIC_AUTH_CREDENTIALS` | develop / staging のみ設定。production は未設定 |
-| `NEXT_PUBLIC_API_BASE_URL` / `EXPO_PUBLIC_API_BASE_URL` | 環境ごとの API エンドポイント |
+| `NEXT_PUBLIC_API_BASE_URL` / `EXPO_PUBLIC_API_BASE_URL` | 環境ごとの API エンドポイント（`…/develop-api` / `…/staging-api` / `…/api`） |
 | `NEXT_PUBLIC_GTM_ID` | 本番のみ設定する等 |
 | `NEXT_PUBLIC_SENTRY_DSN` / `SENTRY_DSN` / `EXPO_PUBLIC_SENTRY_DSN` | 環境ごとの DSN |
-| Firebase 設定値（`NEXT_PUBLIC_FIREBASE_*` 等） | Firebase プロジェクトを分けている場合 |
 
 作成後、使う環境に切り替える:
 
@@ -397,7 +396,7 @@ Org へ置く順番は [`.claude/docs/git-workflow.md`](.claude/docs/git-workflo
 | `yarn env:<環境名>`              | 環境切り替え（develop / staging / production） |
 | `yarn deploy:<環境名>`           | 事前チェック付きデプロイ（develop / staging / production） |
 | `yarn firebase:deploy`           | Firebase 全体をデプロイ（チェックなし・環境で絞り込まない素のコマンド） |
-| `yarn firebase:deploy:functions` | Functions のみデプロイ      |
+| `yarn firebase:deploy:functions` | Functions のみデプロイ（全環境ぶんの関数を、今アクティブな環境の env で上書きする。環境ごとに配るなら `yarn deploy:<環境名> --only functions`） |
 | `yarn firebase:deploy:hosting`   | Hosting のみデプロイ（`deploy.sh` を通らないため、ターゲットの絞り込みも `.env.local` の退避もしない） |
 
 > デプロイは `yarn deploy:<環境名>` を推奨。型チェック・テスト・ビルドの事前実行、
