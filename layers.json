@@ -167,7 +167,7 @@
       "title": "apps/functions（自分で書く関数の器）",
       "requires": "firebase",
       "removable": true,
-      "summary": "API・Firestore / Auth トリガー・スケジュール実行の置き場所。API は全クライアントがこの1本を共有する（architecture.md）。外すとプロジェクトは API を持たない。",
+      "summary": "API・Firestore / Auth トリガー・スケジュール実行の置き場所。API は全クライアントがこの1本を共有し、環境ごとに develop-api / staging-api / api として配る（architecture.md・git-workflow.md）。外すとプロジェクトは API を持たない。",
       "files": [
         "apps/functions",
         "packages/shared/src/api-client",

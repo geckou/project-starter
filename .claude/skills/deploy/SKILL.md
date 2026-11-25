@@ -20,10 +20,11 @@ description: マルチ環境（develop / staging / production）への Firebase 
 
 Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象外。
 
-⚠️ **`yarn firebase:deploy` / `yarn firebase:deploy:hosting` は `deploy.sh` を通らない。**
+⚠️ **`yarn firebase:deploy` / `yarn firebase:deploy:functions` / `yarn firebase:deploy:hosting` は `deploy.sh` を通らない。**
 事前チェックも環境ごとの絞り込みもせず、`apps/web/.env.local` の退避もしない。そのため
 `firebase.json` に hosting ターゲットが複数ある構成では**全ターゲットに配り**（今アクティブな
 環境のビルドが別の環境のサイトにも出る）、**サーバー秘密が SSR 関数へ同梱される**。
+関数も全環境ぶん（`api` / `staging-api` / `develop-api`）を、今アクティブな環境の env で上書きする。
 デプロイは `yarn deploy:<環境名>` を使う。
 
 ## deploy.sh がやること
@@ -36,18 +37,17 @@ Mobile は EAS 経由（`eas build` + `eas submit`）で、deploy.sh の対象�
 2. `type-check` / `lint` / `test` / `build` の事前チェック（`SKIP_CHECKS=1` を渡したときのみ省略。CI 専用の抜け道で、ローカルでは使わない）
 3. workspace 依存（`@geckou/*`）を package.json から一時削除（Cloud Build が npm registry から取得しようとして失敗するため。終了時に自動復元）
 4. `apps/web/.env.*` を退避（framework-backed hosting はこれらを関数のソースへ同梱するため、全文コピーの `.env.local` が入るとサーバー秘密まで載る。終了時に自動復元。中断で取りこぼしても次回のデプロイで戻す）
-5. **既定のデプロイ対象を `.firebaserc` から導出する**（`--only` 未指定のとき）
-   - 複数の環境が同じ Firebase プロジェクト ID を指す構成（1 プロジェクトに環境を
-     相乗りさせる → `.claude/docs/git-workflow.md`）では、`functions` / `firestore` /
-     `storage` は環境で分けられない。**共有する環境のうち最も本番側の 1 つ**
-     （通常は `production`）以外では、既定のデプロイ対象から外す
-   - 同じ条件で、`firebase.json` の `hosting` に**その環境名のターゲット（`target` / `site`）が
-     無い**場合は `hosting` も外す（配ると他の環境 = 本番のサイトを上書きするため）。
+5. **環境ごとにデプロイ対象を決める**（全環境が 1 つの Firebase プロジェクトに同居するため。
+   → `.claude/docs/git-workflow.md`「デプロイ対象は環境ごとに決まる」）
+   - `functions` は `apps/functions/function-environments.json` の宣言から、この環境の関数へ展開する。
+     develop / staging は `functions:<環境名>`（`develop-api` / `staging-api`）、production は
+     `functions:<名前>`（環境別 + 全環境共通）。**`--only functions` の明示指定も同じく展開する**
+     （staging から本番の関数を上書きしないため）
+   - `firestore` / `storage` は環境で分けられないので、production 以外では既定から外す
+     （`--only` で明示すれば配れる。全環境に配られることを警告する）
+   - `firebase.json` の `hosting` に**その環境名のターゲット（`target` / `site`）が無い**場合、
+     production 以外では `hosting` も外す（配ると本番のサイトを上書きするため）。
      配る対象が全て外れた環境では、配るものが無いのでエラーで終了する
-     （配る側 = 通常 `production` はこの絞り込みを受けない）
-   - 外した対象は `--only` で明示すれば配れる。`hosting` も止めはしないが、他の環境の
-     サイトを上書きするため**警告が出る**（サイトを分けてから配ること）
-   - 環境ごとに Firebase プロジェクトを分ける構成では何も変わらない
 6. functions / firestore → storage → framework hosting の順にデプロイ
    - hosting は複数同梱だと next build がハングするため、ターゲットごとに個別デプロイする
    - **配る先は環境名と一致する hosting ターゲットだけ**（`firebase.json` に複数ある場合）。
@@ -117,14 +117,14 @@ CI には Secrets として `FIREBASE_SERVICE_ACCOUNT`（サービスアカウ�
 デプロイ対象は push の変更差分から判定し、必要なターゲットだけを `--only` で渡す。
 `apps/web/` だけの変更なら hosting だけ、`firestore.rules` だけなら firestore だけがデプロイされる。
 影響範囲を特定できないファイル（ルート設定・`packages/` 等）が含まれる場合は全ターゲットをデプロイする。
-ただし CI も `deploy.sh` と同じ絞り込み（上の 5.）を通すため、**1 プロジェクトに環境を相乗りさせる
-構成では、配る側でない環境（通常は staging）から `functions` / `firestore` / `storage` は配られない。**
+CI も `deploy.sh` と同じ絞り込み（上の 5.）を通すため、**`release/*` / `hotfix/*` の push で配られる関数は
+`functions:staging` だけ**で、本番の関数とルールは `production` へのマージまで変わらない。
 
 **デプロイが失敗した回の変更は、次の push では再送されない。** 取りこぼしたときは
 `workflow_dispatch`（Actions タブから手動実行）で全ターゲットをデプロイして回復する。
-相乗り構成では、この経路でも絞り込みが効く（staging から関数やルールは配られない）。
-その3つを配る必要があるなら `production` へのデプロイか、手元からの
-`bash scripts/deploy.sh <環境名> --only functions,firestore,storage` で配る。
+この経路でも絞り込みが効く（staging からは staging の関数だけが配られ、ルールは配られない）。
+ルールを配る必要があるなら `production` へのデプロイか、手元からの
+`bash scripts/deploy.sh <環境名> --only firestore,storage` で配る（全環境に効く）。
 
 ## ルール
 

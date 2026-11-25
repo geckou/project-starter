@@ -4,7 +4,7 @@ import { auth } from '@/lib/firebase'
 
 // 未設定時は Functions エミュレーターを指す（プロジェクト ID は Firebase 設定から取得）
 const EMULATOR_PROJECT_ID =
-  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'your-project-develop'
+  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'your-project-id'
 
 // 本番ビルドで未設定のままエミュレーターへフォールバックすると、全ての API が
 // localhost:5001 を叩いて「Failed to fetch」になる。起動時に落として気付かせる

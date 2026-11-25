@@ -37,10 +37,10 @@ node scripts/remove-layer.mjs mobile billing     # 例: Web のみ・課金な�
 yarn setup
 ```
 
-- `.firebaserc` のプレースホルダ（`your-project-develop` 等）を実際の Firebase プロジェクト ID に置換
-  （**環境ごとにプロジェクトを分けるか、1 つのプロジェクトに相乗りさせるかを対話で選ぶ。**
-  判断材料は `.claude/docs/git-workflow.md`「Firebase プロジェクトの持ち方は2通りある」。
-  規模に対して 3 プロジェクトが過剰なら相乗り構成を勧め、選んだ構成を `spec.md` に残す）
+- `.firebaserc` のプレースホルダ（`your-project-id`）を実際の Firebase プロジェクト ID に置換
+  （Firebase プロジェクトは 1 つで、develop / staging / production を相乗りさせる。
+  → `.claude/docs/git-workflow.md`「Firebase プロジェクトは 1 つに相乗りさせる」。
+  続けて環境ごとに Hosting サイトを分ける（→ 同「Hosting のターゲットは環境名に合わせる」））
 - `.env.develop` / `.env.staging` / `.env.production` / `.env.local` を `.env.example` から作成
 - Node.js / yarn / Firebase CLI のチェック、依存インストール
 - ブランチ保護ルールの取り込み（`production` と、`release/*` / `hotfix/*`。どちらも取り込むか対話で聞かれる）

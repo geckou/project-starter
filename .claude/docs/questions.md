@@ -30,7 +30,47 @@
 - 進めた範囲: 保留の手前までに済ませたこと（あれば）
 -->
 
-（なし）
+### Q-007 Firestore のデータとルールを、名前付きデータベースで環境ごとに分けるか
+
+- 発生: 2026-11-25 / #408（相乗り構成を唯一の構成にし、Functions を環境別に配る）の対応中
+- 種別: データモデル / セキュリティ
+- 状況: Functions は環境ごとに配り分けられるようにした（`develop-api` / `staging-api` / `api`）。
+  Firestore は (default) DB 1 つを全環境で共有しており、develop / staging から本番データに触れるうえ、
+  ルールを staging で先に確かめる場所が無い。#408 の提案 3 で「要検討」とされた部分
+- 選択肢:
+  - A) 環境ごとに名前付き DB（`develop` / `staging` / (default) を本番）を持つ（推奨）— データが環境で分かれ、
+    `firebase.json` の `firestore` を配列にすれば DB ごとにルールを持てる。ただし `--only firestore:<DB>`
+    相当で staging の DB だけへ配れるかは**未検証**。Admin SDK / クライアントの DB 指定、エミュレーター、
+    ルールテストの分岐も要る
+  - B) (default) DB を共有したまま、コレクション名の接頭辞（`stg_` / `dev_`）で分ける — 今の
+    `firestore.rules` のコメントの方式。追加の仕組みは要らないが、ルールは全環境で 1 つのまま
+  - C) 現状維持（全環境で同じデータ・同じルール）
+- ブロック: Firestore の環境分離（ルール・Admin SDK・クライアントの DB 指定・`deploy-targets.mjs` の `firestore` の扱い）
+- 進めた範囲: #408 で Functions の配り分けまで。Firestore は production からだけ配る従来の扱いのまま
+
+<!-- layer:billing:start -->
+
+### Q-008 課金のシークレットを環境ごとに分けるか
+
+- 発生: 2026-11-25 / #408 の対応中
+- 種別: セキュリティ / 外部サービス連携
+- 状況: `staging-api` は `api` と同じコード・同じ `defineSecret`（`STRIPE_SECRET_KEY` など）を使うため、
+  Secret Manager の**本番の値**がマウントされる。staging の QA で Checkout を通すと本番キーで課金が走りうる。
+  #408 以前も staging のクライアントは本番の `api` を叩いていたので悪化ではないが、staging で関数を
+  検証できるようになった以上、キーも分けないと検証にならない。
+  あわせて Stripe / RevenueCat の Webhook も本番の `api` にしか登録されておらず、staging-api で
+  始めた決済のイベントは本番の `api` に届く（`billing.md` に注記済み）。A を選ぶなら Webhook の登録先も環境ごとに持つ
+- 選択肢:
+  - A) 環境ごとに別名のシークレットを持つ（`STRIPE_SECRET_KEY_STAGING` など）（推奨）— `api.ts` を
+    環境ごとに関数を作るファクトリにし、環境に応じたシークレットを宣言する。`index.ts` のグループは
+    同じオブジェクトの使い回しではなくなる
+  - B) シークレット名は共通のまま、staging では `.env.staging` に置いたテストキーを優先して読む — 別名の env を
+    読む分岐が要る。テストキーが関数の環境変数（閲覧者ロールから読める）に載る
+  - C) 現状維持（staging でも本番キー。staging では課金を試さない運用で避ける）
+- ブロック: staging での課金フローの検証
+- 進めた範囲: なし（課金・外部サービス連携のため保留）
+
+<!-- layer:billing:end -->
 
 ---
 

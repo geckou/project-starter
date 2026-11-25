@@ -201,18 +201,24 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
           DEPLOY_ENV: ${{ steps.env.outputs.name }}
         run: |
-          # 1 つの Firebase プロジェクトに環境を相乗りさせる構成では、
-          # functions / firestore / storage が環境で分かれない（#358）。
-          # CI の自動デプロイでそれらを配ってよいのは、そのプロジェクトを共有する
-          # 環境のうち最も本番側の 1 つだけ。判定は deploy.sh と同じものを使う
+          # 1 つの Firebase プロジェクトに全環境を相乗りさせるため、環境ごとに配るものを
+          # deploy.sh と同じ判定（scripts/lib/deploy-targets.mjs）で決める（#358 / #408）。
+          #   - functions は環境の関数へ展開する（staging → functions:staging、
+          #     production → functions:<名前>…）。本番の関数は production でだけ更新される
+          #   - firestore / storage は production だけが配る
           # 結果は FILTERED_TARGETS に置く。コマンド置換で受けると ::warning:: まで
           # 取り込まれてしまい、Actions のアノテーションにならない
           FILTERED_TARGETS=""
+          # functions → functions:staging のような展開は外したことにならないので、
+          # 種類（: の前）だけを比べる
+          target_kinds() {
+            printf '%s' "$1" | tr ',' '\n' | sed 's/:.*//' | sort -u | tr '\n' ','
+          }
           filter_targets() {
             FILTERED_TARGETS=$(node scripts/lib/deploy-targets.mjs "$DEPLOY_ENV" "$1")
 
-            if [ "$FILTERED_TARGETS" != "$1" ]; then
-              echo "::warning::相乗り構成のため、このデプロイから除外したターゲットがあります（${1} → ${FILTERED_TARGETS:-なし}）。詳細は上のログを参照"
+            if [ "$(target_kinds "$FILTERED_TARGETS")" != "$(target_kinds "$1")" ]; then
+              echo "::warning::${DEPLOY_ENV} では配らないターゲットを除外しました（${1} → ${FILTERED_TARGETS:-なし}）。詳細は上のログを参照"
             fi
           }
 
@@ -269,7 +275,7 @@ jobs:
             ALL="$FILTERED_TARGETS"
 
             if [ -z "$ALL" ]; then
-              echo "この環境から配るものはありません（相乗り構成の絞り込みで全て除外されました）"
+              echo "この環境から配るものはありません（環境ごとの絞り込みで全て除外されました）"
             fi
 
             echo "targets=$ALL" >> $GITHUB_OUTPUT
@@ -345,9 +351,9 @@ jobs:
           TARGETS="$FILTERED_TARGETS"
 
           if [ -z "$TARGETS" ] && [ -n "$REQUESTED_TARGETS" ]; then
-            # 変更はあったが、相乗り構成の絞り込みで全て外れた。
+            # 変更はあったが、環境ごとの絞り込みで全て外れた。
             # 「変更なし」と区別できるようにする
-            echo "この環境から配るものはありません（${REQUESTED_TARGETS} は相乗り構成の絞り込みで除外）"
+            echo "この環境から配るものはありません（${REQUESTED_TARGETS} は環境ごとの絞り込みで除外）"
           elif [ -z "$TARGETS" ]; then
             echo "デプロイが必要な変更はありません"
           else

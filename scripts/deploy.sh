@@ -109,27 +109,37 @@ fi
 DEFAULT_TARGETS="functions,${DEFAULT_TARGETS}"
 # layer:functions:end
 
-# 既定のターゲットは .firebaserc の構成から導出する。
+# 環境ごとに配るものを決める。
 #
-# 1 つの Firebase プロジェクトに環境を相乗りさせる構成（→ .claude/docs/git-workflow.md）では
-# functions / firestore / storage が環境で分かれないため、既定のまま配ると
-# `deploy.sh develop` が本番の関数とルールを --force で上書きする（#358）。
+# このテンプレートは 1 つの Firebase プロジェクトに全環境を相乗りさせる
+# （→ .claude/docs/git-workflow.md「Firebase プロジェクトは 1 つに相乗りさせる」）。
+#   - functions は apps/functions/function-environments.json の宣言から
+#     この環境の関数（functions:<環境名> / production は functions:<名前>…）へ展開する。
+#     --only functions の明示指定も同じく展開する（staging から本番の関数を上書きしないため。#408）
+#   - firestore / storage は環境で分けられないので production だけが既定で配る
+#   - hosting はこの環境名のターゲットが firebase.json に無ければ production 以外では配らない
 # 判定は scripts/lib/deploy-targets.mjs にあり、scripts/test-deploy-targets.sh が回帰テストする。
 #
-# --only での明示指定は止めない（他の環境にも配ることを警告するだけ）
+# --only の functions:<名前> / firestore / storage は止めない（他の環境にも配ることを警告するだけ）
 if [ -n "$DEPLOY_ONLY" ]; then
   TARGETS=$(node scripts/lib/deploy-targets.mjs "$ENV" "$DEPLOY_ONLY" --explicit)
+
+  if [ -z "$TARGETS" ]; then
+    echo ""
+    echo "[error] --only ${DEPLOY_ONLY} から、この環境で配れるものが残りませんでした（上の警告を参照）"
+    exit 1
+  fi
 else
   TARGETS=$(node scripts/lib/deploy-targets.mjs "$ENV" "$DEFAULT_TARGETS")
 
-  # 絞り込みで全部落ちた（相乗り構成で、Hosting サイトも分けていない）。
+  # 絞り込みで全部落ちた（関数の宣言が無く、Hosting サイトも分けていない）。
   # 「対象が空」と同じ文言で終えると --only の指定ミスに見えるので、ここで分ける
   if [ -z "$TARGETS" ]; then
     echo ""
     echo "[error] この環境から既定で配れるものがありません（上の警告を参照）"
     echo "  → hosting を配るには、この環境名の Hosting ターゲットを用意してください"
     echo "     （.claude/docs/git-workflow.md「Hosting のターゲットは環境名に合わせる」）"
-    echo "  → functions / firestore / storage だけを配るなら --only で明示してください"
+    echo "  → firestore / storage だけを配るなら --only で明示してください"
     exit 1
   fi
 fi
@@ -372,8 +382,8 @@ firebase experiments:enable webframeworks
 # 同梱すると Next アダプタが next build で停止（ハング）するため。
 #
 # **配る先は今の環境のターゲットだけ。** 1 つの Firebase プロジェクトに develop /
-# staging / production の 3 サイトを相乗りさせる構成（→ .claude/docs/git-workflow.md）
-# では firebase.json に 3 ターゲットが並び、全部に配ると staging の .env でビルドした
+# staging / production の 3 サイトを相乗りさせるため（→ .claude/docs/git-workflow.md）、
+# firebase.json に 3 ターゲットが並び、全部に配ると staging の .env でビルドした
 # ものが production のサイトにも出る（#323）。選び方は scripts/lib/hosting-targets.mjs
 deploy_hosting_per_target() {
   local targets
@@ -455,6 +465,12 @@ if [ -n "$OTHER_TARGETS" ]; then
   # 確認を飛ばすだけだが、functions では取り消せない削除になる（#357）。
   # 対話端末から実行したときは付けず、削除の可否を人に聞く。
   # 非対話（CI）はプロンプトに答えられずデプロイが止まるので付けたままにする
+  #
+  # 削除の対象は --only の範囲に限られる（firebase-tools の deploy/functions/delete.js が
+  # フィルタで絞る）。functions:staging で配れば、消えるのは staging のグループから
+  # 外した関数だけで、本番の関数は削除されない。
+  # 裏返すと production も functions:<名前> で配るため、ソースから外した本番の関数は
+  # 自動では消えない（firebase functions:delete で消す。→ .claude/docs/git-workflow.md）
   #
   # 効かせるのは **functions を含むときだけ**。含まないのに外すと、ルールの
   # デプロイから確認の飛ばしが消えるだけで、危険が減るわけではない

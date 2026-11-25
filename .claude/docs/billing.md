@@ -47,6 +47,10 @@
    https://<region>-<project-id>.cloudfunctions.net/api/webhooks/stripe
    ```
 
+   Functions は環境ごとに配る（`develop-api` / `staging-api` / `api`。→ `.claude/docs/git-workflow.md`）。
+   上の URL は本番の `api` に届く。staging で課金を確かめるなら、テストモードの Webhook を
+   `…/staging-api/webhooks/stripe` に別途登録する（シークレットの扱いは `.claude/docs/questions.md` Q-008）
+
    送信するイベントに以下の4つを選ぶ:
 
    | イベント | 用途 |
@@ -301,6 +305,8 @@ RevenueCat Dashboard > Integrations > Webhooks:
 ```
 https://<region>-<project-id>.cloudfunctions.net/api/webhooks/revenuecat
 ```
+
+本番の `api` に届く URL。staging（`staging-api`）へは届かない（→ Stripe の手順と同じ注記）。
 
 Authorization header value に `REVENUECAT_WEBHOOK_AUTH` と**同じ値**を設定する。
 

@@ -6,7 +6,7 @@ import { auth } from '@/lib/firebase'
 // 未設定時は Functions エミュレーターを指す（プロジェクト ID は app.config.ts の extra から取得）。
 // Android エミュレーターからは localhost ではなく 10.0.2.2 を指定すること
 const EMULATOR_PROJECT_ID =
-  Constants.expoConfig?.extra?.firebaseProjectId || 'your-project-develop'
+  Constants.expoConfig?.extra?.firebaseProjectId || 'your-project-id'
 
 // 本番ビルドで未設定のままエミュレーターへフォールバックすると、配布したアプリが
 // localhost:5001 を叩いて全ての API が失敗する。起動時に落として気付かせる

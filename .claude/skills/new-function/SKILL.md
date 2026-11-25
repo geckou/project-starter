@@ -14,7 +14,17 @@ description: Firebase Cloud Function を追加する
    - **スケジュール**: 定期実行（cron 形式）
    - **Firestore トリガー**: ドキュメントの作成・更新・削除に反応
 2. 該当するファイルに関数を追加する
-3. `index.ts` からエクスポートする
+3. 関数を**環境別**か**全環境共通**かに分類し、`index.ts` と `apps/functions/function-environments.json` の
+   両方に書く（→ `.claude/docs/git-workflow.md`「Functions は環境別と全環境共通に分けて配る」）
+   - **環境別**（HTTP のように、クライアントが環境ごとの URL を選ぶもの）: `index.ts` の `perEnvironment` に
+     足し、production の名前でも export する。宣言の `perEnvironment` に名前を足す。
+     develop / staging では `develop-<名前>` / `staging-<名前>` として配られる
+   - **全環境共通**（スケジュール・Firestore / Storage / Auth のトリガー）: `index.ts` から production の名前で
+     export し、宣言の `shared` に名前を足す。production のデプロイでだけ配られる。
+     **トリガーを環境別にしない**（データは全環境で 1 つなので、3 環境ぶんが同じ書き込みで発火する）
+   - 片方にだけ書くと `apps/functions/tests/function-environments.test.ts` が落ちる
+   - **`function-environments.json` が無い派生では、関数 1 つぶんだけ宣言を足さない。** 既存の関数が
+     production で配られなくなる。先に移行を済ませる（→ `.claude/docs/git-workflow.md`「既存の派生プロジェクトの移行」）
 
 ## テンプレート
 
@@ -80,7 +90,7 @@ export const onUserCreate = onDocumentCreated(
 
 ## ルール
 
-- 新しいファイルを作ったら必ず `index.ts` から export する
+- 新しいファイルを作ったら必ず `index.ts` から export し、`function-environments.json` に分類を書く
 - `initializeApp()` は `index.ts` で1回だけ呼ぶ（各ファイルでは呼ばない）
 - 共有の型は `@geckou/shared/types` からインポートする
 - シングルクォートを使う
